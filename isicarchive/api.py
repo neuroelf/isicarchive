@@ -153,12 +153,12 @@ class IsicApi(object):
         headers = {'Girder-Token': self.auth_token} if self.auth_token else None
         if save_as is None:
             return requests.get(url, headers=headers, params=params)
-        r = requests.get(url,
+        req = requests.get(url,
             headers=headers,
             params=params,
             allow_redirects=True,
             )
-        open(save_as, 'wb').write(r.content)
+        open(save_as, 'wb').write(req.content)
 
     # Generic endpoint that already converts content to JSON
     def get_json(self, endpoint:str, params:dict = None) -> object:
@@ -194,7 +194,43 @@ class IsicApi(object):
                     raise KeyError('Dataset "%s" not found.' % (name))
             except:
                 raise
-        return self.get_json('dataset/' + object_id, params=params)
+        dataset = self.get_json('dataset/' + object_id, params=params)
+        if not '_id' in dataset:
+            raise KeyError('Dataset with id %s not found.' % (object_id))
+        return dataset
+
+    # POST an image to the /dataset/{id}/image endpoint
+    def dataset_post_image(self,
+        name_or_id:str,
+        local_filename:str,
+        signature:str,
+        ) -> bool:
+        """
+        POSTs an image (local file) to a dataset and returns True or False
+        """
+        if ((name_or_id is None) or (name_or_id == '')):
+            raise KeyError('Requires a valid dataset object_id or name.')
+        try:
+            dataset = self.dataset(name_or_id)
+            object_id = dataset['_id']
+        except:
+            raise
+        if ((local_filename is None) or (local_filename == '')):
+            raise ValueError('Requires a non-empty filename.')
+        try:
+            with open(local_filename, 'rb') as file_id:
+                file_content = file_id.read()
+        except:
+            raise
+        if ((signature is None) or (signature == '')):
+            raise ValueError('Requires a signature')
+        url = self._make_url('dataset/' + object_id + '/image')
+        headers = {'Girder-Token': self.auth_token} if self.auth_token else None
+        req = requests.post(url,
+            data=file_content,
+            json={'filename': local_filename, 'signature': signature},
+            headers=headers)
+        return req
 
     # Generic /image endpoint
     def image(self,
@@ -226,9 +262,16 @@ class IsicApi(object):
             except:
                 raise
         if not save_as is None:
-            self.get('image/' + object_id, save_as=save_as)
+            try:
+                self.get('image/' + object_id + '/download',
+                    params=params, save_as=save_as)
+            except:
+                raise
             return
-        return self.get_json('image/' + object_id, params=params)
+        image = self.get_json('image/' + object_id, params=params)
+        if not '_id' in image:
+            raise KeyError('Image with id %s not found.' % (object_id))
+        return image
 
     # Image list (generator)
     def image_list(self, params:dict = None) -> iter:
