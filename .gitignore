@@ -1,5 +1,8 @@
-__pycache__
-.ipynb_checkpoints
-/Annotations
-/Images
-/Studies
+# folders not to include in root
+/build/
+/dist/
+/isicarchive.egg-info/
+
+# folders not to include anywhere
+__pycache__/
+.ipynb_checkpoints/

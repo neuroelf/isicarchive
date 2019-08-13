@@ -8,7 +8,7 @@ To instantiate the API object and retrieve some study information use
 
    >>> from isicarchive import isicapi
    >>> api = isicapi(username)
-   >>> studyInfo = api.getStudy(studyName)
+   >>> studyInfo = api.study(studyName)
 
 :copyright: (c) 2019, MSKCC.
 :license: MIT, see LICENSE for details.
@@ -18,7 +18,7 @@ import requests
 import warnings
 
 def check_dep_versions():
-    r_version = requests.__version__.split('.');
+    r_version = requests.__version__.split('.')
     r_major = int(r_version[0])
     r_minor = int(r_version[1])
     if r_major < 2 or (r_major < 3 and r_minor < 22):
@@ -26,7 +26,6 @@ def check_dep_versions():
 
 check_dep_versions()
 
-from .api import isicapi
+from .api import IsicApi
 
 name = 'isicarchive'
-

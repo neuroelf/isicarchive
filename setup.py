@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from setuptools import setup
+import setuptools
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -9,9 +9,9 @@ requires = [
     'requests>=2.22.0'
 ]
 
-setup(
+setuptools.setup(
     name="isicarchive",
-    version="0.0.2",
+    version="0.0.4",
     description="ISIC Archive API",
     long_description=long_description,
     long_description_content_type="text/markdown",
