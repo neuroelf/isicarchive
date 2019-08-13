@@ -10,8 +10,8 @@ import json
 import requests
 from typing import Optional
 
-from .func import couldBeMongoObjectId
-from .vars import *
+from .func import *
+import .vars as vars
 
 
 class isicapi(object):
@@ -20,8 +20,8 @@ class isicapi(object):
     def __init__(self, username:Optional[str] = None,
                  password:Optional[str] = None, hostname:Optional[str] = None):
         if hostname is None:
-            hostname = _isic_baseurl
-        self.baseUrl = '%s%s' % (hostname, _isic_apiuri)
+            hostname = vars._isic_baseurl
+        self.baseUrl = '%s%s' % (hostname, vars._isic_apiuri)
         self.authToken = None
         self.images = dict()
         self.studies = dict()
