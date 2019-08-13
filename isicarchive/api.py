@@ -11,7 +11,7 @@ import requests
 from typing import Optional
 
 from .func import *
-import .vars as vars
+from . import vars
 
 
 class isicapi(object):
