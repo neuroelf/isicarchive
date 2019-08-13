@@ -228,7 +228,7 @@ class IsicApi(object):
         headers = {'Girder-Token': self.auth_token} if self.auth_token else None
         req = requests.post(url,
             data=file_content,
-            json={'filename': local_filename, 'signature': signature},
+            params={'filename': local_filename, 'signature': signature},
             headers=headers)
         return req
 
