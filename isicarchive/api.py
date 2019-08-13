@@ -50,6 +50,7 @@ import requests
 
 from . import func
 from . import vars
+from .study import Study
 
 
 class IsicApi(object):
@@ -113,24 +114,8 @@ class IsicApi(object):
                 password = getpass.getpass('Password for "%s":' % (username))
 
             # Login
-            self.auth_token = self._login(username, password)
-
-    # Internal method to generate URLs
-    def _make_url(self, endpoint:str) -> str:
-        """Concatenates the base_url with the endpoint."""
-        return '%s/%s' % (self.base_url, endpoint)
-
-    # Internal login method
-    def _login(self, username:str, password:str) -> str:
-        """Makes a login requests and returns the Girder-Token header."""
-        # Use "user/authentication" endpoint
-        auth_response = requests.get(
-            self._make_url('user/authentication'),
-            auth=(username, password),
-            )
-        if not auth_response.ok:
-            raise Exception('Login error: ' + auth_response.json()['message'])
-        return auth_response.json()['authToken']['token']
+            self.auth_token = func.isic_auth_token(
+                self.base_url, username, password)
 
     # Internal method to cache all study names
     def _read_datasets(self) -> dict:
@@ -150,67 +135,6 @@ class IsicApi(object):
                 self.studies[study['name']] = study['_id']
         return self.studies
 
-
-    # Generic endpoint API, allowing arbitrary commands
-    def get(self, endpoint:str, params:dict = None, save_as:str = None) -> any:
-        """
-        Performs a GET request to the given endpoint, with the provided
-        parameters. If the `save_as` argument is given, will attempt to
-        store the returned output into a local file instead of returning
-        the content as a string.
-
-        Parameters
-        ----------
-        endpoint : str
-            endpoint (URI) to which the request is made, WITHOUT leading /
-        params : dict
-            optional parameters that will be added to the query string
-        save_as : str
-            optional string containing a local target filename
-        
-        Returns
-        -------
-        any
-            if the request is successful, the returned content
-        """
-
-        url = self._make_url(endpoint)
-        headers = {'Girder-Token': self.auth_token} if self.auth_token else None
-        if save_as is None:
-            return requests.get(url, headers=headers, params=params)
-        req = requests.get(url,
-            headers=headers,
-            params=params,
-            allow_redirects=True,
-            )
-        open(save_as, 'wb').write(req.content)
-
-    # Generic endpoint that already converts content to JSON
-    def get_json(self, endpoint:str, params:dict = None) -> object:
-        """
-        Performs a GET request and parses the returned content using the
-        requests.get(...).json() method.
-
-        Passes through `self.get(...)`
-        """
-        return self.get(endpoint, params=params).json()
-
-    # Generic endpoint to generate iterator over JSON list
-    def get_json_list(self, endpoint:str, params:dict = None) -> iter:
-        """
-        Generates an iterator to handle one (JSON) item at a time.
-
-        For syntax, see `self.get(...)`
-
-        Yields
-        ------
-        object
-            one JSON object from an array
-        """
-        resp = self.get_json(endpoint, params=params)
-        for item in resp:
-            yield(item)
-    
     # Generic /dataset endpoint
     def dataset(self,
         object_id:str = None,
@@ -247,7 +171,8 @@ class IsicApi(object):
                     object_id = None
         if object_id is None:
             if name is None:
-                return self.get_json('dataset', params=params)
+                return func.get(self.base_url,
+                    'dataset', self.auth_token, params).json()
             try:
                 datasets = self._read_datasets()
                 if name in datasets:
@@ -256,7 +181,7 @@ class IsicApi(object):
                     raise KeyError('Dataset "%s" not found.' % (name))
             except:
                 raise
-        dataset = self.get_json('dataset/' + object_id, params=params)
+        dataset = func.getn('dataset/' + object_id, params=params).json()
         if not '_id' in dataset:
             raise KeyError('Dataset with id %s not found.' % (object_id))
         return dataset
@@ -309,7 +234,7 @@ class IsicApi(object):
             raise ValueError('Error reading image: ' + local_filename)
         if ((signature is None) or (signature == '')):
             raise ValueError('Requires a signature')
-        url = self._make_url('dataset/' + object_id + '/image')
+        url = func.make_url(self.base_url, 'dataset/' + object_id + '/image')
         headers = {'Girder-Token': self.auth_token} if self.auth_token else None
         req = requests.post(url,
             data=file_content,
@@ -411,7 +336,7 @@ class IsicApi(object):
                 object_id = image['_id']
         except:
             raise
-        url = self._make_url('image/' + object_id + '/metadata')
+        url = func.make_url(self.base_url, 'image/' + object_id + '/metadata')
         headers = {'Girder-Token': self.auth_token} if self.auth_token else None
         req = requests.post(url,
             params={'metadata': metadata, 'save': 'true'},
@@ -436,7 +361,8 @@ class IsicApi(object):
                     object_id = None
         if object_id is None:
             if name is None:
-                return self.get_json('study', params=params)
+                return func.get(self.base_url,
+                'study', self.auth_token, params=params).json()
             try:
                 studies = self._read_studies()
                 if name in studies:
@@ -445,7 +371,10 @@ class IsicApi(object):
                     raise KeyError('Study "%s" not found.' % (name))
             except:
                 raise
-        return self.get_json('study/' + object_id, params=params)
+        return Study(func.get(
+            self.base_url, 'study/' + object_id,
+            self.auth_token, params).json(),
+            base_url=self.base_url, auth_token=self.auth_token)
     
     # Study list (generator)
     def study_list(self, params:dict = None) -> iter:
