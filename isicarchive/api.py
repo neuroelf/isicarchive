@@ -40,10 +40,13 @@ You'll find documentation and examples for each of the endpoints,
 together with the ability to test them separately.
 """
 
+from typing import Optional
+import warnings
+
 import getpass
+import imageio
 import json
 import requests
-from typing import Optional
 
 from . import func
 from . import vars
@@ -114,12 +117,12 @@ class IsicApi(object):
 
     # Internal method to generate URLs
     def _make_url(self, endpoint:str) -> str:
-
+        """Concatenates the base_url with the endpoint."""
         return '%s/%s' % (self.base_url, endpoint)
 
     # Internal login method
     def _login(self, username:str, password:str) -> str:
-
+        """Makes a login requests and returns the Girder-Token header."""
         # Use "user/authentication" endpoint
         auth_response = requests.get(
             self._make_url('user/authentication'),
@@ -131,6 +134,7 @@ class IsicApi(object):
 
     # Internal method to cache all study names
     def _read_datasets(self) -> dict:
+        """Reads all available datasets for name caching."""
         if not self.datasets:
             datasets = self.dataset(params={'limit': 0, 'detail': 'false'})
             for dataset in datasets:
@@ -139,6 +143,7 @@ class IsicApi(object):
 
     # Internal method to cache all study names
     def _read_studies(self) -> dict:
+        """Reads all available studies for name caching."""
         if not self.studies:
             studies = self.study(params={'limit': 0, 'detail': 'false'})
             for study in studies:
@@ -148,6 +153,26 @@ class IsicApi(object):
 
     # Generic endpoint API, allowing arbitrary commands
     def get(self, endpoint:str, params:dict = None, save_as:str = None) -> any:
+        """
+        Performs a GET request to the given endpoint, with the provided
+        parameters. If the `save_as` argument is given, will attempt to
+        store the returned output into a local file instead of returning
+        the content as a string.
+
+        Parameters
+        ----------
+        endpoint : str
+            endpoint (URI) to which the request is made, WITHOUT leading /
+        params : dict
+            optional parameters that will be added to the query string
+        save_as : str
+            optional string containing a local target filename
+        
+        Returns
+        -------
+        any
+            if the request is successful, the returned content
+        """
 
         url = self._make_url(endpoint)
         headers = {'Girder-Token': self.auth_token} if self.auth_token else None
@@ -162,10 +187,26 @@ class IsicApi(object):
 
     # Generic endpoint that already converts content to JSON
     def get_json(self, endpoint:str, params:dict = None) -> object:
+        """
+        Performs a GET request and parses the returned content using the
+        requests.get(...).json() method.
+
+        Passes through `self.get(...)`
+        """
         return self.get(endpoint, params=params).json()
 
     # Generic endpoint to generate iterator over JSON list
     def get_json_list(self, endpoint:str, params:dict = None) -> iter:
+        """
+        Generates an iterator to handle one (JSON) item at a time.
+
+        For syntax, see `self.get(...)`
+
+        Yields
+        ------
+        object
+            one JSON object from an array
+        """
         resp = self.get_json(endpoint, params=params)
         for item in resp:
             yield(item)
@@ -176,6 +217,27 @@ class IsicApi(object):
         name:str = None,
         params:dict = None,
         ) -> any:
+        """
+        dataset endpoint, allows to
+        - retrieve information about all available studies
+        - retrieve information about one specific study
+
+        Parameters
+        ----------
+        object_id : str
+            valid 24-character mongodb ObjectId for the dataset
+        name : str
+            alternatively the name of the dataset
+        params : dict
+            optional parameters for the GET request
+        
+        Returns
+        -------
+        object
+            for a single dataset, returns a JSON object with _id and name
+        list
+            for multiple datasets, a list of JSON objects
+        """
         if not object_id is None:
             if ((len(object_id) != 24)
                 or (not func.could_be_mongo_object_id(object_id))):
@@ -199,14 +261,32 @@ class IsicApi(object):
             raise KeyError('Dataset with id %s not found.' % (object_id))
         return dataset
 
+    # Dataset list (generator)
+    def dataset_list(self, params:dict = None) -> iter:
+        """
+        Dataset list/iterator
+
+        Parameters
+        ----------
+        params : dict
+            optional GET parameters for the query string
+        
+        Yields
+        ------
+        object
+            dataset JSON object
+        """
+        return self.get_json_list('dataset', params=params)
+
     # POST an image to the /dataset/{id}/image endpoint
     def dataset_post_image(self,
         name_or_id:str,
         local_filename:str,
         signature:str,
-        ) -> bool:
+        metadata:dict = None
+        ) -> str:
         """
-        POSTs an image (local file) to a dataset and returns True or False
+        POSTs an image (local file) to a dataset and returns the object_id
         """
         if ((name_or_id is None) or (name_or_id == '')):
             raise KeyError('Requires a valid dataset object_id or name.')
@@ -222,6 +302,11 @@ class IsicApi(object):
                 file_content = file_id.read()
         except:
             raise
+        try:
+            image_data = imageio.imread(file_content)
+            image_shape = image_data.shape
+        except:
+            raise ValueError('Error reading image: ' + local_filename)
         if ((signature is None) or (signature == '')):
             raise ValueError('Requires a signature')
         url = self._make_url('dataset/' + object_id + '/image')
@@ -230,7 +315,38 @@ class IsicApi(object):
             data=file_content,
             params={'filename': local_filename, 'signature': signature},
             headers=headers)
-        return req
+        if not req.ok:
+            warnings.warn("Image upload failed: " + req.text)
+            return ''
+        msg = req.json()
+        if '_id' in msg:
+            object_id = msg['_id']
+        else:
+            warnings.warn('Update failed: ' + req.text)
+            return ''
+        if not metadata is None:
+            if not 'acquisition' in metadata:
+                metadata['acquisition'] = dict()
+            if not 'pixelsX' in metadata['acquisition']:
+                metadata['acquisition']['pixelsX'] = image_shape[1]
+            if not 'pixelsY' in metadata['acquisition']:
+                metadata['acquisition']['pixelsY'] = image_shape[0]
+            try:
+                self.image_post_metadata(object_id, metadata)
+            except:
+                raise
+        else:
+            metadata = {
+                'acquisition': {
+                    'pixelsX': image_shape[1],
+                    'pixelsY': image_shape[0],
+                },
+            }
+            try:
+                self.image_post_metadata(object_id, metadata)
+            except:
+                warnings.warn('Could not post automatic metadata.')
+        return object_id
 
     # Generic /image endpoint
     def image(self,
@@ -276,6 +392,34 @@ class IsicApi(object):
     # Image list (generator)
     def image_list(self, params:dict = None) -> iter:
         return self.get_json_list('image', params=params)
+
+    # POST metadata for an image to the /image/{id}/metadata endpoint
+    def image_post_metadata(self,
+        name_or_id:str,
+        metadata:dict,
+        ) -> bool:
+        """
+        POSTs metadata for an image and returns True or False
+        """
+        if ((name_or_id is None) or (name_or_id == '')):
+            raise KeyError('Requires a valid image object_id or name.')
+        try:
+            if name_or_id in self.images:
+                object_id = self.images[name_or_id]
+            else:
+                image = self.image(name_or_id)
+                object_id = image['_id']
+        except:
+            raise
+        url = self._make_url('image/' + object_id + '/metadata')
+        headers = {'Girder-Token': self.auth_token} if self.auth_token else None
+        req = requests.post(url,
+            params={'metadata': metadata, 'save': 'true'},
+            headers=headers)
+        if not req.ok:
+            warnings.warn("Image metadata posting failed: " + req.text)
+            return ''
+        return req.json()
     
     # Generic /study endpoint
     def study(self,

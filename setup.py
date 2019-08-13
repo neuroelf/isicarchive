@@ -6,12 +6,13 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 requires = [
-    'requests>=2.22.0'
+    'imageio=>2.5.0',
+    'requests>=2.22.0',
 ]
 
 setuptools.setup(
     name="isicarchive",
-    version="0.0.4",
+    version="0.0.6",
     description="ISIC Archive API",
     long_description=long_description,
     long_description_content_type="text/markdown",

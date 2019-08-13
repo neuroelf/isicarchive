@@ -29,3 +29,4 @@ check_dep_versions()
 from .api import IsicApi
 
 name = 'isicarchive'
+__version__ = '0.0.6'
