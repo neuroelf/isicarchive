@@ -11,7 +11,7 @@ requires = [
 
 setup(
     name="isicarchive",
-    version="0.0.1",
+    version="0.0.2",
     description="ISIC Archive API",
     long_description=long_description,
     long_description_content_type="text/markdown",
