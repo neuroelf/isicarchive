@@ -181,7 +181,8 @@ class IsicApi(object):
                     raise KeyError('Dataset "%s" not found.' % (name))
             except:
                 raise
-        dataset = func.getn('dataset/' + object_id, params=params).json()
+        dataset = func.get(self.base_url,
+            'dataset/' + object_id, self.auth_token, params).json()
         if not '_id' in dataset:
             raise KeyError('Dataset with id %s not found.' % (object_id))
         return dataset
@@ -201,7 +202,9 @@ class IsicApi(object):
         object
             dataset JSON object
         """
-        return self.get_json_list('dataset', params=params)
+        datasets = self.dataset(params=params)
+        for dataset in datasets:
+            return dataset
 
     # POST an image to the /dataset/{id}/image endpoint
     def dataset_post_image(self,
@@ -289,12 +292,14 @@ class IsicApi(object):
                     object_id = None
         if object_id is None:
             if name is None:
-                return self.get_json('image', params=params)
+                return func.get(self.base_url,
+                    'image', self.auth_token, params).json()
             try:
                 if name in self.images:
                     object_id = self.images[name]
                 else:
-                    object_id = self.get_json('image', params={'name': name})
+                    object_id = func.get(self.base_url,
+                        'image', self.auth_token, params={'name': name}).json()
                     if '_id' in object_id:
                         object_id = object_id['_id']
                         self.images[name] = object_id
@@ -304,19 +309,24 @@ class IsicApi(object):
                 raise
         if not save_as is None:
             try:
-                self.get('image/' + object_id + '/download',
-                    params=params, save_as=save_as)
+                func.get(self.base_url,
+                    'image/' + object_id + '/download',
+                    self.auth_token, params, save_as)
             except:
                 raise
             return
-        image = self.get_json('image/' + object_id, params=params)
+        image = func.get(self.base_url,
+            'image/' + object_id,
+            self.auth_token, params).json()
         if not '_id' in image:
             raise KeyError('Image with id %s not found.' % (object_id))
         return image
 
     # Image list (generator)
     def image_list(self, params:dict = None) -> iter:
-        return self.get_json_list('image', params=params)
+        images = self.image()
+        for image in images:
+            yield(image)
 
     # POST metadata for an image to the /image/{id}/metadata endpoint
     def image_post_metadata(self,
@@ -378,4 +388,6 @@ class IsicApi(object):
     
     # Study list (generator)
     def study_list(self, params:dict = None) -> iter:
-        return self.get_json_list('study', params=params)
+        studies = self.study(params=params)
+        for study in studies:
+            yield(Study(study, base_url=self.base_url, auth_token=self.auth_token))

@@ -17,6 +17,31 @@ import datetime
 
 from . import func
 
+_json_full_fields = [
+    'created',
+    'creator',
+    'description',
+    'features',
+    'id',
+    'images',
+    'name',
+    'participation_requests',
+    'questions',
+    'updated',
+    'user_completion',
+    'users',
+]
+_json_partial_fields = [
+    'description',
+    'id',
+    'name',
+    'updated',
+]
+_mangling = {
+    'id': '_id',
+    'participation_requests': 'participationRequests',
+    'user_completion': 'userCompletion',
+}
 
 class Study(object):
     """
@@ -81,7 +106,6 @@ class Study(object):
         self._auth_token = auth_token
         self._base_url = base_url
         self._detail = False
-        self._id = ''
         self._in_archive = False
         # still needs timezone information!!
         self.created = datetime.datetime.now().strftime(
@@ -89,6 +113,7 @@ class Study(object):
         self.creator = {'_id': '000000000000000000000000'}
         self.description = description if description else ''
         self.features = []
+        self.id = ''
         self.images = []
         self.name = name if name else ''
         self.participation_requests = []
@@ -100,8 +125,8 @@ class Study(object):
         # from JSON
         if not from_json is None:
             try:
-                self._id = from_json['_id']
                 self.description = from_json['description']
+                self.id = from_json['_id']
                 self.name = from_json['name']
                 self.updated = from_json['updated']
                 if 'creator' in from_json:
@@ -123,7 +148,19 @@ class Study(object):
             except:
                 raise
 
-        # formatted print
-        def __str__(self):
-            return 'ISIC Study "{0:s}" (id={1:s}, {2:d} images)'.format(
-                self.name, self._id, len(self.images))
+    # JSON
+    def __repr__(self):
+        as_json = []
+        fields = _json_full_fields if self._detail else _json_partial_fields
+        for field in fields:
+            if field in _mangling:
+                json_field = _mangling[field]
+            else:
+                json_field = field
+            as_json.append("'%s': %s" % (json_field, repr(getattr(self, field))))
+        return 'Study(from_json={%s})' % (', '.join(as_json))
+    
+    # formatted print
+    def __str__(self):
+        return 'ISIC Study "{0:s}" (id={1:s}, {2:d} images)'.format(
+            self.name, self.id, len(self.images))
