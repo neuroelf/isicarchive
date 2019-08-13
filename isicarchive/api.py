@@ -177,8 +177,8 @@ class IsicApi(object):
         params:dict = None,
         ) -> any:
         if not object_id is None:
-            if (len(object_id) != 24)
-                or (not func.could_be_mongo_object_id(object_id)):
+            if ((len(object_id) != 24)
+                or (not func.could_be_mongo_object_id(object_id))):
                 if name is None:
                     object_id, name = None, object_id
                 else:
@@ -204,8 +204,8 @@ class IsicApi(object):
         save_as:str = None,
         ) -> any:
         if not object_id is None:
-            if (len(object_id) != 24)
-                or (not func.could_be_mongo_object_id(object_id)):
+            if ((len(object_id) != 24)
+                or (not func.could_be_mongo_object_id(object_id))):
                 if name is None:
                     object_id, name = None, object_id
                 else:
@@ -241,8 +241,8 @@ class IsicApi(object):
         params:dict = None,
         ) -> any:
         if not object_id is None:
-            if (len(object_id) != 24)
-                or (not func.could_be_mongo_object_id(object_id)):
+            if ((len(object_id) != 24)
+                or (not func.could_be_mongo_object_id(object_id))):
                 if name is None:
                     object_id, name = None, object_id
                 else:
