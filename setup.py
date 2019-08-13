@@ -12,7 +12,7 @@ requires = [
 
 setuptools.setup(
     name="isicarchive",
-    version="0.0.6",
+    version="0.0.7",
     description="ISIC Archive API",
     long_description=long_description,
     long_description_content_type="text/markdown",
