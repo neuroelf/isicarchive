@@ -40,6 +40,9 @@ You'll find documentation and examples for each of the endpoints,
 together with the ability to test them separately.
 """
 
+__version__ = '0.2.0'
+
+
 import copy
 import os
 import tempfile
@@ -209,6 +212,11 @@ class IsicApi(object):
             for multiple datasets, a list of JSON objects
         """
         if not object_id is None:
+            if isinstance(object_id, dict):
+                if '_id' in object_id:
+                    object_id = object_id['_id']
+                elif 'id' in object_id:
+                    object_id = object_id['id']
             if ((len(object_id) != 24)
                 or (not func.could_be_mongo_object_id(object_id))):
                 if name is None:
@@ -337,6 +345,11 @@ class IsicApi(object):
         save_as:str = None,
         ) -> any:
         if not object_id is None:
+            if isinstance(object_id, dict):
+                if '_id' in object_id:
+                    object_id = object_id['_id']
+                elif 'id' in object_id:
+                    object_id = object_id['id']
             if ((len(object_id) != 24)
                 or (not func.could_be_mongo_object_id(object_id))):
                 if name is None:
@@ -422,6 +435,11 @@ class IsicApi(object):
         params:dict = None,
         ) -> any:
         if not object_id is None:
+            if isinstance(object_id, dict):
+                if '_id' in object_id:
+                    object_id = object_id['_id']
+                elif 'id' in object_id:
+                    object_id = object_id['id']
             if ((len(object_id) != 24)
                 or (not func.could_be_mongo_object_id(object_id))):
                 if name is None:

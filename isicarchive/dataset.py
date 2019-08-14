@@ -13,6 +13,9 @@ or can be generated
    >>> dataset = Dataset(...)
 """
 
+__version__ = '0.2.0'
+
+
 import datetime
 import json
 import warnings
@@ -182,7 +185,7 @@ class Dataset(object):
         if self._base_url and self._auth_token:
             try:
                 self.access_list = func.get(self._base_url,
-                    'dataset/' + self.id + '/access_list',
+                    'dataset/' + self.id + '/access',
                     self._auth_token).json()
             except:
                 warnings.warn('Error retrieving dataset access list.')
@@ -208,6 +211,23 @@ class Dataset(object):
         return 'ISIC Dataset "{0:s}" (id={1:s}, {2:d} reviewed images)'.format(
             self.name, self.id, self.count)
     
+    # pretty print
+    def _repr_pretty_(self, p:object, cycle:bool = False):
+        if cycle:
+            p.text('Dataset(...)')
+            return
+        srep = [
+            'IsicApi.Dataset (id = ' + self.id + '):',
+            '  name          - ' + self.name,
+            '  description   - ' + self.description,
+            '  owner         - ' + self.owner,
+            '  {0:d} images for review'.format(len(self.images_for_review)),
+        ]
+        if isinstance(self.creator, dict) and 'login' in self.creator:
+            srep.append('  - created by {0:s} at {1:s}'.format(
+                self.creator['login'], self.created))
+        p.text('\n'.join(srep))
+
     # JSON representation (without constructor):
     def as_json(self):
         json_list = []

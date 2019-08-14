@@ -13,6 +13,9 @@ or can be generated
    >>> study = Study(...)
 """
 
+__version__ = '0.2.0'
+
+
 import datetime
 import json
 import warnings

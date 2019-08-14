@@ -7,12 +7,13 @@ with open("README.md", "r") as fh:
 
 requires = [
     'imageio>=2.5.0',
+    'numpy>=1.16.2',
     'requests>=2.22.0',
 ]
 
 setuptools.setup(
     name="isicarchive",
-    version="0.1.2",
+    version="0.2.0",
     description="ISIC Archive API",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -25,7 +26,7 @@ setuptools.setup(
     install_requires=requires,
     license='MIT',
     classifiers=[
-        "Development Status :: 2 - Pre-Alpha",
+        "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
         "Natural Language :: English",
         "Programming Language :: Python :: 3",

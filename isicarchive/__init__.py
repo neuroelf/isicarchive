@@ -30,6 +30,7 @@ from .api import IsicApi
 from .dataset import Dataset
 from .image import Image
 from .study import Study
+from . import func
 
 name = 'isicarchive'
-__version__ = '0.1.2'
+__version__ = '0.2.0'
