@@ -48,6 +48,41 @@ def isic_auth_token(base_url:str, username:str, password:str):
         return None
     return auth_response.json()['authToken']['token']
 
+# guess file extentions from returned request headers
+_ext_type_guess = {
+    'bmp': '.bmp',
+    'gif': '.gif',
+    'jpeg': '.jpg',
+    'jpg': '.jpg',
+    'png': '.png',
+}
+def guess_file_extension(headers:dict) -> str:
+    ctype = None
+    cdisp = None
+    if 'Content-Type' in headers:
+        ctype = headers['Content-Type']
+    elif 'content-type' in headers:
+        ctype = headers['content-type']
+    if ctype:
+        ctype = ctype.split('/')
+        ctype = _ext_type_guess.get(ctype[-1], None)
+    if ctype:
+        return ctype
+    if 'Content-Disposition' in headers:
+        cdisp = headers['Content-Disposition']
+    elif 'content-disposition' in headers:
+        cdisp = headers['content-disposition']
+    if cdisp:
+        if 'filename=' in cdisp.lower():
+            filename = cdisp.split('ilename=')
+            filename = filename[-1]
+            if filename[0] in r'\'"' and filename[0] == filename[-1]:
+                filename = filename[1:-1]
+            filename = filename.split('.')
+            if filename[-1].lower() in _ext_type_guess:
+                return _ext_type_guess[filename[-1].lower()]
+    return '.bin'
+
 # Generic endpoint API, allowing arbitrary commands
 def get(
     base_url:str,

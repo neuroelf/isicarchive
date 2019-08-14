@@ -40,6 +40,9 @@ You'll find documentation and examples for each of the endpoints,
 together with the ability to test them separately.
 """
 
+import copy
+import os
+import tempfile
 from typing import Optional
 import warnings
 
@@ -50,6 +53,8 @@ import requests
 
 from . import func
 from . import vars
+from .dataset import Dataset
+from .image import Image
 from .study import Study
 
 
@@ -82,6 +87,7 @@ class IsicApi(object):
         password:Optional[str] = None,
         hostname:Optional[str] = None,
         api_uri:Optional[str] = None,
+        cache_folder:Optional[str] = None,
         ):
 
         """IsicApi.__init__: please refer to IsicApi docstring!"""
@@ -100,14 +106,29 @@ class IsicApi(object):
             api_uri = '/' + api_uri
 
         # Store in object
+        self._api_uri = api_uri
+        self._hostname = hostname
         self.base_url = hostname + api_uri
         self.auth_token = None
+        self.cache_folder = None
         self.datasets = dict()
         self.images = dict()
         self.studies = dict()
+        self.temp_file = None
+        self.username = None
+
+        # accept cache folder?
+        if cache_folder and os.path.exists(cache_folder):
+            if os.path.isdir(cache_folder):
+                try:
+                    self.temp_file = tempfile.TemporaryFile(dir=cache_folder)
+                    self.cache_folder = cache_folder
+                except:
+                    warnings.warn('Error creating a file in ' + cache_folder)
 
         # Login required
         if username is not None:
+            self.username = username
 
             # And get the password using getpass
             if password is None:
@@ -116,6 +137,31 @@ class IsicApi(object):
             # Login
             self.auth_token = func.isic_auth_token(
                 self.base_url, username, password)
+
+    # output
+    def __repr__(self) -> str:
+        return 'IsicApi(\'%s\', None, \'%s\', \'%s\', \'%s\')' % (
+            self.username, self._hostname, self._api_uri, self.cache_folder)
+    def __str__(self) -> str:
+        if self.auth_token:
+            return 'IsicApi logged into %s with user %s.' % (
+                self.username, self._hostname)
+        return 'IsicApi accessing %s.' % self._hostname
+    def _repr_pretty_(self, p:object, cycle:bool = False):
+        if cycle:
+            p.text('IsicApi(...)')
+            return
+        srep = [
+            'IsicApi object with properties:',
+            '  base_url     - ' + self.base_url,
+        ]
+        if self.cache_folder and self.temp_file:
+            srep.append('  cache_folder - ' + self.cache_folder)
+        if self.username:
+            srep.append('  username     - ' + self.username)
+        if self.auth_token:
+            srep.append('  Girder-Token - ' + self.auth_token)
+        p.text('\n'.join(srep))
 
     # Internal method to cache all study names
     def _read_datasets(self) -> dict:
@@ -185,10 +231,13 @@ class IsicApi(object):
             'dataset/' + object_id, self.auth_token, params).json()
         if not '_id' in dataset:
             raise KeyError('Dataset with id %s not found.' % (object_id))
-        return dataset
+        if not dataset['name'] in self.datasets:
+            self.datasets[dataset['name']] = dataset['_id']
+        return Dataset(dataset,
+            base_url=self.base_url, auth_token=self.auth_token)
 
     # Dataset list (generator)
-    def dataset_list(self, params:dict = None) -> iter:
+    def dataset_list(self, params:dict = None, as_object:bool = False) -> iter:
         """
         Dataset list/iterator
 
@@ -204,7 +253,11 @@ class IsicApi(object):
         """
         datasets = self.dataset(params=params)
         for dataset in datasets:
-            return dataset
+            if as_object:
+                yield Dataset(from_json=dataset,
+                    base_url=self.base_url, auth_token=self.auth_token)
+            else:
+                yield dataset
 
     # POST an image to the /dataset/{id}/image endpoint
     def dataset_post_image(self,
@@ -300,6 +353,8 @@ class IsicApi(object):
                 else:
                     object_id = func.get(self.base_url,
                         'image', self.auth_token, params={'name': name}).json()
+                    if isinstance(object_id, list):
+                        object_id = object_id[0]
                     if '_id' in object_id:
                         object_id = object_id['_id']
                         self.images[name] = object_id
@@ -320,7 +375,11 @@ class IsicApi(object):
             self.auth_token, params).json()
         if not '_id' in image:
             raise KeyError('Image with id %s not found.' % (object_id))
-        return image
+        if not image['name'] in self.images:
+            self.images[image['name']] = image['_id']
+        return Image(image,
+            base_url=self.base_url, auth_token=self.auth_token,
+            cache_folder=self.cache_folder)
 
     # Image list (generator)
     def image_list(self, params:dict = None) -> iter:
@@ -381,13 +440,26 @@ class IsicApi(object):
                     raise KeyError('Study "%s" not found.' % (name))
             except:
                 raise
-        return Study(func.get(
-            self.base_url, 'study/' + object_id,
-            self.auth_token, params).json(),
+        study = func.get(self.base_url,
+            'study/' + object_id, self.auth_token, params).json()
+        if not '_id' in study:
+            raise KeyError('Dataset with id %s not found.' % (object_id))
+        if not study['name'] in self.studies:
+            self.studies[study['name']] = study['_id']
+        return Study(study,
             base_url=self.base_url, auth_token=self.auth_token)
     
-    # Study list (generator)
-    def study_list(self, params:dict = None) -> iter:
+    # study list (generator)
+    def study_list(self, params:dict = None, as_object:bool = False) -> iter:
+        if not params:
+            params = {'detail': 'false'}
+        elif not 'detail' in params:
+            params = copy.copy(params)
+            params['detail'] = 'false'
         studies = self.study(params=params)
         for study in studies:
-            yield(Study(study, base_url=self.base_url, auth_token=self.auth_token))
+            if as_object:
+                yield Study(from_json=study,
+                    base_url=self.base_url, auth_token=self.auth_token)
+            else:
+                yield study

@@ -27,7 +27,9 @@ def check_dep_versions():
 check_dep_versions()
 
 from .api import IsicApi
+from .dataset import Dataset
+from .image import Image
 from .study import Study
 
 name = 'isicarchive'
-__version__ = '0.0.7'
+__version__ = '0.1.2'
