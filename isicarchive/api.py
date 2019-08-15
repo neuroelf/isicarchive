@@ -236,6 +236,8 @@ class IsicApi(object):
         if object_id is None:
             return func.get(self.base_url,
                 'dataset', self.auth_token, params).json()
+        if object_id in self._annotation_objs:
+            return self._annotation_objs[object_id]
         annotation = func.get(self.base_url,
             'annotation/' + object_id, self.auth_token, params).json()
         if not '_id' in annotation:
@@ -335,11 +337,13 @@ class IsicApi(object):
                     'dataset', self.auth_token, params).json()
             try:
                 if name in self.datasets:
-                    object_id = datasets[name]
+                    object_id = self.datasets[name]
                 else:
                     raise KeyError('Dataset "%s" not found.' % (name))
             except:
                 raise
+        if object_id in self._dataset_objs:
+            return self._dataset_objs[object_id]
         dataset = func.get(self.base_url,
             'dataset/' + object_id, self.auth_token, params).json()
         if not '_id' in dataset:
@@ -520,6 +524,8 @@ class IsicApi(object):
             except:
                 raise
             return
+        if save_as is None and object_id in self._image_objs:
+            return self._image_objs[object_id]
         image = func.get(self.base_url,
             'image/' + object_id,
             self.auth_token, params).json()
@@ -591,11 +597,13 @@ class IsicApi(object):
                 'study', self.auth_token, params=params).json()
             try:
                 if name in self.studies:
-                    object_id = studies[name]
+                    object_id = self.studies[name]
                 else:
                     raise KeyError('Study "%s" not found.' % (name))
             except:
                 raise
+        if object_id in self._study_objs:
+            return self._study_objs[object_id]
         study = func.get(self.base_url,
             'study/' + object_id, self.auth_token, params).json()
         if not '_id' in study:
