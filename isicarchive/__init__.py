@@ -27,10 +27,11 @@ def check_dep_versions():
 check_dep_versions()
 
 from .api import IsicApi
+from .annotation import Annotation
 from .dataset import Dataset
 from .image import Image
 from .study import Study
 from . import func
 
 name = 'isicarchive'
-__version__ = '0.2.0'
+__version__ = '0.2.3'

@@ -101,6 +101,7 @@ class Image(object):
         ):
         """Image init."""
 
+        self._api = None
         self._auth_token = auth_token
         self._base_url = base_url
         self._cache_folder = cache_folder
@@ -127,7 +128,7 @@ class Image(object):
         self.updated = self.created
 
         # from JSON
-        if not from_json is None:
+        if isinstance(from_json, dict):
             try:
                 self._from_json(from_json)
             except:

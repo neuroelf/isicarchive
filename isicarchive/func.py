@@ -9,7 +9,7 @@ functions
 could_be_mongo_object_id
 """
 
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 
 
 import re
@@ -36,58 +36,6 @@ def could_be_mongo_object_id(test_id:str = "") -> bool:
     """
     return (len(test_id) == 24
             and (not re.match(_mongo_object_id_pattern, test_id) is None))
-
-# decode image superpixel
-def superpixel_index(rgb_array:object, as_uint16:bool = True) -> object:
-    """
-    Decode an RGB representation of a superpixel label into its native scalar
-    value.
-
-    Parameters
-    ----------
-    rgb_array : 3d numpy.ndarray (or imageio.core.util.Array)
-        Image content of a ISIC superpixel PNG (RGB-encoded values)
-    as_uint16 : bool
-        By default, this function will only consider the first 2 planes!
-    
-    Returns
-    -------
-    superpixel_index : 2d numpy.ndarray
-        2D Image (uint16) with superpixel indices
-    """
-    if as_uint16:
-        return (rgb_array[..., 0].astype(numpy.uint16) + 
-            (rgb_array[..., 1].astype(numpy.uint16) << numpy.uint16(8)))
-    return (rgb_array[..., 0].astype(numpy.uint32) + 
-        (rgb_array[..., 1].astype(numpy.uint32) << numpy.uint32(8)) +
-        (rgb_array[..., 1].astype(numpy.uint32) << numpy.uint32(16)))
-
-# create superpixel -> pixel index array
-def superpixel_decode_row(pixel_row:numpy.ndarray, offset:numpy.uint32) -> dict:
-    unique_sp = dict()
-    for idx in range(pixel_row.size):
-        pixel_val = pixel_row[idx]
-        if not unique_sp.get(pixel_val, False):
-            unique_sp[pixel_val] = []
-        unique_sp[pixel_row[idx]].append(idx + offset)
-    return unique_sp
-def superpixel_decode_img(pixel_img:numpy.ndarray) -> dict:
-    image_shape = pixel_img.shape
-    if len(image_shape) != 2:
-        raise ValueError('Invalid pixel_img.')
-    row_length = image_shape[0]
-    num_rows = image_shape[1]
-    superpixel_to_pixel = dict()
-    for idx in range(num_rows):
-        row_dict = superpixel_decode_row(pixel_img[:,idx], idx * row_length)
-        for (key, value) in row_dict.items():
-            if not superpixel_to_pixel.get(key, False):
-                superpixel_to_pixel[key] = [value]
-                continue
-            superpixel_to_pixel[key].append(value)
-    for (key, value) in superpixel_to_pixel.items():
-        superpixel_to_pixel[key] = numpy.concatenate(value)
-    return superpixel_to_pixel
 
 # Generic endpoint API, allowing arbitrary commands
 def get(
@@ -255,3 +203,75 @@ def make_url(base_url:str, endpoint:str) -> str:
         Endpoint in the API, e.g. study, dataset, or image
     """
     return base_url + '/' + endpoint
+
+# decode image superpixel
+def superpixel_index(rgb_array:object, as_uint16:bool = True) -> object:
+    """
+    Decode an RGB representation of a superpixel label into its native scalar
+    value.
+
+    Parameters
+    ----------
+    rgb_array : 3d numpy.ndarray (or imageio.core.util.Array)
+        Image content of a ISIC superpixel PNG (RGB-encoded values)
+    as_uint16 : bool
+        By default, this function will only consider the first 2 planes!
+    
+    Returns
+    -------
+    superpixel_index : 2d numpy.ndarray
+        2D Image (uint16) with superpixel indices
+    """
+    if as_uint16:
+        return (rgb_array[..., 0].astype(numpy.uint16) + 
+            (rgb_array[..., 1].astype(numpy.uint16) << numpy.uint16(8)))
+    return (rgb_array[..., 0].astype(numpy.uint32) + 
+        (rgb_array[..., 1].astype(numpy.uint32) << numpy.uint32(8)) +
+        (rgb_array[..., 1].astype(numpy.uint32) << numpy.uint32(16)))
+
+# create superpixel -> pixel index array
+def _superpixel_decode_row(pixel_row:numpy.ndarray, offset:numpy.uint32) -> dict:
+    unique_sp = dict()
+    for idx in range(pixel_row.size):
+        pixel_val = pixel_row[idx]
+        if not unique_sp.get(pixel_val, False):
+            unique_sp[pixel_val] = []
+        unique_sp[pixel_row[idx]].append(idx + offset)
+    return unique_sp
+def superpixel_decode_img(pixel_img:numpy.ndarray) -> dict:
+    """
+    Decode a superpixel (patch) image to a dictionary with (1D) coordinates.
+
+    Parameters
+    ----------
+    idx_array : 2d numpy.ndarray
+        Image with superpixel index in each pixel
+    
+    Returns
+    -------
+    superpixel_map : dict
+        Dict which maps from superpixel index (0-based) to 1D coordinates
+        in the original (flattened) image space.
+    """
+    image_shape = pixel_img.shape
+    if len(image_shape) != 2:
+        raise ValueError('Invalid pixel_img.')
+    row_length = image_shape[0]
+    num_rows = image_shape[1]
+    superpixel_to_pixel = dict()
+    for idx in range(num_rows):
+        row_dict = _superpixel_decode_row(pixel_img[:,idx], idx * row_length)
+        for (key, value) in row_dict.items():
+            if not superpixel_to_pixel.get(key, False):
+                superpixel_to_pixel[key] = [value]
+                continue
+            superpixel_to_pixel[key].append(value)
+    for (key, value) in superpixel_to_pixel.items():
+        superpixel_to_pixel[key] = numpy.concatenate(value)
+    return superpixel_to_pixel
+
+# URI encode
+_uri_letters = ' !"#$%&\'()*+,/:;<=>?@[\\]^`{|}~'
+def uri_encode(uri:str) -> str:
+    letters = ['%' + hex(ord(c))[-2:] if c in _uri_letters else c for c in uri]
+    return ''.join(letters)

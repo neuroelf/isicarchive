@@ -106,10 +106,12 @@ class Study(object):
         ):
         """Study init."""
 
+        self._api = None
         self._auth_token = auth_token
         self._base_url = base_url
         self._detail = False
         self._in_archive = False
+        self._obj_annotations = dict()
         # still needs timezone information!!
         self.annotations = []
         self.created = datetime.datetime.now().strftime(
@@ -127,7 +129,7 @@ class Study(object):
         self.users = []
 
         # preference: JSON, id (in name), then name (lookup)
-        if not from_json is None:
+        if isinstance(from_json, dict):
             try:
                 self._from_json(from_json)
             except:
