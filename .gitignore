@@ -1,5 +1,6 @@
 # folders not to include in root
 /build/
+/cache/
 /dist/
 /isicarchive.egg-info/
 
