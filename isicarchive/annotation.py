@@ -14,7 +14,7 @@ or can be generated
    >>> annotation = Annotation(...)
 """
 
-__version__ = '0.2.2'
+__version__ = '0.3.0'
 
 
 import datetime
@@ -105,16 +105,11 @@ class Annotation(object):
         image:str = None,
         study:str = None,
         user:str = None,
-        base_url:str = None,
-        auth_token:str = None,
-        cache_folder:str = None,
+        api:object = None,
         ):
         """Annotation init."""
 
-        self._api = None
-        self._auth_token = auth_token
-        self._base_url = base_url
-        self._cache_folder = cache_folder
+        self._api = api
         self._in_archive = False
         self.features = dict()
         self.id = ''
@@ -137,10 +132,10 @@ class Annotation(object):
                 self._from_json(from_json)
             except:
                 raise
-        elif func.could_be_mongo_object_id(annotation_id) and self._base_url:
+        elif func.could_be_mongo_object_id(annotation_id) and self._api and self._api._base_url:
             try:
-                self._from_json(func.get(self._base_url,
-                'annotation/' + annotation_id, self._auth_token).json())
+                self._from_json(func.get(self._api._base_url,
+                'annotation/' + annotation_id, self._api._auth_token).json())
             except:
                 raise
 
@@ -172,9 +167,9 @@ class Annotation(object):
         elif 'userId' in from_json:
             self.user_id = from_json['userId']
         self._in_archive = True
-        if self._base_url and self._auth_token:
+        if self._api and self._api._base_url and self._api._auth_token:
             try:
-                headers = {'Girder-Token': self._auth_token}
+                headers = {'Girder-Token': self._api._auth_token}
                 self.features = dict()
                 for (key, value) in self.markups.items():
                     if not value:
@@ -190,7 +185,7 @@ class Annotation(object):
                         self.features[key] = dict()
                         self.features[key]['idx'] = feat_idx
                         feat_req = requests.get(
-                            self._base_url + '/annotation/' + self.id + '/' +
+                            self._api._base_url + '/annotation/' + self.id + '/' +
                             feat_uri + '/mask', headers=headers,
                             allow_redirects=True)
                         if not feat_req.ok:
@@ -220,7 +215,11 @@ class Annotation(object):
             srep.append('  about image   - ' + self.image['name'])
         else:
             srep.append('  about image id- ' + self.image_id)
-        srep.append('  in study      - ' + self.study_id)
+        if self._api and self.study_id in self._api._studies:
+            srep.append('  in study      - ' +
+                self._api._studies[self.study_id]['name'])
+        else:
+            srep.append('  in study      - ' + self.study_id)
         if isinstance(self.user, dict):
             if 'lastName' in self.user:
                 srep.append('  made by user  - ' + self.user['name'])

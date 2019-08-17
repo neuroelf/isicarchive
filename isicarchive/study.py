@@ -13,7 +13,7 @@ or can be generated
    >>> study = Study(...)
 """
 
-__version__ = '0.2.0'
+__version__ = '0.3.0'
 
 
 import datetime
@@ -101,14 +101,11 @@ class Study(object):
         from_json:dict = None,
         name:str = None,
         description:str = None,
-        base_url:str = None,
-        auth_token:str = None,
+        api:object = None,
         ):
         """Study init."""
 
-        self._api = None
-        self._auth_token = auth_token
-        self._base_url = base_url
+        self._api = api
         self._detail = False
         self._in_archive = False
         self._obj_annotations = dict()
@@ -134,21 +131,21 @@ class Study(object):
                 self._from_json(from_json)
             except:
                 raise
-        elif func.could_be_mongo_object_id(self.name) and self._base_url:
+        elif func.could_be_mongo_object_id(self.name) and self._api:
             try:
-                self._from_json(func.get(self._base_url,
-                    'study/' + self.name, self._auth_token).json())
+                self._from_json(func.get(self._api._base_url,
+                    'study/' + self.name, self._api._auth_token).json())
             except:
                 raise
-        elif self.name and self._base_url:
+        elif self.name and self._api:
             try:
-                study_lookup = func.get(self._base_url,
-                    'study', self._auth_token,
+                study_lookup = func.get(self._api._base_url,
+                    'study', self._api._auth_token,
                     params={'limit': 0, 'detail': 'false'}).json()
                 for study in study_lookup:
                     if study['name'] == self.name:
-                        self._from_json(func.get(self._base_url,
-                            'study/' + study['_id'], self._auth_token).json())
+                        self._from_json(func.get(self._api._base_url,
+                            'study/' + study['_id'], self._api._auth_token).json())
                         break
                 if not self.id:
                     warnings.warn('Study {0:s} not found.'.format(self.name))
@@ -177,10 +174,10 @@ class Study(object):
                 self.users = from_json['users']
             self._detail = True
         self._in_archive = True
-        if self._base_url and self._auth_token:
+        if self._api and self._api._auth_token:
             try:
-                self.annotations = func.get(self._base_url,
-                    'annotation', self._auth_token,
+                self.annotations = func.get(self._api._base_url,
+                    'annotation', self._api._auth_token,
                     params={'studyId': self.id}).json()
             except:
                 warnings.warn('Error retrieving annotations')
@@ -208,8 +205,8 @@ class Study(object):
             '  {0:d} images'.format(len(self.images)),
             '  {0:d} questions'.format(len(self.questions)),
         ]
-        if self._auth_token and self._base_url:
-            srep.append('  - authenticated at ' + self._base_url)
+        if self._api and self._api._auth_token and self._api._base_url:
+            srep.append('  - authenticated at ' + self._api._base_url)
         if isinstance(self.creator, dict) and 'login' in self.creator:
             srep.append('  - created by {0:s} at {1:s}'.format(
                 self.creator['login'], self.created))
@@ -230,11 +227,11 @@ class Study(object):
 
     # get study details
     def get_details(self):
-        if not self._in_archive or not self._base_url:
+        if not self._in_archive or not self._api:
             raise ValueError('Cannot get details for user-provided studies.')
         try:
-            study_details = func.get(self._base_url,
-                'study/' + self.id, self._auth_token)
+            study_details = func.get(self._api._base_url,
+                'study/' + self.id, self._api._auth_token)
             for field in _json_full_fields:
                 if field in _mangling:
                     setattr(self, field, study_details[_mangling[field]])

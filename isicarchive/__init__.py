@@ -6,8 +6,8 @@ Provides a python interface to https://isic-archive.com/api/v1
 
 To instantiate the API object and retrieve some study information use
 
-   >>> from isicarchive import isicapi
-   >>> api = isicapi(username)
+   >>> from isicarchive import IsicApi
+   >>> api = IsicApi(username)
    >>> studyInfo = api.study(studyName)
 
 :copyright: (c) 2019, MSKCC.
@@ -34,4 +34,4 @@ from .study import Study
 from . import func
 
 name = 'isicarchive'
-__version__ = '0.2.3'
+__version__ = '0.3.0'

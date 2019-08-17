@@ -40,13 +40,13 @@ You'll find documentation and examples for each of the endpoints,
 together with the ability to test them separately.
 """
 
-__version__ = '0.2.2'
+__version__ = '0.3.0'
 
 
 import copy
 import os
 import tempfile
-from typing import Optional
+from typing import Optional, Tuple
 import warnings
 
 import getpass
@@ -61,6 +61,38 @@ from .dataset import Dataset
 from .image import Image
 from .study import Study
 
+def _mangle_id_name(object_id:str, name:str) -> Tuple[str, str]:
+    """
+    (Un-) Mangle possible object ID and name
+
+    Parameters
+    ----------
+    object_id : str
+        Object ID (or None)
+    name : str
+        Name (dataset, image, or study)
+
+    Returns (Tuple)
+    -------
+    object_id : str
+        Object id (if it is one)
+    name : str
+        Name (from object id, if it isn't one!)
+    """
+    if object_id is None:
+        object_id, name = name, object_id
+    elif isinstance(object_id, dict):
+        if '_id' in object_id:
+            object_id = object_id['_id']
+        elif 'id' in object_id:
+            object_id = object_id['id']
+    if (not object_id is None) and ((len(object_id) != 24)
+        or (not func.could_be_mongo_object_id(object_id))):
+        if name is None:
+            object_id, name = name, object_id
+        else:
+            object_id = None
+    return object_id, name
 
 class IsicApi(object):
     """
@@ -68,14 +100,17 @@ class IsicApi(object):
 
     Attributes
     ----------
-    auth_token: str
-        Girder token stored during (internal) call to self._login(...)
-    base_url : str
-        URL that is used in calls (part before endpoint)
+    datasets : dict
+        Resolving dataset names to unique mongodb ObjectIds (cache)
+        This will be pre-loaded with all datasets, regardless of login
     images : dict
         Resolving image names to unique mongodb ObjectIds (cache)
+    meta_hist : dict
+        Returned JSON response from /image/histogram endpoint as dict
+        This will be pre-loaded if a username is given
     studies : dict
         Resolving study names to unique mongodb ObjectIds (cache)
+        This will be pre-loaded with all studies, regardless of login
     
     Methods
     -------
@@ -101,7 +136,7 @@ class IsicApi(object):
         """IsicApi.__init__: please refer to IsicApi docstring!"""
         
         # Check input arguments
-        if hostname is None:
+        if hostname is None or hostname == '':
             hostname = vars.ISIC_BASE_URL
         elif (len(hostname)) < 8 or (hostname[0:8].lower() != 'https://'):
             if hostname[0:7].lower() == 'http://':
@@ -110,39 +145,37 @@ class IsicApi(object):
 
         if api_uri is None:
             api_uri = vars.ISIC_API_URI
-        elif api_uri[0] != '/':
+        elif api_uri == '' or api_uri[0] != '/':
             api_uri = '/' + api_uri
 
         # Prepare object:
-        # _TYPEs: map id -> FULL JSON (only when downloaded!)
+        # _TYPEs: map id -> PARTIAL JSON dict (containing name!)
         # _TYPE_objs: map id -> created Object (after download)
         # TYPEs: map name -> id (for images only when downloaded)
         self._api_uri = api_uri
-        self._annotations = dict()
         self._annotation_objs = dict()
+        self._auth_token = None
+        self._base_url = hostname + api_uri
+        self._cache_folder = None
         self._datasets = dict()
         self._dataset_objs = dict()
         self._hostname = hostname
-        self._images = dict()
         self._image_objs = dict()
         self._studies = dict()
         self._study_objs = dict()
-        self.base_url = hostname + api_uri
-        self.auth_token = None
-        self.cache_folder = None
+        self._temp_file = None
         self.datasets = dict()
         self.images = dict()
         self.meta_hist = dict()
         self.studies = dict()
-        self.temp_file = None
         self.username = None
 
         # accept cache folder?
         if cache_folder and os.path.exists(cache_folder):
             if os.path.isdir(cache_folder):
                 try:
-                    self.temp_file = tempfile.TemporaryFile(dir=cache_folder)
-                    self.cache_folder = cache_folder
+                    self._temp_file = tempfile.TemporaryFile(dir=cache_folder)
+                    self._cache_folder = cache_folder
                 except:
                     warnings.warn('Error creating a file in ' + cache_folder)
 
@@ -155,29 +188,31 @@ class IsicApi(object):
                 password = getpass.getpass('Password for "%s":' % (username))
 
             # Login
-            self.auth_token = func.isic_auth_token(
-                self.base_url, username, password)
+            self._auth_token = func.isic_auth_token(
+                self._base_url, username, password)
 
             # if login succeeded, collect meta information histogram
-            if self.auth_token:
-                self.meta_hist = func.get(self.base_url, 'image/histogram',
-                    self.auth_token).json()
+            if self._auth_token:
+                self.meta_hist = func.get(self._base_url, 'image/histogram',
+                    self._auth_token).json()
 
-        # read some additional information
+        # pre-populate information about datasets and studies
         items = self.dataset(params={'limit': 0, 'detail': 'false'})
         for item in items:
+            self._datasets[item['_id']] = item
             self.datasets[item['name']] = item['_id']
         items = self.study(params={'limit': 0, 'detail': 'false'})
         for item in items:
+            self._studies[item['_id']] = item
             self.studies[item['name']] = item['_id']
 
     # output
     def __repr__(self) -> str:
         return 'IsicApi(\'%s\', None, \'%s\', \'%s\', \'%s\')' % (
-            self.username, self._hostname, self._api_uri, self.cache_folder)
+            self.username, self._hostname, self._api_uri, self._cache_folder)
     def __str__(self) -> str:
-        if self.auth_token:
-            return 'IsicApi logged into %s with user %s.' % (
+        if self._auth_token:
+            return 'IsicApi logged into {0:s} with user {1:s}.'.format(
                 self.username, self._hostname)
         return 'IsicApi accessing %s.' % self._hostname
     def _repr_pretty_(self, p:object, cycle:bool = False):
@@ -186,15 +221,17 @@ class IsicApi(object):
             return
         srep = [
             'IsicApi object with properties:',
-            '  base_url     - ' + self.base_url,
+            '  base_url     - ' + self._base_url,
         ]
-        if self.cache_folder and self.temp_file:
-            srep.append('  cache_folder - ' + self.cache_folder)
+        if self._cache_folder and self._temp_file:
+            srep.append('  cache_folder - ' + self._cache_folder)
         if self.username:
-            if self.auth_token:
+            if self._auth_token:
                 srep.append('  username     - ' + self.username + ' (auth)')
             else:
                 srep.append('  username     - ' + self.username)
+        srep.append('  - {0:d} datasets available'.format(len(self.datasets)))
+        srep.append('  - {0:d} studies available'.format(len(self.studies)))
         p.text('\n'.join(srep))
 
 
@@ -220,30 +257,33 @@ class IsicApi(object):
         annotation : object
             For a single annotation, returns an Annotation object
         annotations : list
-            For multiple annotations, a list of JSON objects as dicts
+            For multiple annotations, a list of JSON dicts
         """
-        if not object_id is None:
-            if isinstance(object_id, dict):
-                if '_id' in object_id:
-                    object_id = object_id['_id']
-                elif 'id' in object_id:
-                    object_id = object_id['id']
-                else:
-                    raise ValueError('Invalid object_id.')
-            if ((len(object_id) != 24)
-                or (not func.could_be_mongo_object_id(object_id))):
-                    raise ValueError('Invalid object_id.')
+        object_id = _mangle_id_name(object_id, 'null')
+        if isinstance(object_id, tuple):
+            object_id = object_id[0]
         if object_id is None:
-            return func.get(self.base_url,
-                'dataset', self.auth_token, params).json()
+            if not isinstance(params, dict):
+                raise ValueError(
+                    'Annotation list requires a params dict with a study_id.')
+            if 'study_id' in params:
+                params = copy.copy(params)
+                params['studyId'] = params['study_id']
+                del params['study_id']
+            if not 'studyId' in params:
+                raise ValueError(
+                    'Annotation list requires field study_id in params.')
+            return func.get(self._base_url,
+                'annotation', self._auth_token, params).json()
+        if not func.could_be_mongo_object_id(object_id):
+            raise ValueError('Invalid objectId format of object_id parameter.')
         if object_id in self._annotation_objs:
             return self._annotation_objs[object_id]
-        annotation = func.get(self.base_url,
-            'annotation/' + object_id, self.auth_token, params).json()
+        annotation = func.get(self._base_url,
+            'annotation/' + object_id, self._auth_token, params).json()
         if not '_id' in annotation:
             raise KeyError('Annotation with id %s not found.' % (object_id))
-        annotation_obj = Annotation(annotation, base_url=self.base_url, 
-            auth_token=self.auth_token, cache_folder=self.cache_folder)
+        annotation_obj = Annotation(annotation, api=self)
         self._annotation_objs[annotation['_id']] = annotation_obj
         return annotation_obj
 
@@ -255,12 +295,14 @@ class IsicApi(object):
         ----------
         params : dict
             Dictionary with GET parameters for the query string, must
-            contain 'study' or 'study'
+            contain 'study' (name) or 'study_id'
+        as_object : bool
+            If set to false (default), yields dicts, otherwise objects
         
         Yields
         ------
         object
-            Dataset JSON object
+            Annotation as JSON dict or object
         """
         if isinstance(params, str):
             params = {'study': params}
@@ -285,8 +327,7 @@ class IsicApi(object):
         items = self.annotation(params=params)
         for item in items:
             if as_object:
-                yield Annotation(from_json=item,
-                    base_url=self.base_url, auth_token=self.auth_token)
+                yield Annotation(from_json=item, api=self)
             else:
                 yield item
 
@@ -298,7 +339,7 @@ class IsicApi(object):
         ) -> any:
         """
         dataset endpoint, allows to
-        - retrieve information about all available studies
+        - retrieve information about all available datasets
         - retrieve one specific dataset (object)
 
         Parameters
@@ -313,28 +354,15 @@ class IsicApi(object):
         Returns
         -------
         dataset : object
-            For a single dataset, returns a JSON object with _id and name
+            For a single dataset, returns a Dataset object
         datasets : list
             For multiple datasets, a list of JSON objects
         """
-        if not object_id is None:
-            if isinstance(object_id, dict):
-                if '_id' in object_id:
-                    object_id = object_id['_id']
-                elif 'id' in object_id:
-                    object_id = object_id['id']
-                else:
-                    raise ValueError('Invalid object_id.')
-            if ((len(object_id) != 24)
-                or (not func.could_be_mongo_object_id(object_id))):
-                if name is None:
-                    object_id, name = None, object_id
-                else:
-                    object_id = None
+        (object_id, name) = _mangle_id_name(object_id, name)
         if object_id is None:
             if name is None:
-                return func.get(self.base_url,
-                    'dataset', self.auth_token, params).json()
+                return func.get(self._base_url,
+                    'dataset', self._auth_token, params).json()
             try:
                 if name in self.datasets:
                     object_id = self.datasets[name]
@@ -342,16 +370,17 @@ class IsicApi(object):
                     raise KeyError('Dataset "%s" not found.' % (name))
             except:
                 raise
+        if not func.could_be_mongo_object_id(object_id):
+            raise ValueError('Invalid object_id format.')
         if object_id in self._dataset_objs:
             return self._dataset_objs[object_id]
-        dataset = func.get(self.base_url,
-            'dataset/' + object_id, self.auth_token, params).json()
+        dataset = func.get(self._base_url,
+            'dataset/' + object_id, self._auth_token, params).json()
         if not '_id' in dataset:
             raise KeyError('Dataset with id %s not found.' % (object_id))
         if not dataset['name'] in self.datasets:
             self.datasets[dataset['name']] = dataset['_id']
-        dataset_obj = Dataset(dataset,
-            base_url=self.base_url, auth_token=self.auth_token)
+        dataset_obj = Dataset(dataset, api=self)
         self._dataset_objs[dataset['_id']] = dataset_obj
         return dataset_obj
 
@@ -364,11 +393,13 @@ class IsicApi(object):
         ----------
         params : dict
             Optional GET parameters for the query string
+        as_object : bool
+            If set to false (default), yields dicts, otherwise objects
         
         Yields
         ------
         object
-            Dataset JSON object
+            Dataset as JSON dict or object
         """
         if as_object:
             if isinstance(params, dict):
@@ -379,80 +410,9 @@ class IsicApi(object):
         datasets = self.dataset(params=params)
         for dataset in datasets:
             if as_object:
-                yield Dataset(from_json=dataset,
-                    base_url=self.base_url, auth_token=self.auth_token)
+                yield Dataset(from_json=dataset, api=self)
             else:
                 yield dataset
-
-    # POST an image to the /dataset/{id}/image endpoint
-    def dataset_post_image(self,
-        name_or_id:str,
-        local_filename:str,
-        signature:str,
-        metadata:dict = None
-        ) -> str:
-        """
-        POSTs an image (local file) to a dataset and returns the object_id
-        """
-        if ((name_or_id is None) or (name_or_id == '')):
-            raise KeyError('Requires a valid dataset object_id or name.')
-        try:
-            dataset = self.dataset(name_or_id)
-            object_id = dataset['_id']
-        except:
-            raise
-        if ((local_filename is None) or (local_filename == '')):
-            raise ValueError('Requires a non-empty filename.')
-        try:
-            with open(local_filename, 'rb') as file_id:
-                file_content = file_id.read()
-        except:
-            raise
-        try:
-            image_data = imageio.imread(file_content)
-            image_shape = image_data.shape
-        except:
-            raise ValueError('Error reading image: ' + local_filename)
-        if ((signature is None) or (signature == '')):
-            raise ValueError('Requires a signature')
-        url = func.make_url(self.base_url, 'dataset/' + object_id + '/image')
-        headers = {'Girder-Token': self.auth_token} if self.auth_token else None
-        req = requests.post(url,
-            data=file_content,
-            params={'filename': local_filename, 'signature': signature},
-            headers=headers)
-        if not req.ok:
-            warnings.warn("Image upload failed: " + req.text)
-            return ''
-        msg = req.json()
-        if '_id' in msg:
-            object_id = msg['_id']
-        else:
-            warnings.warn('Update failed: ' + req.text)
-            return ''
-        if not metadata is None:
-            if not 'acquisition' in metadata:
-                metadata['acquisition'] = dict()
-            if not 'pixelsX' in metadata['acquisition']:
-                metadata['acquisition']['pixelsX'] = image_shape[1]
-            if not 'pixelsY' in metadata['acquisition']:
-                metadata['acquisition']['pixelsY'] = image_shape[0]
-            try:
-                self.image_post_metadata(object_id, metadata)
-            except:
-                raise
-        else:
-            metadata = {
-                'acquisition': {
-                    'pixelsX': image_shape[1],
-                    'pixelsY': image_shape[0],
-                },
-            }
-            try:
-                self.image_post_metadata(object_id, metadata)
-            except:
-                warnings.warn('Could not post automatic metadata.')
-        return object_id
 
     # Generic /image endpoint
     def image(self,
@@ -485,28 +445,17 @@ class IsicApi(object):
         list
             for multiple datasets, a list of JSON objects
         """
-        if not object_id is None:
-            if isinstance(object_id, dict):
-                if '_id' in object_id:
-                    object_id = object_id['_id']
-                elif 'id' in object_id:
-                    object_id = object_id['id']
-            if ((len(object_id) != 24)
-                or (not func.could_be_mongo_object_id(object_id))):
-                if name is None:
-                    object_id, name = None, object_id
-                else:
-                    object_id = None
+        (object_id, name) = _mangle_id_name(object_id, name)
         if object_id is None:
             if name is None:
-                return func.get(self.base_url,
-                    'image', self.auth_token, params).json()
+                return func.get(self._base_url,
+                    'image', self._auth_token, params).json()
             try:
                 if name in self.images:
                     object_id = self.images[name]
                 else:
-                    object_id = func.get(self.base_url,
-                        'image', self.auth_token, params={'name': name}).json()
+                    object_id = func.get(self._base_url,
+                        'image', self._auth_token, params={'name': name}).json()
                     if isinstance(object_id, list):
                         object_id = object_id[0]
                     if '_id' in object_id:
@@ -516,85 +465,90 @@ class IsicApi(object):
                         raise KeyError('Image %s not found' % (name))
             except:
                 raise
+        if not func.could_be_mongo_object_id(object_id):
+            raise ValueError('Invalid object_id format.')
         if not save_as is None:
             try:
-                func.get(self.base_url,
+                func.get(self._base_url,
                     'image/' + object_id + '/download',
-                    self.auth_token, params, save_as)
+                    self._auth_token, params, save_as)
             except:
                 raise
             return
         if save_as is None and object_id in self._image_objs:
             return self._image_objs[object_id]
-        image = func.get(self.base_url,
-            'image/' + object_id,
-            self.auth_token, params).json()
+        image = func.get(self._base_url,
+            'image/' + object_id, self._auth_token, params).json()
         if not '_id' in image:
             raise KeyError('Image with id %s not found.' % (object_id))
         if not image['name'] in self.images:
             self.images[image['name']] = image['_id']
-        image_obj = Image(image,
-            base_url=self.base_url, auth_token=self.auth_token,
-            cache_folder=self.cache_folder)
+        image_obj = Image(image, api=self)
         self._image_objs[image['_id']] = image_obj
         return image_obj
 
     # Image list (generator)
-    def image_list(self, params:dict = None) -> iter:
-        images = self.image()
-        for image in images:
-            yield(image)
+    def image_list(self, params:dict = None, as_object:bool = False) -> iter:
+        """
+        Image list/iterator
 
-    # POST metadata for an image to the /image/{id}/metadata endpoint
-    def image_post_metadata(self,
-        name_or_id:str,
-        metadata:dict,
-        ) -> bool:
+        Parameters
+        ----------
+        params : dict
+            Optional GET parameters for the query string
+        as_object : bool
+            If set to false (default), yields dicts, otherwise objects
+        
+        Yields
+        ------
+        object
+            Image as JSON dict or object
         """
-        POSTs metadata for an image and returns True or False
-        """
-        if ((name_or_id is None) or (name_or_id == '')):
-            raise KeyError('Requires a valid image object_id or name.')
-        try:
-            if name_or_id in self.images:
-                object_id = self.images[name_or_id]
+        if as_object:
+            if isinstance(params, dict):
+                params = copy.copy(params)
             else:
-                image = self.image(name_or_id)
-                object_id = image['_id']
-        except:
-            raise
-        url = func.make_url(self.base_url, 'image/' + object_id + '/metadata')
-        headers = {'Girder-Token': self.auth_token} if self.auth_token else None
-        req = requests.post(url,
-            params={'metadata': metadata, 'save': 'true'},
-            headers=headers)
-        if not req.ok:
-            warnings.warn("Image metadata posting failed: " + req.text)
-            return ''
-        return req.json()
-    
+                params = dict()
+            params['detail'] = 'true'
+        images = self.image(params=params)
+        for image in images:
+            if as_object:
+                yield Image(image, api=self)
+            else:
+                yield image
+
     # Generic /study endpoint
     def study(self,
         object_id:str = None,
         name:str = None,
         params:dict = None,
         ) -> any:
-        if not object_id is None:
-            if isinstance(object_id, dict):
-                if '_id' in object_id:
-                    object_id = object_id['_id']
-                elif 'id' in object_id:
-                    object_id = object_id['id']
-            if ((len(object_id) != 24)
-                or (not func.could_be_mongo_object_id(object_id))):
-                if name is None:
-                    object_id, name = None, object_id
-                else:
-                    object_id = None
+        """
+        study endpoint, allows to
+        - retrieve information about all available studies
+        - retrieve one specific study (object)
+
+        Parameters
+        ----------
+        object_id : str
+            Valid 24-character mongodb objectId for the study
+        name : str
+            Alternatively the name of the study
+        params : dict
+            Optional parameters for the GET request
+        
+        Returns
+        -------
+        study : object
+            For a single study, returns a Study object
+        studies : list
+            For multiple studies, a list of JSON dicts
+        """
+        (object_id, name) = _mangle_id_name(object_id, name)
         if object_id is None:
             if name is None:
-                return func.get(self.base_url,
-                'study', self.auth_token, params=params).json()
+                return func.get(self._base_url,
+                'study', self._auth_token, params=params).json()
             try:
                 if name in self.studies:
                     object_id = self.studies[name]
@@ -602,30 +556,52 @@ class IsicApi(object):
                     raise KeyError('Study "%s" not found.' % (name))
             except:
                 raise
+        if not func.could_be_mongo_object_id(object_id):
+            raise ValueError('Invalid object_id format.')
         if object_id in self._study_objs:
             return self._study_objs[object_id]
-        study = func.get(self.base_url,
-            'study/' + object_id, self.auth_token, params).json()
+        study = func.get(self._base_url,
+            'study/' + object_id, self._auth_token, params).json()
         if not '_id' in study:
             raise KeyError('Dataset with id %s not found.' % (object_id))
         if not study['name'] in self.studies:
             self.studies[study['name']] = study['_id']
-        study_obj = Study(study,
-            base_url=self.base_url, auth_token=self.auth_token)
+        study_obj = Study(study, api=self)
         self._study_objs[study['_id']] = study_obj
         return study_obj
     
     # study list (generator)
     def study_list(self, params:dict = None, as_object:bool = False) -> iter:
-        if not params:
-            params = {'detail': 'false'}
-        elif not 'detail' in params:
-            params = copy.copy(params)
-            params['detail'] = 'false'
+        """
+        Study list/iterator
+
+        Parameters
+        ----------
+        params : dict
+            Optional GET parameters for the query string
+        as_object : bool
+            If set to false (default), yields dicts, otherwise objects
+        
+        Yields
+        ------
+        object
+            Study as JSON dict or object
+        """
+        if as_object:
+            if isinstance(params, dict):
+                params = copy.copy(params)
+            else:
+                params = dict()
+            params['detail'] = 'true'
+        else:
+            if not isinstance(params, dict):
+                params = {'detail': 'false'}
+            elif not 'detail' in params:
+                params = copy.copy(params)
+                params['detail'] = 'false'
         studies = self.study(params=params)
         for study in studies:
             if as_object:
-                yield Study(from_json=study,
-                    base_url=self.base_url, auth_token=self.auth_token)
+                yield Study(from_json=study, api=self)
             else:
                 yield study

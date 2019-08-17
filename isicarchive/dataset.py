@@ -13,12 +13,14 @@ or can be generated
    >>> dataset = Dataset(...)
 """
 
-__version__ = '0.2.0'
+__version__ = '0.3.0'
 
 
 import datetime
 import json
 import warnings
+
+import requests
 
 from . import func
 
@@ -106,14 +108,11 @@ class Dataset(object):
         from_json:dict = None,
         name:str = None,
         description:str = None,
-        base_url:str = None,
-        auth_token:str = None,
+        api:object = None,
         ):
         """Dataset init."""
 
-        self._api = None
-        self._auth_token = auth_token
-        self._base_url = base_url
+        self._api = api
         self._detail = False
         self._in_archive = False
         # still needs timezone information!!
@@ -140,22 +139,22 @@ class Dataset(object):
                 self._from_json(from_json)
             except:
                 raise
-        elif func.could_be_mongo_object_id(self.name) and self._base_url:
+        elif func.could_be_mongo_object_id(self.name) and self._api and self._api._base_url:
             try:
-                self._from_json(func.get(self._base_url,
-                'dataset/' + self.name, self._auth_token).json())
+                self._from_json(func.get(self._api._base_url,
+                'dataset/' + self.name, self._api._auth_token).json())
             except:
                 raise
-        elif self.name and self._base_url:
+        elif self.name and self._api and self._api._base_url:
             try:
-                dataset_lookup = func.get(self._base_url,
-                    'dataset', self._auth_token,
+                dataset_lookup = func.get(self._api._base_url,
+                    'dataset', self._api._auth_token,
                     params={'limit': 0, 'detail': 'false'}).json()
                 for dataset in dataset_lookup:
                     if dataset['name'] == dataset.name:
-                        self._from_json(func.get(self._base_url,
+                        self._from_json(func.get(self._api._base_url,
                             'dataset/' + dataset['_id'],
-                            self._auth_token).json())
+                            self._api._auth_token).json())
                         break
                 if not self.id:
                     warnings.warn('Dataset {0:s} not found.'.format(self.name))
@@ -183,23 +182,23 @@ class Dataset(object):
                 self.owner = from_json['owner']
             self._detail = True
         self._in_archive = True
-        if self._base_url and self._auth_token:
+        if self._api and self._api._base_url and self._api._auth_token:
             try:
-                self.access_list = func.get(self._base_url,
+                self.access_list = func.get(self._api._base_url,
                     'dataset/' + self.id + '/access',
-                    self._auth_token).json()
+                    self._api._auth_token).json()
             except:
                 warnings.warn('Error retrieving dataset access list.')
             try:
-                self.metadata = func.get(self._base_url,
+                self.metadata = func.get(self._api._base_url,
                     'dataset/' + self.id + '/metadata',
-                    self._auth_token).json()
+                    self._api._auth_token).json()
             except:
                 warnings.warn('Error retrieving dataset metadata.')
             try:
-                self.images_for_review = func.get(self._base_url,
+                self.images_for_review = func.get(self._api._base_url,
                     'dataset/' + self.id + '/review',
-                    self._auth_token, params={'limit': 0}).json()
+                    self._api._auth_token, params={'limit': 0}).json()
             except:
                 warnings.warn('Error retrieving images for review.')
 
@@ -241,3 +240,47 @@ class Dataset(object):
             json_list.append('"%s": %s' % (json_field,
                 json.dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
+
+    # POST an image to the /dataset/{id}/image endpoint
+    def post_image(self,
+        local_filename:str,
+        signature:str,
+        ) -> str:
+        """
+        POSTs an image (local file) to a dataset and returns the object_id
+        """
+        if (not self._api) or (not func.could_be_mongo_object_id(self.id)):
+            raise ValueError('Invalid dataset object for image upload.')
+        if ((local_filename is None) or (local_filename == '')):
+            raise ValueError('Requires a non-empty filename.')
+        if ((signature is None) or (signature == '')):
+            raise ValueError('Requires a signature.')
+        try:
+            with open(local_filename, 'rb') as file_id:
+                file_content = file_id.read()
+        except:
+            raise
+        try:
+            imageio.imread(file_content)
+        except:
+            raise ValueError('Error imread-ing image: ' + local_filename)
+        url = func.make_url(self._api._base_url,
+            'dataset/' + self.id + '/image')
+        if self._api._auth_token:
+            headers = {'Girder-Token': self._api._auth_token}
+        else:
+            headers = None
+        req = requests.post(url,
+            data=file_content,
+            params={},
+            headers=headers)
+        if not req.ok:
+            warnings.warn("Image upload failed: " + req.text)
+            return ''
+        msg = req.json()
+        if '_id' in msg:
+            object_id = msg['_id']
+        else:
+            warnings.warn('Cannot return image object: ' + req.text)
+            return None
+        return self._api.image(object_id)

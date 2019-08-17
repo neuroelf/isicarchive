@@ -13,7 +13,7 @@ or can be generated
    >>> image = Image(...)
 """
 
-__version__ = '0.2.0'
+__version__ = '0.3.0'
 
 
 import datetime
@@ -94,17 +94,12 @@ class Image(object):
     def __init__(self,
         from_json:dict = None,
         name:str = None,
-        base_url:str = None,
-        auth_token:str = None,
-        cache_folder:str = None,
+        api:object = None,
         load_data:bool = False,
         ):
         """Image init."""
 
-        self._api = None
-        self._auth_token = auth_token
-        self._base_url = base_url
-        self._cache_folder = cache_folder
+        self._api = api
         self._detail = False
         self._in_archive = False
         # still needs timezone information!!
@@ -223,8 +218,10 @@ class Image(object):
 
     # load image data
     def load_data(self):
-        if self._cache_folder:
-            image_filename = self._cache_folder + os.sep + 'image_' + self.id
+        if not self._api:
+            raise ValueError('Invalid image object to load data with.')
+        if self._api._cache_folder:
+            image_filename = self._api._cache_folder + os.sep + 'image_' + self.id
             image_list = glob.glob(image_filename + '*.*')
             if image_list:
                 try:
@@ -236,24 +233,24 @@ class Image(object):
                 except Exception as e:
                     warnings.warn('Error loading image: ' + str(e))
                     os.remove(image_list[0])
-        if self._in_archive and self._base_url:
+        if self._in_archive and self._api._base_url:
             try:
-                if self._auth_token:
-                    headers = {'Girder-Token': self._auth_token}
+                if self._api._auth_token:
+                    headers = {'Girder-Token': self._api._auth_token}
                 else:
                     headers = None
-                req = requests.get(func.make_url(self._base_url,
+                req = requests.get(func.make_url(self._api._base_url,
                     'image/' + self.id + '/download'),
                     headers=headers, allow_redirects=True)
                 if req.ok:
                     self.data = {'raw': req.content}
                     self.data['cooked'] = imageio.imread(self.data['raw'])
-                    if self._cache_folder:
+                    if self._api._cache_folder:
                         if self.name and len(self.name) > 5:
                             name_part = '_' + self.name
                         else:
                             name_part = ''
-                        image_filename = ''.join([self._cache_folder, os.sep,
+                        image_filename = ''.join([self._api._cache_folder, os.sep,
                             'image_', self.id, name_part,
                             func.guess_file_extension(req.headers)])
                         with open(image_filename, 'wb') as image_file:
@@ -263,8 +260,10 @@ class Image(object):
 
     # load image superpixels
     def load_superpixels(self, map_superpixels:bool = False):
-        if self._cache_folder:
-            image_filename = self._cache_folder + os.sep + 'imgsp_' + self.id
+        if not self._api:
+            raise ValueError('Invalid image object to load superpixels with.')
+        if self._api._cache_folder:
+            image_filename = self._api._cache_folder + os.sep + 'imgsp_' + self.id
             image_list = glob.glob(image_filename + '*.*')
             if image_list:
                 try:
@@ -282,24 +281,24 @@ class Image(object):
                 except Exception as e:
                     warnings.warn('Error loading image: ' + str(e))
                     os.remove(image_list[0])
-        if self._in_archive and self._base_url:
+        if self._in_archive and self._api._base_url:
             try:
-                if self._auth_token:
-                    headers = {'Girder-Token': self._auth_token}
+                if self._api._auth_token:
+                    headers = {'Girder-Token': self._api._auth_token}
                 else:
                     headers = None
-                req = requests.get(func.make_url(self._base_url,
+                req = requests.get(func.make_url(self._api._base_url,
                     'image/' + self.id + '/superpixels'),
                     headers=headers, allow_redirects=True)
                 if req.ok:
                     self.superpixels['raw'] = req.content
                     image_png = imageio.imread(self.superpixels['raw'])
-                    if self._cache_folder:
+                    if self._api._cache_folder:
                         if self.name and len(self.name) > 5:
                             name_part = '_' + self.name
                         else:
                             name_part = ''
-                        image_filename = ''.join([self._cache_folder, os.sep,
+                        image_filename = ''.join([self._api._cache_folder, os.sep,
                             'imgsp_', self.id, name_part,
                             func.guess_file_extension(req.headers)])
                         with open(image_filename, 'wb') as image_file:
@@ -335,3 +334,23 @@ class Image(object):
             self.superpixels['map'] = func.superpixel_decode_img(pixel_img)
         except Exception as e:
             warnings.warn('Error mapping superpixels: ' + str(e))
+
+    # POST metadata for an image to the /image/{id}/metadata endpoint
+    def post_metadata(self,
+        metadata:dict,
+        ) -> bool:
+        """
+        POSTs metadata for an image and returns True or False
+        """
+        if (not self._api) or (not self._api._auth_token):
+            raise ValueError('Invalid image object to post metadata with.')
+        if not func.could_be_mongo_object_id(self.id):
+            raise ValueError('Invalid image object_id format.')
+        url = func.make_url(self._api._base_url, 'image/' + self.id + '/metadata')
+        req = requests.post(url,
+            params={'metadata': metadata, 'save': 'true'},
+            headers={'Girder-Token': self._api._auth_token})
+        if not req.ok:
+            warnings.warn("Image metadata posting failed: " + req.text)
+            return ''
+        return req.json()

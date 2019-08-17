@@ -13,13 +13,13 @@ requires = [
 
 setuptools.setup(
     name="isicarchive",
-    version="0.2.3",
+    version="0.3.0",
     description="ISIC Archive API",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="Jochen Weber",
     author_email="weberj3@mskcc.org",
-    url="https://github.com/neuroelf/isic-archive",
+    url="https://github.com/neuroelf/isicarchive",
     packages=setuptools.find_packages(),
     package_dir={'isicarchive': 'isicarchive'},
     python_requires=">=3.6",
