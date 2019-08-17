@@ -14,7 +14,7 @@ To start with, please import the ```IsicApi``` class from the ```isicarchive```
 module and create an instance of the class:
 ~~~~
 from isicarchive import IsicApi
-isic = IsicApi()
+api = IsicApi()
 ~~~~
 
 ### Logging into the ISIC Archive
@@ -24,9 +24,9 @@ must be logged into the archive. This can be achieved by instantiating an
 object of type ```IsicApi```:
 
 ~~~~
-isic = IsicApi(username)
+api = IsicApi(username)
 # or
-isic = IsicApi(username, password)
+api = IsicApi(username, password)
 ~~~~
 
 Please do **not** enter the password in clear text into your source code. If
@@ -38,7 +38,7 @@ If you would like to retrieve image data and keep a locally cached copy,
 please also add the ```cache_folder``` parameter, like so:
 
 ~~~~
-isic = IsicApi(username, password, cache_folder='/some/local/folder')
+api = IsicApi(username, password, cache_folder='/some/local/folder')
 ~~~~
 
 This will, for subsequent calls to the IsicApi object (and objects returned
@@ -61,7 +61,7 @@ using the same two parameters as the actual images.
 
 ### Retrieving information about a study
 ~~~~
-study = isic.study(study_name)
+study = api.study(study_name)
 ~~~~
 
 This will make a call to the ISIC archive web API, and retrieve the
@@ -77,7 +77,7 @@ information about annotations.
 
 ### Retrieving information about a dataset
 ~~~~
-dataset = isic.dataset(dataset_name)
+dataset = api.dataset(dataset_name)
 ~~~~
 
 Similarly to a study, this will create an object of type
@@ -90,7 +90,7 @@ information about the access list, metadata, and images up for review.
 ### Retrieving images
 ~~~~
 # Load the first image of the loaded study
-image = isic.image(study.images[0])
+image = api.image(study.images[0])
 ~~~~
 
 This will, initially, only load the information about the image. If you would
