@@ -226,8 +226,6 @@ class Study(object):
                 len(self.images), len(self._obj_images)),
             '  {0:d} questions'.format(len(self.questions)),
         ]
-        if self._api and self._api._auth_token and self._api._base_url:
-            srep.append('  - authenticated at ' + self._api._base_url)
         if isinstance(self.creator, dict) and 'login' in self.creator:
             srep.append('  - created by {0:s} at {1:s}'.format(
                 self.creator['login'], self.created))
