@@ -13,7 +13,7 @@ or can be generated
    >>> image = Image(...)
 """
 
-__version__ = '0.3.0'
+__version__ = '0.3.5'
 
 
 import datetime
@@ -66,7 +66,7 @@ class Image(object):
     creator : dict
         Contains _id and (short) name field identifying the creator
     data : dict
-        Once the data is loaded, it will be in `raw` and `cooked` fields
+        Once data is loaded, the imread decoded image will be in this field
     dataset : dict
         Dataset fields (non-detailed)
     id : str
@@ -95,7 +95,8 @@ class Image(object):
         from_json:dict = None,
         name:str = None,
         api:object = None,
-        load_data:bool = False,
+        load_imagedata:bool = False,
+        load_superpixels:bool = False,
         ):
         """Image init."""
 
@@ -113,12 +114,10 @@ class Image(object):
         self.name = name if name else 'ISIC_xxxxxxxx'
         self.notes = dict()
         self.superpixels = {
-            'raw': None,
             'idx': None,
+            'map': None,
             'max': 0,
-            'row_len': 0,
-            'row_num': 0,
-            'map': dict(),
+            'shp': (0, 0),
         }
         self.updated = self.created
 
@@ -128,11 +127,16 @@ class Image(object):
                 self._from_json(from_json)
             except:
                 raise
-        if self._in_archive and load_data:
+        if self._in_archive and load_imagedata:
             try:
-                self.load_data()
-            except:
-                raise
+                self.load_imagedata()
+            except Exception as e:
+                warnings.warn(str(e))
+        if self._in_archive and load_superpixels:
+            try:
+                self.load_superpixels(map_superpixels=True)
+            except Exception as e:
+                warnings.warn(str(e))
 
     # parse JSON
     def _from_json(self, from_json:dict):
@@ -157,7 +161,7 @@ class Image(object):
     
     # formatted print
     def __str__(self):
-        return 'ISIC Image "{0:s}" (id={1:s}, data loaded: {2:s})'.format(
+        return 'ISIC Image "{0:s}" (id={1:s}, image data loaded: {2:s})'.format(
             self.name, self.id, str(not self.data is None))
     
     # pretty print
@@ -185,19 +189,19 @@ class Image(object):
             srep.append('  notes:')
             for (key, value) in self.notes.items():
                 srep.append('    ' + key + ': ' + json.dumps(value))
-        if self.data and 'raw' in self.data and self.data['raw']:
-            srep.append('  - image: {0:d} bytes of raw data'.format(
-                len(self.data['raw'])))
-            if 'cooked' in self.data and len(self.data['cooked']) > 0:
-                image_shape = self.data['cooked'].shape
-                while len(image_shape) < 3:
-                    image_shape.append(1)
-                srep.append('    with size ({0:d}-x-{1:d}, {2:d} planes)'.format(
-                    image_shape[1], image_shape[0], image_shape[2]))
-        if not self.superpixels['idx'] is None:
-            is_mapped = ' (mapped)' if self.superpixels['map'] else ''
+        if not self.data is None:
+            image_shape = self.data.shape
+            while len(image_shape) < 3:
+                image_shape.append(1)
+            srep.append('  - image data: {0:d}x{1:d} pixels ({2:d} planes)'.format(
+                image_shape[1], image_shape[0], image_shape[2]))
+        if 'idx' in self.superpixels and (not self.superpixels['idx'] is None):
+            if 'map' in self.superpixels and (not self.superpixels['map'] is None):
+                is_mapped = ' (mapped)'
+            else:
+                is_mapped = ''
             srep.append('  - {0:d} superpixels in the image{1:s}'.format(
-                self.superpixels['max'] + 1, is_mapped))
+                len(self.superpixels['map']), is_mapped))
         if isinstance(self.creator, dict) and 'login' in self.creator:
             srep.append('  - created by {0:s} at {1:s}'.format(
                 self.creator['login'], self.created))
@@ -217,18 +221,18 @@ class Image(object):
         return '{' + ', '.join(json_list) + '}'
 
     # load image data
-    def load_data(self):
+    def load_imagedata(self):
         if not self._api:
-            raise ValueError('Invalid image object to load data with.')
+            raise ValueError('Invalid image object to load image data for.')
         if self._api._cache_folder:
-            image_filename = self._api._cache_folder + os.sep + 'image_' + self.id
-            image_list = glob.glob(image_filename + '*.*')
+            image_filename = func.cache_filename(self.id, 'image', '.*', '*', api=self._api)
+            image_list = glob.glob(image_filename)
             if image_list:
                 try:
-                    self.data = dict()
+                    self.data = None
                     with open(image_list[0], 'rb') as image_file:
-                        self.data['raw'] = image_file.read()
-                    self.data['cooked'] = imageio.imread(self.data['raw'])
+                        image_raw = image_file.read()
+                    self.data = imageio.imread(image_raw)
                     return
                 except Exception as e:
                     warnings.warn('Error loading image: ' + str(e))
@@ -243,45 +247,51 @@ class Image(object):
                     'image/' + self.id + '/download'),
                     headers=headers, allow_redirects=True)
                 if req.ok:
-                    self.data = {'raw': req.content}
-                    self.data['cooked'] = imageio.imread(self.data['raw'])
+                    image_raw = req.content
+                    self.data = imageio.imread(image_raw)
                     if self._api._cache_folder:
-                        if self.name and len(self.name) > 5:
-                            name_part = '_' + self.name
-                        else:
-                            name_part = ''
-                        image_filename = ''.join([self._api._cache_folder, os.sep,
-                            'image_', self.id, name_part,
-                            func.guess_file_extension(req.headers)])
+                        extra = self.name if (self.name and len(self.name) > 5) else None
+                        image_filename = func.cache_filename(self.id, 'image',
+                            func.guess_file_extension(req.headers), extra, api=self._api)
                         with open(image_filename, 'wb') as image_file:
-                            image_file.write(req.content)
+                            image_file.write(image_raw)
             except Exception as e:
-                warnings.warn('Error loading image: ' + str(e))
+                warnings.warn('Error loading image data: ' + str(e))
 
     # load image superpixels
     def load_superpixels(self, map_superpixels:bool = False):
         if not self._api:
-            raise ValueError('Invalid image object to load superpixels with.')
+            raise ValueError('Invalid image object to load superpixels for.')
+        spimg_filename = func.cache_filename(self.id, 'spimg', '.png', api=self._api)
+        spidx_filename = func.cache_filename(self.id, 'spidx', '.npz', api=self._api)
         if self._api._cache_folder:
-            image_filename = self._api._cache_folder + os.sep + 'imgsp_' + self.id
-            image_list = glob.glob(image_filename + '*.*')
-            if image_list:
+            if os.path.exists(spidx_filename):
                 try:
-                    with open(image_list[0], 'rb') as image_file:
-                        self.superpixels['raw'] = image_file.read()
-                    image_png = imageio.imread(self.superpixels['raw'])
-                    as_uint16 = not image_png[..., 2].any(1).any(0)
-                    self.superpixels['idx'] = func.superpixel_index(
-                        image_png, as_uint16)
-                    self.superpixels['max'] = numpy.amax(
-                        self.superpixels['idx'])
-                    if map_superpixels:
-                        self.map_superpixels()
-                    return
+                    if self.superpixels['idx'] is None:
+                        spidx_data = numpy.load(spidx_filename)
+                        if 'idx' in spidx_data:
+                            self.superpixels['idx'] = spidx_data['idx']
+                            self.superpixels['max'] = numpy.amax(
+                                self.superpixels['idx']).item()
+                            self.superpixels['shp'] = self.superpixels['idx'].shape
                 except Exception as e:
-                    warnings.warn('Error loading image: ' + str(e))
-                    os.remove(image_list[0])
-        if self._in_archive and self._api._base_url:
+                    os.remove(spidx_filename)
+                    warnings.warn('Error loading spidx cache file: ' + str(e))
+            if self.superpixels['idx'] is None:
+                if os.path.exists(spimg_filename):
+                    try:
+                        with open(spimg_filename, 'rb') as image_file:
+                            image_raw = image_file.read()
+                        image_png = imageio.imread(image_raw)
+                        self.superpixels['idx'] = func.superpixel_index(image_png)
+                        self.superpixels['max'] = numpy.amax(
+                            self.superpixels['idx']).item()
+                        self.superpixels['shp'] = self.superpixels['idx'].shape
+                        numpy.savez_compressed(spidx_filename, idx=self.superpixels['idx'])
+                    except Exception as e:
+                        os.remove(spimg_filename)
+                        warnings.warn('Error loading image: ' + str(e))
+        if self._in_archive and self._api._base_url and (not os.path.exists(spidx_filename)):
             try:
                 if self._api._auth_token:
                     headers = {'Girder-Token': self._api._auth_token}
@@ -291,45 +301,42 @@ class Image(object):
                     'image/' + self.id + '/superpixels'),
                     headers=headers, allow_redirects=True)
                 if req.ok:
-                    self.superpixels['raw'] = req.content
-                    image_png = imageio.imread(self.superpixels['raw'])
+                    image_raw = req.content
+                    image_png = imageio.imread(image_raw)
                     if self._api._cache_folder:
-                        if self.name and len(self.name) > 5:
-                            name_part = '_' + self.name
-                        else:
-                            name_part = ''
-                        image_filename = ''.join([self._api._cache_folder, os.sep,
-                            'imgsp_', self.id, name_part,
-                            func.guess_file_extension(req.headers)])
-                        with open(image_filename, 'wb') as image_file:
-                            image_file.write(req.content)
-                    as_uint16 = not image_png[..., 2].any(1).any(0)
-                    self.superpixels['idx'] = func.superpixel_index(
-                        image_png, as_uint16)
+                        with open(spimg_filename, 'wb') as image_file:
+                            image_file.write(image_raw)
+                    self.superpixels['idx'] = func.superpixel_index(image_png)
                     self.superpixels['max'] = numpy.amax(
-                        self.superpixels['idx'])
-            except Exception as e:
-                warnings.warn('Error loading superpixels: ' + str(e))
-        if map_superpixels:
-            self.map_superpixels()
-
-    # map superpixels
-    def map_superpixels(self):
-        if self.superpixels['idx'] is None:
-            try:
-                self.load_superpixels()
-                if not self.superpixels['idx']:
-                    return
+                        self.superpixels['idx']).item()
+                    self.superpixels['shp'] = self.superpixels['idx'].shape
+                    if self._api._cache_folder:
+                        numpy.savez_compressed(spidx_filename,
+                        idx=self.superpixels['idx'])
             except Exception as e:
                 warnings.warn('Error loading superpixels: ' + str(e))
                 return
-        pixel_img = self.superpixels['idx']
-        img_shape = pixel_img.shape
-        if len(img_shape) != 2:
-            warnings.warn('Error with decoding superpixels.')
+        if not map_superpixels:
             return
-        self.superpixels['row_len'] = img_shape[0]
-        self.superpixels['row_num'] = img_shape[1]
+        try:
+            if self.superpixels['map'] is None:
+                self.map_superpixels()
+        except Exception as e:
+            warnings.warn('Error processing superpixel data: ' + str(e))
+
+    # map superpixels
+    def map_superpixels(self):
+        if not self.superpixels['map'] is None:
+            return
+        try:
+            if self.superpixels['idx'] is None:
+                self.load_superpixels()
+            if self.superpixels['idx'] is None:
+                raise ValueError('Some problem occurred during load_superpixels().')
+        except Exception as e:
+            warnings.warn('Error loading superpixels: ' + str(e))
+            return
+        pixel_img = self.superpixels['idx']
         try:
             self.superpixels['map'] = func.superpixel_decode_img(pixel_img)
         except Exception as e:

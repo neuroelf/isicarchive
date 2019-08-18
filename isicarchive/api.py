@@ -176,6 +176,10 @@ class IsicApi(object):
                 try:
                     self._temp_file = tempfile.TemporaryFile(dir=cache_folder)
                     self._cache_folder = cache_folder
+                    for sf in '0123456789abcdef':
+                        cs_folder = cache_folder + os.sep + sf
+                        if not os.path.exists(cs_folder):
+                            os.mkdir(cs_folder)
                 except:
                     warnings.warn('Error creating a file in ' + cache_folder)
 

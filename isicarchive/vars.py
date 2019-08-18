@@ -9,6 +9,6 @@ ISIC_BASE_URL : str
     hostname of ISIC Archive, including https:// protocol id
 """
 
-__version__ = '0.3.2'
+__version__ = '0.3.5'
 ISIC_API_URI = '/api/v1'
 ISIC_BASE_URL = 'https://isic-archive.com'

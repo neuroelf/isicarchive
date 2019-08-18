@@ -4,19 +4,89 @@ isicarchive.func
 This module provides helper functions and doesn't have to be
 imported from outside the main package functionality (isicapi).
 
-functions
+Functions
 ---------
+cache_filename
+    Creates a filename of a specific type from an id
 could_be_mongo_object_id
+    Returns true if the input is a 24 lower-case hex character string
+get
+    Specific URL mangling rules prior to calling requests.get(...)
+get_json
+    Passes the input through get(...) and appends .json()
+get_json_list
+    Passes the input through get(...) and yields one array item
+guess_file_extension
+    Guesses a downloaded file's extension from the HTTP Headers
+gzip_load_var
+    Loads a .json.gz file into a variable
+gzip_save_var
+    Saves a variable into a .json.gz file
+isic_auth_token
+    Makes a login attempt and extracts the Girder-Token from the Headers
+make_url
+    Concatenates URL particles
+superpixel_decode_img
+    Decodes a superpixel (index) array into a map (dict)
+superpixel_index
+    Converts an RGB superpixel image to a 2D superpixel index array
+uri_encode
+    Encodes non-letter/number characters into %02x sequences
 """
 
-__version__ = '0.2.1'
+__version__ = '0.3.4'
 
-
+import copy
+import gzip
+import json
+import os
 import re
+from typing import Any, Tuple
 import warnings
 
+import numba
 import numpy
 import requests
+
+# cache filename
+def cache_filename(oid:str = None, otype:str = None, oext:str = None, extra:str = None, api:object = None) -> str:
+    """
+    Creates a filename out of an object (type, id, ext).
+
+    Parameters
+    ----------
+    oid : str
+        object_id (mongodb objectId)
+    otype : str
+        Arbitrary object type str (first part of filename)
+    oext : str
+        Arbitrary extension, will be .bin if none
+    extra : str
+        String folder in before extension
+    api : IsicApi
+        Necessary to access cache folder, if api not valid, returns None
+    
+    Returns
+    -------
+    filename : str
+        Filename of object in cache
+    """
+    if api is None or api._cache_folder is None:
+        return None
+    if not isinstance(oid, str) or (not could_be_mongo_object_id(oid)):
+        raise ValueError('Invalid object_id')
+    if otype is None or (otype == ''):
+        otype = 'object'
+    if oext is None or (oext == ''):
+        oext = '.bin'
+    elif oext[0] != '.':
+        oext = '.' + oext
+    if (not extra is None) and (extra != ''):
+        extra = '_' + extra
+    else:
+        extra = ''
+    return (api._cache_folder +
+        os.sep + oid[-1] + os.sep + otype + '_' + oid + extra + oext)
 
 # helper function that returns True for valid looking mongo ObjectId strings
 _mongo_object_id_pattern = re.compile(r"^[0-9a-f]{24}$")
@@ -44,7 +114,7 @@ def get(
     auth_token:str = None,
     params:dict = None,
     save_as:str = None,
-    ) -> any:
+    ) -> Any:
     """
     Performs a GET request to the given endpoint, with the provided
     parameters. If the `save_as` argument is given, will attempt to
@@ -66,7 +136,7 @@ def get(
     
     Returns
     -------
-    any
+    content : Any
         If the request is successful, the returned content
     """
 
@@ -164,6 +234,53 @@ def guess_file_extension(headers:dict) -> str:
                 return _ext_type_guess[filename[-1].lower()]
     return '.bin'
 
+# load JSON.gz GZIP file into variable
+def gzip_load_var(gzip_file:str) -> Any:
+    """
+    Load variable from .json.gz file (arbitrary extension!)
+
+    Parameters
+    ----------
+    gzip_file : str
+        Filename containing the gzipped JSON variable
+    
+    Returns
+    -------
+    var : Any
+        Variable as decoded from gzipped JSON content
+    """
+    try:
+        with gzip.GzipFile(gzip_file, 'r') as gzip_in:
+            json_var = json.loads(gzip_in.read().decode('utf-8'))
+    except:
+        raise
+    return json_var
+
+# save variable as JSON into .json.gz file
+def gzip_save_var(gzip_file:str, save_var:Any) -> bool:
+    """
+    Save variable into .json.gz file (arbitrary extension)
+
+    Parameters
+    ----------
+    gzip_file : str
+        Target filename for .json.gz content
+    var : Any
+        JSON dumpable variable
+    
+    Returns
+    -------
+    success : bool
+        True (otherwise raises exception!)
+    """
+    try:
+        json_bytes = (json.dumps(save_var) + "\n").encode('utf-8')
+        with gzip.GzipFile(gzip_file, 'w') as gzip_out:
+            gzip_out.write(json_bytes)
+        return True
+    except:
+        raise
+
 # authentication
 def isic_auth_token(base_url:str, username:str, password:str) -> str:
     """
@@ -205,7 +322,7 @@ def make_url(base_url:str, endpoint:str) -> str:
     return base_url + '/' + endpoint
 
 # decode image superpixel
-def superpixel_index(rgb_array:object, as_uint16:bool = True) -> object:
+def superpixel_index(rgb_array:numpy.ndarray) -> numpy.ndarray:
     """
     Decode an RGB representation of a superpixel label into its native scalar
     value.
@@ -222,23 +339,13 @@ def superpixel_index(rgb_array:object, as_uint16:bool = True) -> object:
     superpixel_index : 2d numpy.ndarray
         2D Image (uint16) with superpixel indices
     """
-    if as_uint16:
-        return (rgb_array[..., 0].astype(numpy.uint16) + 
-            (rgb_array[..., 1].astype(numpy.uint16) << numpy.uint16(8)))
     return (rgb_array[..., 0].astype(numpy.uint32) + 
         (rgb_array[..., 1].astype(numpy.uint32) << numpy.uint32(8)) +
-        (rgb_array[..., 1].astype(numpy.uint32) << numpy.uint32(16)))
+        (rgb_array[..., 2].astype(numpy.uint32) << numpy.uint32(16))).astype(numpy.int32)
 
 # create superpixel -> pixel index array
-def _superpixel_decode_row(pixel_row:numpy.ndarray, offset:numpy.uint32) -> dict:
-    unique_sp = dict()
-    for idx in range(pixel_row.size):
-        pixel_val = pixel_row[idx]
-        if not unique_sp.get(pixel_val, False):
-            unique_sp[pixel_val] = []
-        unique_sp[pixel_row[idx]].append(idx + offset)
-    return unique_sp
-def superpixel_decode_img(pixel_img:numpy.ndarray) -> dict:
+@numba.jit('i4[:,:](i4[:,:])', nopython=True) # (numba.int32[:,:](numba.int32[:,:]), nopython=True)
+def superpixel_decode_img(pixel_img):
     """
     Decode a superpixel (patch) image to a dictionary with (1D) coordinates.
 
@@ -253,25 +360,29 @@ def superpixel_decode_img(pixel_img:numpy.ndarray) -> dict:
         Dict which maps from superpixel index (0-based) to 1D coordinates
         in the original (flattened) image space.
     """
-    image_shape = pixel_img.shape
-    if len(image_shape) != 2:
-        raise ValueError('Invalid pixel_img.')
-    row_length = image_shape[0]
-    num_rows = image_shape[1]
-    superpixel_to_pixel = dict()
-    for idx in range(num_rows):
-        row_dict = _superpixel_decode_row(pixel_img[:,idx], idx * row_length)
-        for (key, value) in row_dict.items():
-            if not superpixel_to_pixel.get(key, False):
-                superpixel_to_pixel[key] = [value]
-                continue
-            superpixel_to_pixel[key].append(value)
-    for (key, value) in superpixel_to_pixel.items():
-        superpixel_to_pixel[key] = numpy.concatenate(value)
-    return superpixel_to_pixel
+    pixel_flat = pixel_img.flatten()
+    spcounts = numpy.bincount(pixel_flat)
+    spcountmax = numpy.amax(spcounts).item() + 1
+    sp_to_p = numpy.zeros(len(spcounts) * spcountmax,
+        dtype=numpy.int32).reshape(len(spcounts), spcountmax)
+    spcounts = numpy.zeros(len(spcounts), dtype=numpy.int32)
+    for idx in range(pixel_flat.size):
+        pixel_val = pixel_flat[idx]
+        sp_to_p[pixel_val, spcounts[pixel_val]] = idx
+        spcounts[pixel_val] += 1
+    for idx in range(len(spcounts)):
+        sp_to_p[idx, -1] = spcounts[idx]
+    return sp_to_p
 
 # URI encode
 _uri_letters = ' !"#$%&\'()*+,/:;<=>?@[\\]^`{|}~'
 def uri_encode(uri:str) -> str:
     letters = ['%' + hex(ord(c))[-2:] if c in _uri_letters else c for c in uri]
     return ''.join(letters)
+
+@numba.jit(nopython=True)
+def xplus1(value):
+    newvalue = numpy.zeros(value.size, dtype=numpy.int32)
+    for idx in range(value.size):
+        newvalue[idx] = value[idx] + 1
+    return newvalue

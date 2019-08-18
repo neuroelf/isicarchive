@@ -299,7 +299,7 @@ class Study(object):
                         annotation['_id'], str(e)))
 
     # load images
-    def load_images(self, load_data:bool = False):
+    def load_images(self, load_imagedata:bool = False):
         if (not self._api) or (len(self.images) == 0):
             return
         params = {
@@ -327,7 +327,7 @@ class Study(object):
                         self._obj_images[image_id] = self._api._image_objs[image_id]
                         continue
                     image_obj = Image(from_json=image_detail,
-                        api=self._api, load_data=False)
+                        api=self._api, load_imagedata=load_imagedata)
                     self._obj_images[image_id] = image_obj
                     self._api._image_objs[image_id] = image_obj
                 to_load = []
@@ -346,6 +346,6 @@ class Study(object):
                     self._obj_images[image_id] = self._api._image_objs[image_id]
                     continue
                 image_obj = Image(from_json=image_detail,
-                    api=self._api, load_data=False)
+                    api=self._api, load_imagedata=load_imagedata)
                 self._obj_images[image_id] = image_obj
                 self._api._image_objs[image_id] = image_obj
