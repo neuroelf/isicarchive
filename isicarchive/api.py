@@ -40,7 +40,7 @@ You'll find documentation and examples for each of the endpoints,
 together with the ability to test them separately.
 """
 
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 
 
 import copy

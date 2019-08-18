@@ -14,13 +14,14 @@ or can be generated
    >>> annotation = Annotation(...)
 """
 
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 
 
 import datetime
 import json
 import warnings
 
+import numpy
 import requests
 
 from . import func
@@ -106,6 +107,7 @@ class Annotation(object):
         study:str = None,
         user:str = None,
         api:object = None,
+        load_data:bool = False,
         ):
         """Annotation init."""
 
@@ -129,18 +131,18 @@ class Annotation(object):
         # preference: JSON, id (in name), then name (lookup)
         if isinstance(from_json, dict):
             try:
-                self._from_json(from_json)
+                self._from_json(from_json, load_data)
             except:
                 raise
         elif func.could_be_mongo_object_id(annotation_id) and self._api and self._api._base_url:
             try:
                 self._from_json(func.get(self._api._base_url,
-                'annotation/' + annotation_id, self._api._auth_token).json())
+                'annotation/' + annotation_id, self._api._auth_token).json(), load_data)
             except:
                 raise
 
     # parse JSON
-    def _from_json(self, from_json:dict):
+    def _from_json(self, from_json:dict, load_data:bool = False):
         self.id = from_json['_id']
         self.state = from_json['state']
         self.study_id = from_json['studyId']
@@ -176,17 +178,22 @@ class Annotation(object):
                         continue
                     try:
                         feat_uri = func.uri_encode(key)
-                        feat_idx = func.get(self._base_url,
+                        feat_idx = func.get(self._api._base_url,
                             'annotation/' + self.id + '/' + feat_uri,
-                            self._auth_token)
+                            self._api._auth_token)
                         if not feat_idx.ok:
                             continue
                         feat_idx = feat_idx.json()
                         self.features[key] = dict()
+                        self.features[key]['lst'] = feat_idx
+                        feat_idx = numpy.flatnonzero(feat_idx)
                         self.features[key]['idx'] = feat_idx
+                        self.features[key]['num'] = len(feat_idx)
+                        if not load_data:
+                            continue
                         feat_req = requests.get(
-                            self._api._base_url + '/annotation/' + self.id + '/' +
-                            feat_uri + '/mask', headers=headers,
+                            self._api._base_url + '/annotation/' + self.id +
+                             '/' + feat_uri + '/mask', headers=headers,
                             allow_redirects=True)
                         if not feat_req.ok:
                             continue
@@ -222,17 +229,17 @@ class Annotation(object):
             srep.append('  in study      - ' + self.study_id)
         if isinstance(self.user, dict):
             if 'lastName' in self.user:
-                srep.append('  made by user  - ' + self.user['name'])
-            else:
                 srep.append('  made by user  - ' + self.user['lastName'])
-        if isinstance(self.features, list) and self.features:
+            else:
+                srep.append('  made by user  - ' + self.user['name'])
+        if isinstance(self.features, dict) and self.features:
             srep.append('  - features:')
-            for (key, value) in self.features:
-                if isinstance(value, dict) and 'idx' in value:
+            for (key, value) in self.features.items():
+                if isinstance(value, dict) and 'num' in value:
                     srep.append('    {0:s} with {1:d} superpixels marked'.format(
-                        key, sum(value['idx'])))
+                        key, value['num']))
                 else:
-                    srep.append('    ' + key)
+                    srep.append('    ' + key + ' (data not loaded')
         p.text('\n'.join(srep))
 
     # JSON representation (without constructor):

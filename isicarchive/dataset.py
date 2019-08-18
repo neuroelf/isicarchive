@@ -99,8 +99,6 @@ class Dataset(object):
     
     Methods
     -------
-    get_details(self)
-        make sure the dataset details (especially images list) are loaded
     """
 
 

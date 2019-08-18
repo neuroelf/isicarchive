@@ -8,7 +8,7 @@ To instantiate the API object and retrieve some study information use
 
    >>> from isicarchive import IsicApi
    >>> api = IsicApi(username)
-   >>> studyInfo = api.study(studyName)
+   >>> studyInfo = api.study(study_name)
 
 :copyright: (c) 2019, MSKCC.
 :license: MIT, see LICENSE for details.
@@ -26,6 +26,7 @@ def check_dep_versions():
 
 check_dep_versions()
 
+from .vars import __version__, ISIC_API_URI, ISIC_BASE_URL
 from .api import IsicApi
 from .annotation import Annotation
 from .dataset import Dataset
@@ -34,4 +35,3 @@ from .study import Study
 from . import func
 
 name = 'isicarchive'
-__version__ = '0.3.0'

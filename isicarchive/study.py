@@ -13,15 +13,19 @@ or can be generated
    >>> study = Study(...)
 """
 
-__version__ = '0.3.0'
+__version__ = '0.3.2'
 
 
 import datetime
 import json
+import numbers
 import warnings
 
+from .annotation import Annotation
+from .image import Image
 from . import func
 
+_images_per_request = 50
 _json_full_fields = [
     'created',
     'creator',
@@ -92,8 +96,6 @@ class Study(object):
     
     Methods
     -------
-    get_details(self)
-        make sure the study details (especially images list) are loaded
     """
 
 
@@ -102,13 +104,16 @@ class Study(object):
         name:str = None,
         description:str = None,
         api:object = None,
+        image_details:bool = True,
         ):
         """Study init."""
 
+        self._annotations = dict()
         self._api = api
         self._detail = False
         self._in_archive = False
         self._obj_annotations = dict()
+        self._obj_images = dict()
         # still needs timezone information!!
         self.annotations = []
         self.created = datetime.datetime.now().strftime(
@@ -118,6 +123,9 @@ class Study(object):
         self.features = []
         self.id = ''
         self.images = []
+        self.image_features = dict()
+        self.loaded_features = dict()
+        self.loaded_features_in = dict()
         self.name = name if name else ''
         self.participation_requests = []
         self.questions = []
@@ -128,13 +136,14 @@ class Study(object):
         # preference: JSON, id (in name), then name (lookup)
         if isinstance(from_json, dict):
             try:
-                self._from_json(from_json)
+                self._from_json(from_json, image_details)
             except:
                 raise
         elif func.could_be_mongo_object_id(self.name) and self._api:
             try:
                 self._from_json(func.get(self._api._base_url,
-                    'study/' + self.name, self._api._auth_token).json())
+                    'study/' + self.name, self._api._auth_token).json(),
+                    image_details)
             except:
                 raise
         elif self.name and self._api:
@@ -145,7 +154,8 @@ class Study(object):
                 for study in study_lookup:
                     if study['name'] == self.name:
                         self._from_json(func.get(self._api._base_url,
-                            'study/' + study['_id'], self._api._auth_token).json())
+                            'study/' + study['_id'], self._api._auth_token).json(),
+                            image_details)
                         break
                 if not self.id:
                     warnings.warn('Study {0:s} not found.'.format(self.name))
@@ -153,7 +163,7 @@ class Study(object):
                 raise
 
     # read from JSON
-    def _from_json(self, from_json:dict):
+    def _from_json(self, from_json:dict, image_details:bool = True):
         self.description = from_json['description']
         self.id = from_json['_id']
         self.name = from_json['name']
@@ -163,7 +173,8 @@ class Study(object):
             self.creator = from_json['creator']
             if 'features' in from_json:
                 self.features = from_json['features']
-            self.images = from_json['images']
+            if 'images' in from_json:
+                self.images = from_json['images']
             if 'participationRequests' in from_json:
                 self.participation_requests = from_json['participationRequests']
             if 'questions' in from_json:
@@ -176,11 +187,19 @@ class Study(object):
         self._in_archive = True
         if self._api and self._api._auth_token:
             try:
-                self.annotations = func.get(self._api._base_url,
-                    'annotation', self._api._auth_token,
-                    params={'studyId': self.id}).json()
+                if len(self.images) > 0 and image_details:
+                    self.load_images()
             except:
-                warnings.warn('Error retrieving annotations')
+                warnings.warn('Error retrieving image information.')
+            try:
+                annotations = func.get(self._api._base_url,
+                    'annotation', self._api._auth_token,
+                    params={'studyId': self.id, 'detail': 'true'}).json()
+                self.annotations = annotations
+                for count in range(len(annotations)):
+                    self._annotations[annotations[count]['_id']] = count
+            except:
+                warnings.warn('Error retrieving annotations.')
 
     # JSON
     def __repr__(self):
@@ -200,9 +219,11 @@ class Study(object):
             'IsicApi.Study (id = ' + self.id + '):',
             '  name          - ' + self.name,
             '  description   - ' + self.description,
-            '  {0:d} annotations'.format(len(self.annotations)),
+            '  {0:d} annotations ({1:d} loaded)'.format(
+                len(self.annotations), len(self._obj_annotations)),
             '  {0:d} features'.format(len(self.features)),
-            '  {0:d} images'.format(len(self.images)),
+            '  {0:d} images ({1:d} loaded)'.format(
+                len(self.images), len(self._obj_images)),
             '  {0:d} questions'.format(len(self.questions)),
         ]
         if self._api and self._api._auth_token and self._api._base_url:
@@ -225,17 +246,108 @@ class Study(object):
                 json.dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
 
-    # get study details
-    def get_details(self):
-        if not self._in_archive or not self._api:
-            raise ValueError('Cannot get details for user-provided studies.')
+    # get annotation
+    def annotation(self, object_id:str):
+        if isinstance(object_id, numbers.Number) and (
+            object_id >= 0 and object_id < len(self.annotations)):
+                object_id = self.annotations[object_id]['_id']
+        if isinstance(object_id, str) and func.could_be_mongo_object_id(object_id):
+            if object_id in self._obj_annotations:
+                return self._obj_annotations[object_id]
+            if not object_id in self._annotations:
+                raise ValueError('Invalid or missing object_id in call')
+            if self._api and object_id in self._api._annotation_objs:
+                annotation_obj = self._api._annotation_objs[object_id]
+                self._obj_annotations[object_id] = annotation_obj
+                return annotation_obj
+            object_id = self.annotations[self._annotations[object_id]]
+        if not isinstance(object_id, dict) or (
+            not '_id' in object_id or
+            not '_modelType' in object_id or
+            object_id['_modelType'] != 'annotation'):
+            raise ValueError('Invalid or missing object_id in call')
         try:
-            study_details = func.get(self._api._base_url,
-                'study/' + self.id, self._api._auth_token)
-            for field in _json_full_fields:
-                if field in _mangling:
-                    setattr(self, field, study_details[_mangling[field]])
-                else:
-                    setattr(self, field, study_details[field])
+            annotation_obj = Annotation(from_json = object_id, api=self._api)
+            self._obj_annotations[object_id['_id']] = annotation_obj
+            self._api._annotation_objs[object_id['_id']] = annotation_obj
         except:
             raise
+        if 'markups' in object_id and isinstance(object_id['markups'], dict):
+            for key, value in object_id['markups'].items():
+                try:
+                    if value:
+                        if not key in self.loaded_features:
+                            self.loaded_features[key] = 0
+                        self.loaded_features[key] += 1
+                        if not key in self.loaded_features_in:
+                            self.loaded_features_in[key] = list()
+                        self.loaded_features_in[key].append(object_id['_id'])
+                except:
+                    warnings.warn(
+                        'Error adding feature {0:s} to list for annotation id={1:s}.'.format(
+                        key, object_id['_id']))
+        return annotation_obj
+
+    # load annotations
+    def load_annotations(self):
+        if (not self._api) or len(self._obj_annotations) == len(self.annotations):
+            return
+        for annotation in self.annotations:
+            if not annotation['_id'] in self._obj_annotations:
+                try:
+                    self.annotation(annotation)
+                except Exception as e:
+                    warnings.warn('Error retrieving annotation {0:s} details: {1:s}'.format(
+                        annotation['_id'], str(e)))
+
+    # load images
+    def load_images(self, load_data:bool = False):
+        if (not self._api) or (len(self.images) == 0):
+            return
+        params = {
+            'detail': 'true',
+            'imageIds': '',
+        }
+        to_load = []
+        rep_idx = dict()
+        for count in range(len(self.images)):
+            if not '_modelType' in self.images[count]:
+                image_id = self.images[count]['_id']
+                to_load.append(image_id)
+                rep_idx[image_id] = count
+            if len(to_load) == _images_per_request:
+                params['imageIds'] = '["' + '","'.join(to_load) + '"]'
+                image_info = func.get(self._api._base_url,
+                    'image', self._api._auth_token, params=params).json()
+                if len(image_info) != len(to_load):
+                    raise ValueError('Bad request output.')
+                for repcount in range(len(image_info)):
+                    image_detail = image_info[repcount]
+                    image_id = image_detail['_id']
+                    self.images[rep_idx[image_id]] = image_detail
+                    if image_id in self._api._image_objs:
+                        self._obj_images[image_id] = self._api._image_objs[image_id]
+                        continue
+                    image_obj = Image(from_json=image_detail,
+                        api=self._api, load_data=False)
+                    self._obj_images[image_id] = image_obj
+                    self._api._image_objs[image_id] = image_obj
+                to_load = []
+                rep_idx = dict()
+        if len(to_load) > 0:
+            params['imageIds'] = '["' + '","'.join(to_load) + '"]'
+            image_info = func.get(self._api._base_url,
+                'image', self._api._auth_token, params=params).json()
+            if len(image_info) != len(to_load):
+                raise ValueError('Bad request output.')
+            for repcount in range(len(image_info)):
+                image_detail = image_info[repcount]
+                image_id = image_detail['_id']
+                self.images[rep_idx[image_id]] = image_detail
+                if image_id in self._api._image_objs:
+                    self._obj_images[image_id] = self._api._image_objs[image_id]
+                    continue
+                image_obj = Image(from_json=image_detail,
+                    api=self._api, load_data=False)
+                self._obj_images[image_id] = image_obj
+                self._api._image_objs[image_id] = image_obj

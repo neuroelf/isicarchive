@@ -2,6 +2,8 @@
 
 import setuptools
 
+from isicarchive.vars import __version__
+
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
@@ -13,7 +15,7 @@ requires = [
 
 setuptools.setup(
     name="isicarchive",
-    version="0.3.0",
+    version=__version__,
     description="ISIC Archive API",
     long_description=long_description,
     long_description_content_type="text/markdown",
