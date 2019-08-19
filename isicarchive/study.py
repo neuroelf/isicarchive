@@ -285,6 +285,10 @@ class Study(object):
                     key, object_id['_id']))
         return annotation_obj
 
+    # image names
+    def image_names(self):
+        return [image['name'] for image in self.images]
+
     # load annotations
     def load_annotations(self):
         if (not self._api) or len(self._obj_annotations) == len(self.annotations):
