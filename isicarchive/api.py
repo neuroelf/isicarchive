@@ -38,15 +38,35 @@ http://isic-archive.com/api/v1
 
 You'll find documentation and examples for each of the endpoints,
 together with the ability to test them separately.
+
+Methods
+-------
+annotation
+    Create an annotation object or retrieve a list of annotations
+annotation_list
+    Yields a generator for annotation JSON dicts
+dataset
+    Create a dataset object or retrieve a list of datasets
+dataset_list
+    Yields a generator for dataset JSON dicts
+image
+    Create an image object or retrieve a list of images
+image_list
+    Yields a generator for image JSON dicts
+study
+    Create a study object or retrieve a list of studies
+study_list
+    Yields a generator for study JSON dicts
 """
 
-__version__ = '0.3.1'
+__version__ = '0.4.0'
 
 
 import copy
 import os
 import tempfile
-from typing import Optional, Tuple
+import time
+from typing import Any, Optional, Tuple
 import warnings
 
 import getpass
@@ -60,6 +80,19 @@ from .annotation import Annotation
 from .dataset import Dataset
 from .image import Image
 from .study import Study
+
+_repr_pretty_list = {
+    'base_url': '_base_url',
+    'username': 'username',
+    'cache_folder': '_cache_folder',
+    'cached_images': '_image_cache',
+    'loaded_datasets': 'datasets',
+    'loaded_studies': 'studies',
+    'obj_annotations': '_annotation_objs',
+    'obj_datasets': '_dataset_objs',
+    'obj_images': '_image_objs',
+    'obj_studies': '_study_objs',
+}
 
 def _mangle_id_name(object_id:str, name:str) -> Tuple[str, str]:
     """
@@ -157,9 +190,16 @@ class IsicApi(object):
         self._auth_token = None
         self._base_url = hostname + api_uri
         self._cache_folder = None
+        self._current_annotation = None
+        self._current_dataset = None
+        self._current_image = None
+        self._current_study = None
         self._datasets = dict()
         self._dataset_objs = dict()
         self._hostname = hostname
+        self._image_cache = dict()
+        self._image_cache_last = '0' * 24
+        self._image_cache_timeout = 0.0
         self._image_objs = dict()
         self._studies = dict()
         self._study_objs = dict()
@@ -201,11 +241,11 @@ class IsicApi(object):
                     self._auth_token).json()
 
         # pre-populate information about datasets and studies
-        items = self.dataset(params={'limit': 0, 'detail': 'false'})
+        items = self.dataset(params={'limit': 0, 'detail': 'true'})
         for item in items:
             self._datasets[item['_id']] = item
             self.datasets[item['name']] = item['_id']
-        items = self.study(params={'limit': 0, 'detail': 'false'})
+        items = self.study(params={'limit': 0, 'detail': 'true'})
         for item in items:
             self._studies[item['_id']] = item
             self.studies[item['name']] = item['_id']
@@ -220,24 +260,7 @@ class IsicApi(object):
                 self.username, self._hostname)
         return 'IsicApi accessing %s.' % self._hostname
     def _repr_pretty_(self, p:object, cycle:bool = False):
-        if cycle:
-            p.text('IsicApi(...)')
-            return
-        srep = [
-            'IsicApi object with properties:',
-            '  base_url     - ' + self._base_url,
-        ]
-        if self._cache_folder and self._temp_file:
-            srep.append('  cache_folder - ' + self._cache_folder)
-        if self.username:
-            if self._auth_token:
-                srep.append('  username     - ' + self.username + ' (auth)')
-            else:
-                srep.append('  username     - ' + self.username)
-        srep.append('  - {0:d} datasets available'.format(len(self.datasets)))
-        srep.append('  - {0:d} studies available'.format(len(self.studies)))
-        p.text('\n'.join(srep))
-
+        func.object_pretty(self, p, cycle, _repr_pretty_list)
 
     # Annotation endpoint
     def annotation(self,
@@ -282,13 +305,15 @@ class IsicApi(object):
         if not func.could_be_mongo_object_id(object_id):
             raise ValueError('Invalid objectId format of object_id parameter.')
         if object_id in self._annotation_objs:
-            return self._annotation_objs[object_id]
+            self._current_annotation = self._annotation_objs[object_id]
+            return self._current_annotation
         annotation = func.get(self._base_url,
             'annotation/' + object_id, self._auth_token, params).json()
         if not '_id' in annotation:
             raise KeyError('Annotation with id %s not found.' % (object_id))
         annotation_obj = Annotation(annotation, api=self)
         self._annotation_objs[annotation['_id']] = annotation_obj
+        self._current_annotation = annotation_obj
         return annotation_obj
 
     def annotation_list(self, params:dict = None, as_object:bool = False) -> iter:
@@ -335,6 +360,70 @@ class IsicApi(object):
             else:
                 yield item
 
+    # cache image information
+    def _cache_images(self, from_list:dict):
+        for item in from_list:
+            if not item['_id'] in self._image_cache:
+                self._image_cache[item['_id']] = item
+    def cache_images(self):
+        """
+        Create or update the local image details cache file
+
+        No input parameters and no return value.
+        """
+        if not self._cache_folder or (not os.path.isdir(self._cache_folder)):
+            return
+        if self._image_cache_timeout >= time.time():
+            return
+        image_cache_filename = func.cache_filename('0' * 24,
+            'imcache', '.json.gz', api=self)
+        if os.path.exists(image_cache_filename):
+            try:
+                self._image_cache = func.gzip_load_var(image_cache_filename)
+                self._image_cache_last = sorted(self._image_cache.keys())[-1]
+            except:
+                os.remove(image_cache_filename)
+                warnings.warn('Invalid image cache file.')
+        initial_offset = 0
+        limit = vars.ISIC_IMAGES_PER_CACHING
+        limit_half = limit // 2
+        offset = 0
+        params = {
+            'detail': 'true',
+            'limit': str(limit),
+            'offset': str(offset),
+            'sort': '_id',
+            'sortdir': '1',
+        }
+        num_loaded = len(self._image_cache)
+        last_id = self._image_cache_last
+        if num_loaded > 0:
+            initial_offset = max(0, num_loaded - limit_half)
+            offset = initial_offset
+        params['offset'] = str(offset)
+        partial_list = self.image(params=params)
+        self._cache_images(partial_list)
+        partial_list_ids = sorted(map(lambda item: item['_id'], partial_list))
+        while partial_list_ids[0] > last_id and (offset > 0):
+            offset = max(0, offset - limit)
+            params['offset'] = str(offset)
+            partial_list = self.image(params=params)
+            self._cache_images(partial_list)
+            partial_list_ids = sorted(map(lambda item: item['_id'], partial_list))
+        offset = initial_offset
+        while len(partial_list) == limit:
+            offset += limit
+            params['offset'] = str(offset)
+            partial_list = self.image(params=params)
+            self._cache_images(partial_list)
+        try:
+            if num_loaded < len(self._image_cache):
+                func.gzip_save_var(image_cache_filename, self._image_cache)
+                self._image_cache_last = sorted(self._image_cache.keys())[-1]
+        except:
+            warnings.warn('Error writing cache file.')
+        self._image_cache_timeout = time.time() + vars.ISIC_IMAGE_CACHE_UPDATE_LASTS
+
     # Generic /dataset endpoint
     def dataset(self,
         object_id:str = None,
@@ -377,15 +466,23 @@ class IsicApi(object):
         if not func.could_be_mongo_object_id(object_id):
             raise ValueError('Invalid object_id format.')
         if object_id in self._dataset_objs:
-            return self._dataset_objs[object_id]
-        dataset = func.get(self._base_url,
-            'dataset/' + object_id, self._auth_token, params).json()
+            self._current_dataset = self._dataset_objs[object_id]
+            return self._current_dataset
+        if object_id in self._datasets:
+            dataset = self._datasets[object_id]
+        else:
+            try:
+                dataset = func.get(self._base_url,
+                    'dataset/' + object_id, self._auth_token, params).json()
+            except:
+                raise
         if not '_id' in dataset:
             raise KeyError('Dataset with id %s not found.' % (object_id))
         if not dataset['name'] in self.datasets:
             self.datasets[dataset['name']] = dataset['_id']
         dataset_obj = Dataset(dataset, api=self)
         self._dataset_objs[dataset['_id']] = dataset_obj
+        self._current_dataset = dataset_obj
         return dataset_obj
 
     # Dataset list (generator)
@@ -418,12 +515,21 @@ class IsicApi(object):
             else:
                 yield dataset
 
+    # find images
+    def find_images(self, filter_spec:dict) -> Any:
+        if not self._cache_folder:
+            raise ValueError('Requires cache folder to be set.')
+        self.cache_images()
+        pass
+
     # Generic /image endpoint
     def image(self,
         object_id:str = None,
         name:str = None,
         params:dict = None,
         save_as:str = None,
+        load_imagedata:bool = False,
+        load_superpixels:bool = False,
         ) -> any:
         """
         image endpoint, allows to
@@ -480,15 +586,28 @@ class IsicApi(object):
                 raise
             return
         if save_as is None and object_id in self._image_objs:
-            return self._image_objs[object_id]
-        image = func.get(self._base_url,
-            'image/' + object_id, self._auth_token, params).json()
+            self._current_image = self._image_objs[object_id]
+            if load_imagedata and self._current_image.data is None:
+                self._current_image.load_imagedata()
+            if load_superpixels and self._current_image.superpixels['idx'] is None:
+                self._current_image.load_superpixels()
+            return self._current_image
+        if object_id in self._image_cache:
+            image = self._image_cache[object_id]
+        else:
+            try:
+                image = func.get(self._base_url,
+                    'image/' + object_id, self._auth_token, params).json()
+            except:
+                raise
         if not '_id' in image:
             raise KeyError('Image with id %s not found.' % (object_id))
         if not image['name'] in self.images:
             self.images[image['name']] = image['_id']
-        image_obj = Image(image, api=self)
+        image_obj = Image(image, api=self,
+            load_imagedata=load_imagedata, load_superpixels=load_superpixels)
         self._image_objs[image['_id']] = image_obj
+        self._current_image = image_obj
         return image_obj
 
     # Image list (generator)
@@ -520,6 +639,41 @@ class IsicApi(object):
                 yield Image(image, api=self)
             else:
                 yield image
+
+    # list datasets (printed)
+    def list_datasets(self):
+        print('List of datasets available at ' + self._hostname + ':')
+        for name, object_id in self.datasets.items():
+            if object_id in self._dataset_objs:
+                dataset_obj = self._dataset_objs[object_id]
+            else:
+                dataset_obj = self.dataset(self._datasets[object_id])
+            print(' * ' + name + ' (id=' + object_id + ')')
+            print('     - ' + dataset_obj.description + ' (description)')
+            print('     - {0:d} approved images'.format(dataset_obj.count))
+            print('     - {0:d} images from cache'.format(
+                len(dataset_obj.images)))
+            print('     - {0:d} images for review'.format(
+                len(dataset_obj.images_for_review)))
+
+    # list studies (printed)
+    def list_studies(self):
+        print('List of studies available at ' + self._hostname + ':')
+        for name, object_id in self.studies.items():
+            if object_id in self._study_objs:
+                study_obj = self._study_objs[object_id]
+            else:
+                study_obj = self.study(self._studies[object_id])
+            print(' * ' + name + ' (id=' + object_id + ')')
+            print('     - ' + study_obj.description + ' (description)')
+            print('     - {0:d} annotations ({1:d} loaded)'.format(
+                len(study_obj.annotations), len(study_obj._obj_annotations)))
+            print('     - {0:d} features'.format(
+                len(study_obj.features)))
+            print('     - {0:d} images ({1:d} loaded)'.format(
+                len(study_obj.images), len(study_obj._obj_images)))
+            print('     - {0:d} questions'.format(
+                len(study_obj.questions)))
 
     # Generic /study endpoint
     def study(self,
@@ -564,8 +718,14 @@ class IsicApi(object):
             raise ValueError('Invalid object_id format.')
         if object_id in self._study_objs:
             return self._study_objs[object_id]
-        study = func.get(self._base_url,
-            'study/' + object_id, self._auth_token, params).json()
+        if object_id in self._studies:
+            study = self._studies[object_id]
+        else:
+            try:
+                study = func.get(self._base_url,
+                    'study/' + object_id, self._auth_token, params).json()
+            except:
+                raise
         if not '_id' in study:
             raise KeyError('Dataset with id %s not found.' % (object_id))
         if not study['name'] in self.studies:

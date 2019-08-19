@@ -13,7 +13,7 @@ or can be generated
    >>> image = Image(...)
 """
 
-__version__ = '0.3.5'
+__version__ = '0.4.0'
 
 
 import datetime
@@ -45,6 +45,21 @@ _json_partial_fields = [
 ]
 _mangling = {
     'id': '_id',
+}
+_repr_pretty_list = {
+    'id': 'id',
+    'name': 'name',
+    'dataset_id': 'dataset._id',
+    'dataset_name': 'dataset.name',
+    'meta_acquisition': 'meta.acquisition.{}',
+    'meta_clinical': 'meta.clinical.{keys}',
+    'meta_clinical_benign_malignant': 'meta.clinical.benign_malignant',
+    'meta_clinical_diagnosis': 'meta.clinical.diagnosis',
+    'meta_clinical_diagnosis_confirm_type': 'meta.clinical.diagnosis_confirm_type',
+    'meta_clinical_melanocytic': 'meta.clinical.melanocytic',
+    'notes_reviewed': 'notes.reviewed.{}',
+    'superpixels_max': 'superpixels.max',
+    'superpixels_shape': 'superpixels.shp',
 }
 
 class Image(object):
@@ -157,7 +172,7 @@ class Image(object):
 
     # JSON
     def __repr__(self):
-        return 'Image(from_json=%s)' % (self.as_json())
+        return 'isicarchive.image.Image(from_json=%s)' % (self.as_json())
     
     # formatted print
     def __str__(self):
@@ -166,46 +181,7 @@ class Image(object):
     
     # pretty print
     def _repr_pretty_(self, p:object, cycle:bool = False):
-        if cycle:
-            p.text('Image(...)')
-            return
-        srep = [
-            'IsicApi.Image (id = ' + self.id + '):',
-            '  name          - ' + self.name,
-        ]
-        if self.dataset and 'name' in self.dataset:
-            srep.append('  dataset: {0:s} ({1:s})'.format(
-                self.dataset['name'], self.dataset['_id']))
-        if self.meta:
-            srep.append('  meta:')
-            for (key, value) in self.meta.items():
-                if not value:
-                    continue
-                if len(value) <= 3:
-                    srep.append('    ' + key + ': ' + json.dumps(value))
-                else:
-                    srep.append('    ' + key + ': ' + str(type(value)))
-        if self.notes:
-            srep.append('  notes:')
-            for (key, value) in self.notes.items():
-                srep.append('    ' + key + ': ' + json.dumps(value))
-        if not self.data is None:
-            image_shape = self.data.shape
-            while len(image_shape) < 3:
-                image_shape.append(1)
-            srep.append('  - image data: {0:d}x{1:d} pixels ({2:d} planes)'.format(
-                image_shape[1], image_shape[0], image_shape[2]))
-        if 'idx' in self.superpixels and (not self.superpixels['idx'] is None):
-            if 'map' in self.superpixels and (not self.superpixels['map'] is None):
-                is_mapped = ' (mapped)'
-            else:
-                is_mapped = ''
-            srep.append('  - {0:d} superpixels in the image{1:s}'.format(
-                len(self.superpixels['map']), is_mapped))
-        if isinstance(self.creator, dict) and 'login' in self.creator:
-            srep.append('  - created by {0:s} at {1:s}'.format(
-                self.creator['login'], self.created))
-        p.text('\n'.join(srep))
+        func.object_pretty(self, p, cycle, _repr_pretty_list)
     
     # JSON representation (without constructor):
     def as_json(self):

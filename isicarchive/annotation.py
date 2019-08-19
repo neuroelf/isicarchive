@@ -14,7 +14,7 @@ or can be generated
    >>> annotation = Annotation(...)
 """
 
-__version__ = '0.3.1'
+__version__ = '0.4.0'
 
 
 import datetime
@@ -48,6 +48,17 @@ _mangling = {
     'stop_time': 'stopTime',
     'study_id': 'studyId',
     'user_id': 'userId',
+}
+_repr_pretty_list = {
+    'id': 'id',
+    'study_id': 'study_id',
+    'study_name': '_study.name',
+    'image_id': 'image_id',
+    'image_name': 'image.name',
+    'user_id': 'user_id',
+    'user_name': 'user.name',
+    'user_lastname': 'user.lastName',
+    'features': 'features.{keys}',
 }
 
 class Annotation(object):
@@ -113,6 +124,7 @@ class Annotation(object):
 
         self._api = api
         self._in_archive = False
+        self._study = None
         self.features = dict()
         self.id = ''
         self.image = None
@@ -169,43 +181,51 @@ class Annotation(object):
         elif 'userId' in from_json:
             self.user_id = from_json['userId']
         self._in_archive = True
+        if self._api and self.study_id in self._api._studies:
+            self._study = self._api._studies[self.study_id]
+        if (not load_data) and (self.state != 'complete'):
+            return
         if self._api and self._api._base_url and self._api._auth_token:
             try:
                 headers = {'Girder-Token': self._api._auth_token}
-                self.features = dict()
+                if ('features' in from_json and 
+                    isinstance(from_json['features'], dict)):
+                    self.features = from_json['features']
                 for (key, value) in self.markups.items():
                     if not value:
                         continue
-                    try:
+                    if not (key in self.features and
+                        isinstance(self.features[key], dict) and
+                        ('idx' in self.features[key]) and
+                        (len(self.features[key]['idx']) > 0)):
                         feat_uri = func.uri_encode(key)
-                        feat_idx = func.get(self._api._base_url,
+                        feat_lst = func.get(self._api._base_url,
                             'annotation/' + self.id + '/' + feat_uri,
                             self._api._auth_token)
-                        if not feat_idx.ok:
-                            continue
-                        feat_idx = feat_idx.json()
+                        if not feat_lst.ok:
+                            raise ValueError('Error loading feature ' + key)
+                        feat_lst = feat_lst.json()
+                        feat_idx = numpy.flatnonzero(feat_lst).tolist()
                         self.features[key] = dict()
-                        self.features[key]['lst'] = feat_idx
-                        feat_idx = numpy.flatnonzero(feat_idx)
+                        self.features[key]['lst'] = [v for v in filter(
+                            lambda v: v > 0, feat_lst)]
                         self.features[key]['idx'] = feat_idx
                         self.features[key]['num'] = len(feat_idx)
-                        if not load_data:
-                            continue
-                        feat_req = requests.get(
-                            self._api._base_url + '/annotation/' + self.id +
-                             '/' + feat_uri + '/mask', headers=headers,
-                            allow_redirects=True)
-                        if not feat_req.ok:
-                            continue
-                        self.features[key]['msk'] = feat_req.content
-                    except:
+                    if not load_data:
                         continue
+                    feat_req = requests.get(
+                        self._api._base_url + '/annotation/' + self.id +
+                            '/' + feat_uri + '/mask', headers=headers,
+                        allow_redirects=True)
+                    if not feat_req.ok:
+                        raise ValueError('Error loading feature mask ' + key)
+                    self.features[key]['msk'] = feat_req.content
             except Exception as e:
                 warnings.warn('Error loading annotation: ' + str(e))
 
     # JSON
     def __repr__(self):
-        return 'Annotation(from_json=%s)' % (self.as_json())
+        return 'isicarchive.annotation.Annotation(from_json=%s)' % (self.as_json())
     
     # formatted print
     def __str__(self):
@@ -214,33 +234,7 @@ class Annotation(object):
     
     # pretty print
     def _repr_pretty_(self, p:object, cycle:bool = False):
-        if cycle:
-            p.text('Annotation(...)')
-            return
-        srep = ['IsicApi.Annotation (id = ' + self.id + '):']
-        if isinstance(self.image, dict):
-            srep.append('  about image   - ' + self.image['name'])
-        else:
-            srep.append('  about image id- ' + self.image_id)
-        if self._api and self.study_id in self._api._studies:
-            srep.append('  in study      - ' +
-                self._api._studies[self.study_id]['name'])
-        else:
-            srep.append('  in study      - ' + self.study_id)
-        if isinstance(self.user, dict):
-            if 'lastName' in self.user:
-                srep.append('  made by user  - ' + self.user['lastName'])
-            else:
-                srep.append('  made by user  - ' + self.user['name'])
-        if isinstance(self.features, dict) and self.features:
-            srep.append('  - features:')
-            for (key, value) in self.features.items():
-                if isinstance(value, dict) and 'num' in value:
-                    srep.append('    {0:s} with {1:d} superpixels marked'.format(
-                        key, value['num']))
-                else:
-                    srep.append('    ' + key + ' (data not loaded')
-        p.text('\n'.join(srep))
+        func.object_pretty(self, p, cycle, _repr_pretty_list)
 
     # JSON representation (without constructor):
     def as_json(self):

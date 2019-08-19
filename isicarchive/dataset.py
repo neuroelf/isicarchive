@@ -13,7 +13,7 @@ or can be generated
    >>> dataset = Dataset(...)
 """
 
-__version__ = '0.3.0'
+__version__ = '0.4.0'
 
 
 import datetime
@@ -23,6 +23,7 @@ import warnings
 import requests
 
 from . import func
+from .image import Image
 
 _json_full_fields = [
     'access_level',
@@ -51,6 +52,17 @@ _mangling = {
     'id': '_id',
     'metadata_files': 'metadataFiles',
 }
+_repr_pretty_list = [
+    'id',
+    'name',
+    'description',
+    'access_level',
+    'license',
+    'owner',
+    'updated',
+    'images',
+    'images_for_review',
+]
 
 class Dataset(object):
     """
@@ -113,6 +125,7 @@ class Dataset(object):
         self._api = api
         self._detail = False
         self._in_archive = False
+        self._obj_images = dict()
         # still needs timezone information!!
         self.access_level = 2
         self.access_list = []
@@ -123,10 +136,12 @@ class Dataset(object):
         self.creator = {'_id': '000000000000000000000000'}
         self.description = description if description else ''
         self.id = ''
+        self.images = []
         self.images_for_review = []
         self.license = 'CC-0'
         self.metadata = []
         self.metadata_files = []
+        self.metadata_filecont = dict()
         self.name = name if name else ''
         self.owner = 'Anonymous'
         self.updated = self.created
@@ -197,12 +212,14 @@ class Dataset(object):
                 self.images_for_review = func.get(self._api._base_url,
                     'dataset/' + self.id + '/review',
                     self._api._auth_token, params={'limit': 0}).json()
+                if not isinstance(self.images_for_review, list):
+                    self.images_for_review = []
             except:
                 warnings.warn('Error retrieving images for review.')
 
     # JSON
     def __repr__(self):
-        return 'Dataset(from_json=%s)' % (self.as_json())
+        return 'isicarchive.dataset.Dataset(from_json=%s)' % (self.as_json())
     
     # formatted print
     def __str__(self):
@@ -211,20 +228,7 @@ class Dataset(object):
     
     # pretty print
     def _repr_pretty_(self, p:object, cycle:bool = False):
-        if cycle:
-            p.text('Dataset(...)')
-            return
-        srep = [
-            'IsicApi.Dataset (id = ' + self.id + '):',
-            '  name          - ' + self.name,
-            '  description   - ' + self.description,
-            '  owner         - ' + self.owner,
-            '  {0:d} images for review'.format(len(self.images_for_review)),
-        ]
-        if isinstance(self.creator, dict) and 'login' in self.creator:
-            srep.append('  - created by {0:s} at {1:s}'.format(
-                self.creator['login'], self.created))
-        p.text('\n'.join(srep))
+        func.object_pretty(self, p, cycle, _repr_pretty_list)
 
     # JSON representation (without constructor):
     def as_json(self):
@@ -238,6 +242,27 @@ class Dataset(object):
             json_list.append('"%s": %s' % (json_field,
                 json.dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
+
+    # load images
+    def load_images(self, load_imagedata:bool = False):
+        if not self._api or not self._api._cache_folder:
+            raise ValueError('Requires IsicApi object with cache folder set.')
+        self._api.cache_images()
+        dataset_id = self.id
+        self.images = [item for item in self._api._image_cache.values() if (
+            item['dataset']['_id'] == dataset_id)]
+        if len(self.images) == 0:
+            return
+        for img_idx in range(len(self.images)):
+            image_detail = self.images[img_idx]
+            image_id = image_detail['_id']
+            if image_id in self._api._image_objs:
+                self._obj_images[image_id] = self._api._image_objs[image_id]
+                continue
+            image_obj = Image(from_json=image_detail,
+                api=self._api, load_imagedata=load_imagedata)
+            self._obj_images[image_id] = image_obj
+            self._api._image_objs[image_id] = image_obj
 
     # POST an image to the /dataset/{id}/image endpoint
     def post_image(self,

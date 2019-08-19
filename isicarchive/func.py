@@ -34,7 +34,7 @@ uri_encode
     Encodes non-letter/number characters into %02x sequences
 """
 
-__version__ = '0.3.4'
+__version__ = '0.4.0'
 
 import copy
 import gzip
@@ -186,6 +186,56 @@ def get_json_list(
     for item in resp:
         yield item
 
+def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
+    """
+    Get attribute or key-based value from object
+
+    Parameters
+    ----------
+    obj : object
+        Either a dictionary or object with attributes
+    name : str
+        String describing what to retrieve
+    
+    Returns
+    -------
+    value : Any
+        Value from obj.name where name can be name1.name2.name3
+    """
+    val = default
+    if obj is None:
+        return val
+    if not '.' in name:
+        try:
+            if isinstance(obj, dict):
+                val = obj.get(name)
+            elif isinstance(obj, list) and name.isdigit():
+                val = obj[int(name)]
+            else:
+                val = getattr(obj, name)
+        except:
+            pass
+        return val
+    name_lst = name.split('.')
+    name_lst.reverse()
+    try:
+        while len(name_lst) > 1:
+            obj = getxattr(obj, name_lst.pop())
+            if obj is None:
+                return val
+        if isinstance(obj, list) and (name_lst[0] == '[]'):
+            val = '[' + ', '.join([repr(x) for x in obj]) + ']'
+        elif isinstance(obj, dict) and (name_lst[0] == '{keys}'):
+            val = '{' + ', '.join([repr(x) for x in obj.keys()]) + '}'
+        elif isinstance(obj, dict) and (name_lst[0] == '{}'):
+            val = '{' + ', '.join(
+                [repr(k) + ': ' + repr(v) for k,v in obj.items()]) + '}'
+        else:
+            val = getxattr(obj, name_lst[0])
+    except:
+        pass
+    return val
+
 # guess file extentions from returned request headers
 _ext_type_guess = {
     'bmp': '.bmp',
@@ -320,6 +370,57 @@ def make_url(base_url:str, endpoint:str) -> str:
         Endpoint in the API, e.g. study, dataset, or image
     """
     return base_url + '/' + endpoint
+
+def object_pretty(obj:object, p:object, cycle:bool = False, fields:list = None):
+    if fields is None:
+        return
+    t = str(type(obj)).replace('<class \'', '').replace('\'>', '')
+    if cycle:
+        p.text(t + '(id=' + getattr(obj, 'id') + ')')
+        return
+    with p.group(4, t + '({', '})'):
+        if isinstance(fields, list):
+            for field in fields:
+                p.breakable()
+                if not '.' in field:
+                    field_val = getattr(obj, field)
+                else:
+                    field_val = getxattr(obj, field)
+                if isinstance(field_val, str):
+                    p.text('\'' + field + '\': \'' + field_val + '\',')
+                elif isinstance(field_val, dict):
+                    p.text('\'' + field + '\': { ... dict with ' +
+                        str(len(field_val)) + ' fields},')
+                elif isinstance(field_val, list):
+                    p.text('\'' + field + '\': [ ... list with ' +
+                        str(len(field_val)) + ' items],')
+                else:
+                    field_str = str(field_val)
+                    if len(field_str) > 60:
+                        field_str = field_str[:27] + ' ... ' + field_str[-27:]
+                    p.text('\'' + field + '\': ' + field_str + ',')
+        elif isinstance(fields, dict):
+            for name, field in fields.items():
+                p.breakable()
+                if not '.' in field:
+                    field_val = getattr(obj, field)
+                else:
+                    field_val = getxattr(obj, field)
+                if isinstance(field_val, str):
+                    p.text('\'' + name + '\': \'' + field_val + '\',')
+                elif isinstance(field_val, dict):
+                    p.text('\'' + name + '\': { ... dict with ' +
+                        str(len(field_val)) + ' fields},')
+                elif isinstance(field_val, list):
+                    p.text('\'' + name + '\': [ ... list with ' +
+                        str(len(field_val)) + ' items],')
+                else:
+                    field_str = str(field_val)
+                    if len(field_str) > 60:
+                        field_str = field_str[:27] + ' ... ' + field_str[-27:]
+                    p.text('\'' + name + '\': ' + field_str + ',')
+        else:
+            raise ValueError('Invalid list of fields.')
 
 # decode image superpixel
 def superpixel_index(rgb_array:numpy.ndarray) -> numpy.ndarray:
