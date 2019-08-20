@@ -213,6 +213,8 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
         Either a dictionary or object with attributes
     name : str
         String describing what to retrieve
+    default : Any
+        Value to return if name is not found (or error)
     
     Returns
     -------
@@ -233,7 +235,7 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
         except:
             pass
         return val
-    if isinstance(obj, list) and (len(name) > 3) and (name[0:2] == '[].'):
+    if isinstance(obj, list) and (len(name) > 3) and (name[0:3] == '[].'):
         val = [None] * len(obj)
         name = name[3:]
         for idx in range(len(obj)):
