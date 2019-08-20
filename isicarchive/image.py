@@ -13,11 +13,12 @@ or can be generated
    >>> image = Image(...)
 """
 
-__version__ = '0.4.0'
+__version__ = '0.4.2'
 
 
 import datetime
 import glob
+import io
 import json
 import os
 import warnings
@@ -345,7 +346,9 @@ class Image(object):
         return req.json()
 
     # show image in notebook
-    def show_in_notebook(self):
+    def show_in_notebook(self, max_size:int = None):
+        if max_size is None:
+            max_size = ISIC_IMAGE_DISPLAY_SIZE_MAX
         try:
             from IPython.display import Image, display
         except:
@@ -377,7 +380,7 @@ class Image(object):
             image_x = self.meta['acquisition']['pixelsX']
             image_y = self.meta['acquisition']['pixelsY']
             image_max_xy = max(image_x, image_y)
-            shrink_factor = max(1.0, image_max_xy / ISIC_IMAGE_DISPLAY_SIZE_MAX)
+            shrink_factor = max(1.0, image_max_xy / max_size)
             image_width = int(image_x / shrink_factor)
             image_height = int(image_y / shrink_factor)
         except:
