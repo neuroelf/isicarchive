@@ -302,8 +302,11 @@ class Study(object):
             except Exception as e:
                 os.remove(study_anno_filename)
                 warnings.warn('Error reading study annotations file: ' + str(e))
-        didwarn = False
-        for annotation in self.annotations:
+        didwarn = []
+        total = len(self.annotations)
+        for idx in range(total):
+            func.print_progress(idx, total, 'Loading annotations:')
+            annotation = self.annotations[idx]
             annotation_id = annotation['_id']
             if not annotation_id in self._obj_annotations:
                 if annotation_id in study_anno_data:
@@ -320,10 +323,13 @@ class Study(object):
                             study_anno_data[annotation_id] = dict()
                         study_anno_data[annotation_id][key] = annotation_features[key]
                 except Exception as e:
-                    warnings.warn('Error retrieving annotation {0:s} details: {1:s}'.format(
+                    didwarn.append('Error retrieving annotation {0:s} details: {1:s}'.format(
                         annotation['_id'], str(e)))
-                    didwarn = True
-        if not didwarn:
+        func.print_progress(total, total, 'Loading annotations:')
+        if didwarn:
+            warnings.warn
+            pass
+        if len(study_anno_data) > 0:
             if os.path.exists(study_anno_filename):
                 os.remove(study_anno_filename)
             func.gzip_save_var(study_anno_filename, study_anno_data)
@@ -339,7 +345,9 @@ class Study(object):
         }
         to_load = []
         rep_idx = dict()
+        total = len(self.images)
         for count in range(len(self.images)):
+            func.print_progress(count, total, 'Loading images:')
             image_id = self.images[count]['_id']
             if image_id in self._api._image_cache:
                 if image_id in self._api._image_objs:
@@ -391,3 +399,4 @@ class Study(object):
                     api=self._api, load_imagedata=load_imagedata)
                 self._obj_images[image_id] = image_obj
                 self._api._image_objs[image_id] = image_obj
+        func.print_progress(total, total, 'Loading images:')

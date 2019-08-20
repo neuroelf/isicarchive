@@ -185,9 +185,12 @@ class Annotation(object):
             self._study = self._api._studies[self.study_id]
         if (not load_data) and (self.state != 'complete'):
             return
-        if self._api and self._api._base_url and self._api._auth_token:
+        if self._api and self._api._base_url:
             try:
-                headers = {'Girder-Token': self._api._auth_token}
+                if self._api._auth_token:
+                    headers = {'Girder-Token': self._api._auth_token}
+                else:
+                    headers = None
                 if ('features' in from_json and 
                     isinstance(from_json['features'], dict)):
                     self.features = from_json['features']
