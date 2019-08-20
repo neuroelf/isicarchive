@@ -13,7 +13,7 @@ or can be generated
    >>> study = Study(...)
 """
 
-__version__ = '0.4.0'
+__version__ = '0.4.1'
 
 import copy
 import datetime
@@ -24,9 +24,9 @@ import warnings
 
 from .annotation import Annotation
 from .image import Image
+from .vars import ISIC_IMAGE_DETAILS_PER_REQUEST
 from . import func
 
-_images_per_request = 50
 _json_full_fields = [
     'created',
     'creator',
@@ -200,7 +200,7 @@ class Study(object):
                 self.users = from_json['users']
             self._detail = True
         self._in_archive = True
-        if self._api and self._api._auth_token:
+        if self._api:
             try:
                 if len(self.images) > 0 and image_details:
                     self.load_images()
@@ -354,12 +354,13 @@ class Study(object):
             if not '_modelType' in self.images[count]:
                 to_load.append(image_id)
                 rep_idx[image_id] = count
-            if len(to_load) == _images_per_request:
+            if len(to_load) == ISIC_IMAGE_DETAILS_PER_REQUEST:
                 params['imageIds'] = '["' + '","'.join(to_load) + '"]'
                 image_info = func.get(self._api._base_url,
                     'image', self._api._auth_token, params=params).json()
                 if len(image_info) != len(to_load):
-                    raise ValueError('Bad request output.')
+                    warnings.warn('{0:d} images could not be loaded.'.format(
+                        len(to_load) - len(image_info)))
                 for repcount in range(len(image_info)):
                     image_detail = image_info[repcount]
                     image_id = image_detail['_id']
@@ -377,8 +378,8 @@ class Study(object):
             params['imageIds'] = '["' + '","'.join(to_load) + '"]'
             image_info = func.get(self._api._base_url,
                 'image', self._api._auth_token, params=params).json()
-            if len(image_info) != len(to_load):
-                raise ValueError('Bad request output.')
+            warnings.warn('{0:d} images could not be loaded.'.format(
+                len(to_load) - len(image_info)))
             for repcount in range(len(image_info)):
                 image_detail = image_info[repcount]
                 image_id = image_detail['_id']
