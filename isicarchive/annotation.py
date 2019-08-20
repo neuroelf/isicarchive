@@ -269,7 +269,7 @@ class Annotation(object):
         call_display:bool = True,
         ) -> object:
         try:
-            from ipywidgets import Image as IPImage
+            from ipywidgets import Image as ImageWidget
             from IPython.display import display
         except:
             warnings.warn('ipywidgets.Image or IPython.display.display not available')
@@ -397,7 +397,8 @@ class Annotation(object):
         image_width = int(image_width / shrink_factor)
         image_height = int(image_height / shrink_factor)
         try:
-            image_out = IPImage(buffer_data, width=image_width, height=image_height)
+            image_out = ImageWidget(value=buffer_data,
+                width=image_width, height=image_height)
             if call_display:
                 display(image_out)
                 return None
