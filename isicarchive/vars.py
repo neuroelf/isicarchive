@@ -11,13 +11,16 @@ ISIC_BASE_URL : str
 
 __version__ = '0.4.1'
 
-# Api URL/URI
+# IsicApi: default URL/URI
 ISIC_API_URI = '/api/v1'
 ISIC_BASE_URL = 'https://isic-archive.com'
 
-# Api image cache settings
+# IsicApi: image cache settings
 ISIC_IMAGE_CACHE_UPDATE_LASTS = 900.0 # minimum time between updates in seconds
 ISIC_IMAGES_PER_CACHING = 500 # number of image detail items per get(...) call
 
-# Api study->load_images settings
+# Image: display settings
+ISIC_IMAGE_DISPLAY_SIZE_MAX = 480
+
+# Study: load_images settings
 ISIC_IMAGE_DETAILS_PER_REQUEST = 250

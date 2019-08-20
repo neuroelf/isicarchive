@@ -27,6 +27,7 @@ import numpy
 import requests
 
 from . import func
+from .vars import ISIC_IMAGE_DISPLAY_SIZE_MAX
 
 _json_full_fields = [
     'created',
@@ -373,6 +374,16 @@ class Image(object):
                 image_rawdata, self._rawdata = self._rawdata, image_rawdata
                 self.data = image_data
         try:
-            display(Image(image_rawdata))
+            image_x = self.meta['acquisition']['pixelsX']
+            image_y = self.meta['acquisition']['pixelsY']
+            image_max_xy = max(image_x, image_y)
+            shrink_factor = max(1.0, image_max_xy / ISIC_IMAGE_DISPLAY_SIZE_MAX)
+            image_width = int(image_x / shrink_factor)
+            image_height = int(image_y / shrink_factor)
+        except:
+            image_width = None
+            image_height = None
+        try:
+            display(Image(image_rawdata, width=image_width, height=image_height))
         except Exception as e:
             warnings.warn('Problem displaying image: ' + str(e))
