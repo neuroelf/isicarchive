@@ -330,6 +330,9 @@ class Annotation(object):
                         'max': 0,
                         'shp': (0, 0),
                     }
+            else:
+                image_odata = self._image_obj.data
+                image_osp = self._image_obj.superpixels
             image_obj = self._image_obj
             if image_obj.data is None:
                 image_obj.load_imagedata()
