@@ -118,6 +118,7 @@ class Image(object):
         self._api = api
         self._detail = False
         self._in_archive = False
+        self._rawdata = None
         # still needs timezone information!!
         self.created = datetime.datetime.now().strftime(
             '%Y-%m-%dT%H:%M:%S.%f+00:00')
@@ -197,7 +198,7 @@ class Image(object):
         return '{' + ', '.join(json_list) + '}'
 
     # load image data
-    def load_imagedata(self):
+    def load_imagedata(self, keep_rawdata:bool = False):
         if not self._api:
             raise ValueError('Invalid image object to load image data for.')
         if self._api._cache_folder:
@@ -208,6 +209,8 @@ class Image(object):
                     self.data = None
                     with open(image_list[0], 'rb') as image_file:
                         image_raw = image_file.read()
+                    if keep_rawdata:
+                        self._rawdata = image_raw
                     self.data = imageio.imread(image_raw)
                     return
                 except Exception as e:
@@ -224,6 +227,8 @@ class Image(object):
                     headers=headers, allow_redirects=True)
                 if req.ok:
                     image_raw = req.content
+                    if keep_rawdata:
+                        self._rawdata = image_raw
                     self.data = imageio.imread(image_raw)
                     if self._api._cache_folder:
                         extra = self.name if (self.name and len(self.name) > 5) else None
@@ -337,3 +342,37 @@ class Image(object):
             warnings.warn("Image metadata posting failed: " + req.text)
             return ''
         return req.json()
+
+    # show image in notebook
+    def show_in_notebook(self):
+        try:
+            from IPython.display import Image, display
+        except:
+            warnings.warn('IPython.display.Image not available')
+            return
+        image_rawdata = self._rawdata
+        if self._api._cache_folder:
+            image_filename = func.cache_filename(self.id, 'image', '.*', '*', api=self._api)
+            image_list = glob.glob(image_filename)
+            if image_list:
+                image_rawdata = image_list[0]
+            else:
+                image_data = self.data
+                self.load_imagedata(keep_rawdata=True)
+                image_list = glob.glob(image_filename)
+                if not image_list:
+                    warnings.warn('Problem caching image files!')
+                    image_rawdata = self._rawdata
+                else:
+                    image_rawdata, self._rawdata = image_list[0], image_rawdata
+                self.data = image_data
+        else:
+            if image_rawdata is None:
+                image_data = self.data
+                self.load_imagedata(keep_rawdata=True)
+                image_rawdata, self._rawdata = self._rawdata, image_rawdata
+                self.data = image_data
+        try:
+            display(Image(image_rawdata))
+        except Exception as e:
+            warnings.warn('Problem displaying image: ' + str(e))
