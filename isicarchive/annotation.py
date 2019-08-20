@@ -269,7 +269,8 @@ class Annotation(object):
         call_display:bool = True,
         ) -> object:
         try:
-            from IPython.display import Image as IPImage, display
+            from IPython.widgets import Image as IPImage
+            from IPython.display import display
         except:
             warnings.warn('IPython.display.Image not available')
             return
