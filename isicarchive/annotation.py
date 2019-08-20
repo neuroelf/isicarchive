@@ -333,7 +333,8 @@ class Annotation(object):
             image_obj = self._image_obj
             if image_obj.data is None:
                 image_obj.load_imagedata()
-            image_obj.load_superpixels()
+            if image_obj.superpixels['map'] is None:
+                image_obj.load_superpixels(map_superpixels=True)
             image_shape = image_obj.superpixels['shp']
             image_height = image_shape[0]
             image_width = image_shape[1]
