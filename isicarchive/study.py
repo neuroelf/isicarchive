@@ -502,10 +502,9 @@ class Study(object):
             image_map[a_obj.image['name']] = a_obj.image_id
             image_names[a_obj.image_id] = a_obj.image['name']
             user_map[a_obj.user['name']] = a_obj.user_id
+            if 'User ' in a_obj.user['name']:
+                user_map[a_obj.user['name'].replace('User ', '')] = a_obj.user_id
             user_names[a_obj.user_id] = a_obj.user['name'].replace('User ', '')
-        for (user, user_id) in user_map.items():
-            if 'User ' in user:
-                user_map[user.replace('User ', '')] = user_id
         if users is None:
             users = all_users
         elif not isinstance(users, list):
