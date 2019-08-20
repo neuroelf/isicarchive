@@ -233,6 +233,12 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
         except:
             pass
         return val
+    if isinstance(obj, list) and (len(name) > 3) and (name[0:2] == '[].'):
+        val = [None] * len(obj)
+        name = name[3:]
+        for idx in range(len(obj)):
+            val[idx] = getxattr(obj[idx], name, default)
+        return val
     name_lst = name.split('.')
     name_lst.reverse()
     try:

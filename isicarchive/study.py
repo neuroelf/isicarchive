@@ -532,10 +532,7 @@ class Study(object):
                     raise ValueError('Invalid images parameter.')
         if max_size is None:
             max_size = (2 * ISIC_IMAGE_DISPLAY_SIZE_MAX) // len(users)
-        hboxes = [Label('Images :: Users')]
-        for image_id in images:
-            hboxes.append(Label(image_names[image_id]))
-        vboxes = [VBox(hboxes)]
+        vboxes = []
         for user_id in users:
             hboxes = [Label('User: ' + user_names[user_id])]
             for image_id in images:
