@@ -535,7 +535,7 @@ class Study(object):
         hboxes = [Label('Images :: Users')]
         for image_id in images:
             hboxes.append(Label(image_names[image_id]))
-        vboxes = [hboxes]
+        vboxes = [VBox(hboxes)]
         for user_id in users:
             hboxes = [Label('User: ' + user_names[user_id])]
             for image_id in images:
