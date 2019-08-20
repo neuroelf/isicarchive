@@ -13,7 +13,7 @@ or can be generated
    >>> study = Study(...)
 """
 
-__version__ = '0.4.1'
+__version__ = '0.4.2'
 
 import copy
 import datetime
@@ -21,6 +21,7 @@ import glob
 import json
 import numbers
 import os
+from typing import Any
 import warnings
 
 from .annotation import Annotation
@@ -471,3 +472,76 @@ class Study(object):
                 self._api._image_objs[image_id] = image_obj
             if total > 0 and (load_imagedata or load_superpixels):
                 func.print_progress(total, total, 'Loading images:')
+
+    # show annotations (grid)
+    def show_annotations(self,
+        users:list = None,
+        images:list = None,
+        features:Any = None,
+        alpha:float = 1.0,
+        ):
+        try:
+            from ipywidgets import HBox, VBox, Label
+            from IPython.display import display
+        except:
+            warnings.warn('Error importing HBox and VBox from ipywidgets.')
+            return
+        self.load_annotations()
+        a_objs = self._obj_annotations
+        a_dict = dict()
+        all_images = list(set([a_obj.image_id for a_obj in a_objs.values()]))
+        all_users = list(set([a_obj.user_id for a_obj in a_objs.values()]))
+        for image in all_images:
+            a_dict[image] = dict()
+        image_map = dict()
+        image_names = dict()
+        user_map = dict()
+        user_names = dict()
+        for a_obj in a_objs.values():
+            a_dict[a_obj.image_id][a_obj.user_id] = a_obj
+            image_map[a_obj.image['name']] = a_obj.image_id
+            image_names[a_obj.image_id] = a_obj.image['name']
+            user_map[a_obj.user['name']] = a_obj.user_id
+            user_names[a_obj.user_id] = a_obj.user['name'].replace('User ', '')
+        for (user, user_id) in user_map.items():
+            if 'User ' in user:
+                user_map[user.replace('User ', '')] = user_id
+        if users is None:
+            users = all_users
+        elif not isinstance(users, list):
+            raise ValueError('Invalid users parameter.')
+        else:
+            for (idx, user) in enumerate(users):
+                if not isinstance(user, str) or user == '':
+                    raise ValueError('Invalid users parameter.')
+                elif user in user_map:
+                    users[idx] = user_map[user]
+                elif not user in all_users:
+                    raise ValueError('Invalid users parameter.')
+        if images is None:
+            users = all_images
+        elif not isinstance(images, list):
+            raise ValueError('Invalid images parameter.')
+        else:
+            for (idx, image) in enumerate(images):
+                if not isinstance(image, str) or image == '':
+                    raise ValueError('Invalid images parameter.')
+                elif image in image_map:
+                    images[idx] = image_map[image]
+                elif not image in all_images:
+                    raise ValueError('Invalid images parameter.')
+        hboxes = []
+        vboxes = [Label('Images :: Users')]
+        for user_id in users:
+            vboxes.append(Label('User: ' + user_names[user_id]))
+        hboxes.append(HBox(vboxes))
+        for image_id in images:
+            vboxes = [Label(image_names[image_id])]
+            for user_id in users:
+                if user_id in a_dict[image_id]:
+                    vboxes.append(a_dict[image_id][user_id].show_in_notebook(
+                        features=features, alpha=alpha, on_image=True, call_display=False))
+                else:
+                    vboxes.append(Label('Not completed.'))
+            hboxes.append(HBox(vboxes))
+        display(VBox(hboxes))

@@ -346,7 +346,10 @@ class Image(object):
         return req.json()
 
     # show image in notebook
-    def show_in_notebook(self, max_size:int = None):
+    def show_in_notebook(self,
+        max_size:int = None,
+        call_display:bool = True,
+        ) -> object:
         if max_size is None:
             max_size = ISIC_IMAGE_DISPLAY_SIZE_MAX
         try:
@@ -387,6 +390,10 @@ class Image(object):
             image_width = None
             image_height = None
         try:
-            display(IPImage(image_rawdata, width=image_width, height=image_height))
+            image_out = IPImage(image_rawdata, width=image_width, height=image_height)
+            if call_display:
+                display(image_out)
+            return image_out
         except Exception as e:
-            warnings.warn('Problem displaying image: ' + str(e))
+            warnings.warn('Problem producing image for display: ' + str(e))
+            return None

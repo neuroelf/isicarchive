@@ -265,7 +265,9 @@ class Annotation(object):
         color_code:list = [255, 0, 0],
         alpha:float = 1.0,
         on_image:bool = True,
-        max_size:int = None):
+        max_size:int = None,
+        call_display:bool = True,
+        ) -> object:
         try:
             from IPython.display import Image as IPImage, display
         except:
@@ -287,7 +289,7 @@ class Annotation(object):
             features = dict()
             for feature in features_list:
                 if not feature in self.features:
-                    raise KeyError('Feature "' + feature + '" not found.')
+                    continue
                 if feature == features[0]:
                     features[feature] = [color_code, alpha]
                 else:
@@ -394,6 +396,10 @@ class Annotation(object):
         image_width = int(image_width / shrink_factor)
         image_height = int(image_height / shrink_factor)
         try:
-            display(IPImage(buffer_data, width=image_width, height=image_height))
+            image_out = IPImage(buffer_data, width=image_width, height=image_height)
+            if call_display:
+                display(image_out)
+            return image_out
         except Exception as e:
-            warnings.warn('Problem displaying image: ' + str(e))
+            warnings.warn('Problem producing image for display: ' + str(e))
+            return None

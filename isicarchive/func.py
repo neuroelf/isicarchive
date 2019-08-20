@@ -8,6 +8,8 @@ Functions
 ---------
 cache_filename
     Creates a filename of a specific type from an id
+color_code
+    Looks up a unique color code per feature name (from IsicApi object)
 could_be_mongo_object_id
     Returns true if the input is a 24 lower-case hex character string
 get
@@ -16,6 +18,10 @@ get_json
     Passes the input through get(...) and appends .json()
 get_json_list
     Passes the input through get(...) and yields one array item
+getxattr
+    Extended getattr function, including sub-fields
+guess_environment
+    Guesses the environment (e.g. 'jupyter' vs. 'terminal')
 guess_file_extension
     Guesses a downloaded file's extension from the HTTP Headers
 gzip_load_var
@@ -26,8 +32,12 @@ isic_auth_token
     Makes a login attempt and extracts the Girder-Token from the Headers
 make_url
     Concatenates URL particles
+object_pretty
+    Pretty-prints an objects representation from fields
+print_progress
+    Text-based progress bar
 superpixel_decode_img
-    Decodes a superpixel (index) array into a map (dict)
+    Decodes a superpixel (index) array into a 2D mapping array
 superpixel_index
     Converts an RGB superpixel image to a 2D superpixel index array
 uri_encode
@@ -124,7 +134,7 @@ def get(
     ) -> Any:
     """
     Performs a GET request to the given endpoint, with the provided
-    parameters. If the `save_as` argument is given, will attempt to
+    parameters. If the `save_as` parameter is given, will attempt to
     store the returned output into a local file instead of returning
     the content as a string.
 
@@ -587,10 +597,3 @@ _uri_letters = ' !"#$%&\'()*+,/:;<=>?@[\\]^`{|}~'
 def uri_encode(uri:str) -> str:
     letters = ['%' + hex(ord(c))[-2:] if c in _uri_letters else c for c in uri]
     return ''.join(letters)
-
-@numba.jit(nopython=True)
-def xplus1(value):
-    newvalue = numpy.zeros(value.size, dtype=numpy.int32)
-    for idx in range(value.size):
-        newvalue[idx] = value[idx] + 1
-    return newvalue

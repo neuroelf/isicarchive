@@ -5,7 +5,7 @@ This module provides the isicapi class/object to access the ISIC
 archive programmatically.
 
 To instantiate a connection object without credentials (public use),
-simply create the object without arguments:
+simply create the object without parameters:
 
    >>> from isicarchive import IsicApi
    >>> api = IsicApi()
@@ -168,7 +168,7 @@ class IsicApi(object):
 
         """IsicApi.__init__: please refer to IsicApi docstring!"""
         
-        # Check input arguments
+        # Check input parameters
         if hostname is None or hostname == '':
             hostname = vars.ISIC_BASE_URL
         elif (len(hostname)) < 8 or (hostname[0:8].lower() != 'https://'):
