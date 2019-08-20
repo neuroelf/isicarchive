@@ -399,6 +399,7 @@ class Annotation(object):
             image_out = IPImage(buffer_data, width=image_width, height=image_height)
             if call_display:
                 display(image_out)
+                return None
             return image_out
         except Exception as e:
             warnings.warn('Problem producing image for display: ' + str(e))
