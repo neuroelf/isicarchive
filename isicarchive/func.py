@@ -34,7 +34,7 @@ uri_encode
     Encodes non-letter/number characters into %02x sequences
 """
 
-__version__ = '0.4.0'
+__version__ = '0.4.1'
 
 import copy
 import gzip
@@ -43,6 +43,7 @@ import os
 import re
 from typing import Any, Tuple
 import warnings
+import time
 
 import numba
 import numpy
@@ -236,6 +237,27 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
         pass
     return val
 
+# guess environment
+def guess_environment() -> str:
+    """
+    Returns the guess for which environment python runs in.
+
+    No parameters
+
+    Returns:
+    env_guess : str
+        One of 'jupyter', 'ipython', or 'terminal'
+    """
+    try:
+        ipy_str = str(type(get_ipython()))
+        if 'zmqshell' in ipy_str:
+            return 'jupyter'
+        if 'terminal' in ipy_str:
+            return 'ipython'
+    except:
+        return 'terminal'
+guessed_environment = guess_environment()
+
 # guess file extentions from returned request headers
 _ext_type_guess = {
     'bmp': '.bmp',
@@ -362,8 +384,8 @@ def make_url(base_url:str, endpoint:str) -> str:
     """
     Concatenates the base_url with '/' and the endpoint.
     
-    Parameters:
-    -----------
+    Parameters
+    ----------
     base_url : str
         Fully qualified hostname + API URI, e.g. https://host/api/v0
     endpoint : str
@@ -371,7 +393,34 @@ def make_url(base_url:str, endpoint:str) -> str:
     """
     return base_url + '/' + endpoint
 
+# pretty print objects (shared implementation)
 def object_pretty(obj:object, p:object, cycle:bool = False, fields:list = None):
+    """
+    Pretty print object's main fields
+
+    Parameters
+    ----------
+    obj : object
+        The object to be printed
+    p : object
+        pretty-printer object
+    cycle : bool
+        Necessary flag to process to avoid loops
+    fields : list
+        List of fields to print (can also be a dict for extended syntax)
+    
+    No returns, will print using object ```p```.
+
+    If fields is a dict, the syntax in each value of the dictionary can
+    be a more complex access to ```obj```, such as:
+
+    fields = {
+        'meta_name': 'meta.name',
+        'question_0': 'question.0',
+        'user_keys': 'user.{keys}',
+    }
+    pretty_print(o, p, cycle, fields)
+    """
     if fields is None:
         return
     t = str(type(obj)).replace('<class \'', '').replace('\'>', '')
@@ -421,6 +470,55 @@ def object_pretty(obj:object, p:object, cycle:bool = False, fields:list = None):
                     p.text('\'' + name + '\': ' + field_str + ',')
         else:
             raise ValueError('Invalid list of fields.')
+
+# progress bar (text)
+_progress_bar_widget = None
+def print_progress(count:int, total:int, prefix:str = '', suffix:str = '',
+    decimals:int = 1, length:int = 72, fill:str = '#'):
+    """
+    Call in a loop to create terminal progress bar
+
+    Parameters
+    ----------
+    count : int
+        Current iteration count (required)
+    total : int
+        Total number of iterations (required)
+    prefix : str
+        Optional prefix string (default: '')
+    suffix : str
+        Optional suffix string (default: '')
+    decimals : int
+        Positive number of decimals in percent complete (default: 1)
+    length : int
+        Character length of bar (default: 72)
+    fill : str
+        Bar fill character (default: '#')
+    """
+    if guessed_environment == 'jupyter':
+        try:
+            from ipywidgets import IntProgress
+            from IPython.display import display
+            if _progress_bar_widget is None:
+                _progress_bar_widget = IntProgress(count, 0, total, length)
+                display(_progress_bar_widget)
+            else:
+                try:
+                    display(_progress_bar_widget)
+                except:
+                    _progress_bar_widget = IntProgress(count, 0, total, length)
+                    display(_progress_bar_widget)
+            _progress_bar_widget.value = count
+            time.sleep(0.01)
+            return
+        except:
+            pass
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (count / float(total)))
+    filledLength = int(length * count // total)
+    bar = fill * filledLength + '-' * (length - filledLength)
+    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
+    if count == total: 
+        print()
 
 # decode image superpixel
 def superpixel_index(rgb_array:numpy.ndarray) -> numpy.ndarray:
