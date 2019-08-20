@@ -269,10 +269,10 @@ class Annotation(object):
         call_display:bool = True,
         ) -> object:
         try:
-            from IPython.widgets import Image as IPImage
+            from ipywidgets import Image as IPImage
             from IPython.display import display
         except:
-            warnings.warn('IPython.display.Image not available')
+            warnings.warn('ipywidgets.Image or IPython.display.display not available')
             return
         if not isinstance(color_code, list) or len(color_code) != 3:
             color_code = [255, 0, 0]

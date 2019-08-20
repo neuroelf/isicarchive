@@ -353,10 +353,10 @@ class Image(object):
         if max_size is None:
             max_size = ISIC_IMAGE_DISPLAY_SIZE_MAX
         try:
-            from IPython.widgets import Image as IPImage
+            from ipywidgets import Image as IPImage
             from IPython.display import display
         except:
-            warnings.warn('IPython.display.Image not available')
+            warnings.warn('ipywidgets.Image or IPython.display.display not available')
             return
         image_rawdata = self._rawdata
         if self._api._cache_folder:
