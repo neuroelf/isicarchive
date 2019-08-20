@@ -26,7 +26,7 @@ import warnings
 
 from .annotation import Annotation
 from .image import Image
-from .vars import ISIC_IMAGE_DETAILS_PER_REQUEST
+from .vars import ISIC_IMAGE_DETAILS_PER_REQUEST, ISIC_IMAGE_DISPLAY_SIZE_MAX
 from . import func
 
 _json_full_fields = [
@@ -479,6 +479,7 @@ class Study(object):
         images:list = None,
         features:Any = None,
         alpha:float = 1.0,
+        max_size = None,
         ):
         try:
             from ipywidgets import HBox, VBox, Label
@@ -518,7 +519,7 @@ class Study(object):
                 elif not user in all_users:
                     raise ValueError('Invalid users parameter.')
         if images is None:
-            users = all_images
+            images = all_images
         elif not isinstance(images, list):
             raise ValueError('Invalid images parameter.')
         else:
@@ -529,18 +530,19 @@ class Study(object):
                     images[idx] = image_map[image]
                 elif not image in all_images:
                     raise ValueError('Invalid images parameter.')
-        hboxes = []
-        vboxes = [Label('Images :: Users')]
-        for user_id in users:
-            vboxes.append(Label('User: ' + user_names[user_id]))
-        hboxes.append(HBox(vboxes))
+        if max_size is None:
+            max_size = (2 * ISIC_IMAGE_DISPLAY_SIZE_MAX) // len(users)
+        hboxes = [Label('Images :: Users')]
         for image_id in images:
-            vboxes = [Label(image_names[image_id])]
-            for user_id in users:
+            hboxes.append(Label(image_names[image_id]))
+        vboxes = [hboxes]
+        for user_id in users:
+            hboxes = [Label('User: ' + user_names[user_id])]
+            for image_id in images:
                 if user_id in a_dict[image_id]:
-                    vboxes.append(a_dict[image_id][user_id].show_in_notebook(
+                    hboxes.append(a_dict[image_id][user_id].show_in_notebook(
                         features=features, alpha=alpha, on_image=True, call_display=False))
                 else:
-                    vboxes.append(Label('Not completed.'))
-            hboxes.append(HBox(vboxes))
-        display(VBox(hboxes))
+                    hboxes.append(Label('Not completed.'))
+            vboxes.append(VBox(hboxes))
+        display(HBox(vboxes))
