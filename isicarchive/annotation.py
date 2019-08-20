@@ -389,6 +389,10 @@ class Annotation(object):
             else:
                 imageio.imwrite(buffer, image_data, 'png')
             buffer_data = buffer.getvalue()
+        image_max_xy = max(image_width, image_height)
+        shrink_factor = max(1.0, image_max_xy / max_size)
+        image_width = int(image_width / shrink_factor)
+        image_height = int(image_height / shrink_factor)
         try:
             display(IPImage(buffer_data, width=image_width, height=image_height))
         except Exception as e:
