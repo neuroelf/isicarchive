@@ -350,7 +350,7 @@ class Image(object):
         if max_size is None:
             max_size = ISIC_IMAGE_DISPLAY_SIZE_MAX
         try:
-            from IPython.display import Image, display
+            from IPython.display import Image as IPImage, display
         except:
             warnings.warn('IPython.display.Image not available')
             return
@@ -387,6 +387,6 @@ class Image(object):
             image_width = None
             image_height = None
         try:
-            display(Image(image_rawdata, width=image_width, height=image_height))
+            display(IPImage(image_rawdata, width=image_width, height=image_height))
         except Exception as e:
             warnings.warn('Problem displaying image: ' + str(e))

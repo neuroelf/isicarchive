@@ -14,17 +14,24 @@ or can be generated
    >>> annotation = Annotation(...)
 """
 
-__version__ = '0.4.0'
+__version__ = '0.4.2'
 
 
+import copy
 import datetime
+import glob
+import io
 import json
+from typing import Any
 import warnings
 
+import imageio
 import numpy
 import requests
 
+from .image import Image
 from . import func
+from .vars import ISIC_IMAGE_DISPLAY_SIZE_MAX
 
 _json_full_fields = [
     'id',
@@ -123,6 +130,7 @@ class Annotation(object):
         """Annotation init."""
 
         self._api = api
+        self._image_obj = None
         self._in_archive = False
         self._study = None
         self.features = dict()
@@ -250,3 +258,131 @@ class Annotation(object):
             json_list.append('"%s": %s' % (json_field,
                 json.dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
+
+    # show image in notebook
+    def show_in_notebook(self,
+        features:Any = None,
+        color_code:list = [255, 0, 0],
+        alpha:float = 1.0,
+        on_image:bool = True,
+        max_size:int = None):
+        try:
+            from IPython.display import Image as IPImage, display
+        except:
+            warnings.warn('IPython.display.Image not available')
+            return
+        if not isinstance(color_code, list) or len(color_code) != 3:
+            color_code = [255, 0, 0]
+        if not isinstance(alpha, float) or (alpha < 0.0) or (alpha > 1.0):
+            alpha = 1.0
+        if features is None:
+            features = {name: color_code for name in self.features.keys()}
+        elif isinstance(features, str):
+            if not features in self.features:
+                raise KeyError('Feature "' + features + '" not found.')
+            features = {features: [color_code, alpha]}
+        elif isinstance(features, list):
+            features_list = copy.copy(features)
+            features = dict()
+            for feature in features_list:
+                if not feature in self.features:
+                    raise KeyError('Feature "' + feature + '" not found.')
+                if feature == features[0]:
+                    features[feature] = [color_code, alpha]
+                else:
+                    rand_color = numpy.random.randint(0, 255, 3).tolist()
+                    features[feature] = [rand_color, alpha]
+        elif not isinstance(features, dict):
+            raise ValueError('Invalid features')
+        else:
+            for (name, code) in features.items():
+                if not isinstance(code, list) or not (
+                    (len(code) == 2) and (len(code[0]) == 3) and
+                    isinstance(code[1], float) and code[1] >= 0.0 and code[1] <= 1.0):
+                    rand_color = numpy.random.randint(0, 255, 3).tolist()
+                    features[name] = [rand_color, alpha]
+
+        if max_size is None:
+            max_size = ISIC_IMAGE_DISPLAY_SIZE_MAX
+        
+        try:
+            image_id = self.image_id
+            if self._image_obj is None:
+                if image_id in self._api._image_objs:
+                    self._image_obj = self._api._image_objs[image_id]
+                    image_odata = self._image_obj.data
+                    image_osp = self._image_obj.superpixels
+                elif image_id in self._api._image_cache:
+                    image_info = self._api._image_cache[image_id]
+                    self._image_obj = Image(image_info, api=self._api,
+                        load_imagedata=True, load_superpixels=True)
+                    self._api._image_objs[image_id] = self._image_obj
+                    image_odata = self._image_obj.data
+                    image_osp = self._image_obj.superpixels
+                else:
+                    self._image_obj = self._api.image(image_id,
+                        load_imagedata=True, load_superpixels=True)
+                    image_odata = None
+                    image_osp = {
+                        'idx': None,
+                        'map': None,
+                        'max': 0,
+                        'shp': (0, 0),
+                    }
+            image_obj = self._image_obj
+            if image_obj.data is None:
+                image_obj.load_imagedata()
+            image_obj.load_superpixels()
+            image_shape = image_obj.superpixels['shp']
+            image_height = image_shape[0]
+            image_width = image_shape[1]
+            image_spmap = image_obj.superpixels['map']
+        except Exception as e:
+            warnings.warn('Problem with associated image: ' + str(e))
+            if not self._image_obj is None:
+                self._image_obj.data = image_odata
+                self._image_obj.superpixels = image_osp
+            return
+        if on_image:
+            image_data = image_obj.data.copy()
+            image_data_shape = image_data.shape
+            if len(image_data_shape) < 3:
+                planes = 1
+            else:
+                planes = image_data_shape[2]
+            image_data.shape = (image_height * image_width, planes)
+        else:
+            planes = 3
+            image_data = numpy.zeros((image_height * image_width, planes),
+                dtype=numpy.uint8)
+        planes = min(3, planes)
+        for (feature, color_spec) in features.items():
+            splist = self.features[feature]['idx']
+            spvals = self.features[feature]['lst']
+            color_code = color_spec[0]
+            alpha = numpy.float(color_spec[1])
+            inv_alpha = numpy.float(1.0 - color_spec[1])
+            for idx in range(len(splist)):
+                spidx = splist[idx]
+                spnum = image_spmap[spidx, -1]
+                sppidx = image_spmap[spidx, 0:spnum]
+                for p in range(planes):
+                    if alpha == 1.0:
+                        image_data[sppidx, p] = color_code[p]
+                    else:
+                        image_data[sppidx, p] = numpy.round(
+                            alpha * color_code[p] +
+                            inv_alpha * image_data[sppidx, p])
+        if not self._image_obj is None:
+            self._image_obj.data = image_odata
+            self._image_obj.superpixels = image_osp
+        with io.BytesIO() as buffer:
+            if on_image:
+                imageio.imwrite(buffer, image_data, 'jpg')
+            else:
+                imageio.imwrite(buffer, image_data, 'png')
+            buffer_data = buffer.getvalue()
+        try:
+            display(IPImage(buffer_data, width=image_width, height=image_height))
+        except Exception as e:
+            warnings.warn('Problem displaying image: ' + str(e))

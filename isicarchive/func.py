@@ -34,7 +34,7 @@ uri_encode
     Encodes non-letter/number characters into %02x sequences
 """
 
-__version__ = '0.4.1'
+__version__ = '0.4.2'
 
 import copy
 import gzip
@@ -555,9 +555,12 @@ def superpixel_decode_img(pixel_img):
     
     Returns
     -------
-    superpixel_map : dict
-        Dict which maps from superpixel index (0-based) to 1D coordinates
-        in the original (flattened) image space.
+    superpixel_map : 2d numpy.ndarray
+        Array which maps from superpixel index (0-based) to 1D coordinates
+        in the original (flattened) image space, such that
+        superpixel_map[superpixel_idx, 0:superpixel_map[superpixel_idx,-1]]
+        is the list of (flattened) pixels in the image space belonging to
+        superpixel_idx.
     """
     pixel_flat = pixel_img.flatten()
     spcounts = numpy.bincount(pixel_flat)
