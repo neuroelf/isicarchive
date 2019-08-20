@@ -376,6 +376,7 @@ class Annotation(object):
                         image_data[sppidx, p] = numpy.round(
                             alpha * color_code[p] +
                             spinv_alpha * image_data[sppidx, p])
+        image_data.shape = (image_height, image_width, planes)
         if not self._image_obj is None:
             self._image_obj.data = image_odata
             self._image_obj.superpixels = image_osp
