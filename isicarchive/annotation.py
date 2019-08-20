@@ -276,7 +276,8 @@ class Annotation(object):
         if not isinstance(alpha, float) or (alpha < 0.0) or (alpha > 1.0):
             alpha = 1.0
         if features is None:
-            features = {name: color_code for name in self.features.keys()}
+            features = {name: [func.color_code(name), alpha] for
+                name in self.features.keys()}
         elif isinstance(features, str):
             if not features in self.features:
                 raise KeyError('Feature "' + features + '" not found.')
@@ -361,18 +362,19 @@ class Annotation(object):
             spvals = self.features[feature]['lst']
             color_code = color_spec[0]
             alpha = numpy.float(color_spec[1])
-            inv_alpha = numpy.float(1.0 - color_spec[1])
             for idx in range(len(splist)):
                 spidx = splist[idx]
                 spnum = image_spmap[spidx, -1]
                 sppidx = image_spmap[spidx, 0:spnum]
+                spalpha = alpha * numpy.float(spvals[idx])
+                spinv_alpha = 1.0 - spalpha
                 for p in range(planes):
-                    if alpha == 1.0:
+                    if spalpha == 1.0:
                         image_data[sppidx, p] = color_code[p]
                     else:
                         image_data[sppidx, p] = numpy.round(
                             alpha * color_code[p] +
-                            inv_alpha * image_data[sppidx, p])
+                            spinv_alpha * image_data[sppidx, p])
         if not self._image_obj is None:
             self._image_obj.data = image_odata
             self._image_obj.superpixels = image_osp

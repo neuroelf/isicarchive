@@ -59,7 +59,7 @@ study_list
     Yields a generator for study JSON dicts
 """
 
-__version__ = '0.4.0'
+__version__ = '0.4.2'
 
 
 import copy
@@ -196,6 +196,7 @@ class IsicApi(object):
         self._current_study = None
         self._datasets = dict()
         self._dataset_objs = dict()
+        self._feature_colors = dict()
         self._hostname = hostname
         self._image_cache = dict()
         self._image_cache_last = '0' * 24

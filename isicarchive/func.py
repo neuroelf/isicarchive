@@ -89,6 +89,12 @@ def cache_filename(oid:str = None, otype:str = None, oext:str = None, extra:str 
     return (api._cache_folder +
         os.sep + oid[-1] + os.sep + otype + '_' + oid + extra + oext)
 
+# lookup color code
+def color_code(api:object = None, name:str = None) -> list:
+    if api is None or name is None or not name in api._feature_colors:
+        return numpy.random.randint(0, 255, 3).tolist()
+    return api._feature_colors[name]
+
 # helper function that returns True for valid looking mongo ObjectId strings
 _mongo_object_id_pattern = re.compile(r"^[0-9a-f]{24}$")
 def could_be_mongo_object_id(test_id:str = "") -> bool:
