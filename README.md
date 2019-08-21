@@ -30,7 +30,7 @@ can skip the next section, and either set the ```username``` parameter to
 
 ### Logging into the ISIC Archive
 For instance, some annotations created by study participants, or retrieving
-certain images that are not marked for public access requireds that you are
+certain images that are not marked for public access requires that you are
 logged into the archive/API. This can be achieved by instantiating the
 ```IsicApi``` object with a valid username (and password):
 
@@ -78,24 +78,37 @@ cache, instead of having to request them again from the web-based API.
 Within the cache folder the ```IsicApi``` object will, on first use,
 create 16 subfolders, named ```0``` through ```9```, and ```a``` through
 ```f``` (the 16 hexadecimal digits), to avoid downloading too many files
-into a single folder, which would slow down the operation later on.
+into a single folder, which would slow down the operation later on. For each
+file, the sub-folder is determined by the last hexadecimal digit of the
+unique object ID (explained below).
 
-For each file, the sub-folder is determined by the last hexadecimal digit
-of the unique object ID.
-
-Images are stored with the filename pattern of
-
-```image_[objectId]_[name].EXT```
-
-whereas ```objectId``` is the unique ID for this image within the API,
-```name``` is the filename (typically 'ISIC_xxxxxxx'), and ```.EXT``` is
+Images are stored with a filename pattern of ```image_[objectId]_[name].EXT```
+whereas ```objectId``` is the unique ID for this image within the archive,
+```name``` is the filename (typically ```ISIC_xxxxxxx```), and ```.EXT``` is
 the extension as provided by the Content-Type header of the downloaded image.
 
-Superpixel images are stored with the filename pattern of
+Superpixel images (also explained below) are stored with the filename pattern
+of ```spimg_[objectId].png``` using the associated image's object ID! In
+addition, a derived superpixel index array is stored with a filename pattern
+of ```spidx_[objectID].npz``` (using ```numpy.savez```).
 
-```imgsp_[objectId]_[name].png```
+### Caching information about all images
+Since the archive contains several thousand images, it can often be helpful
+to be able to search for specific images. To do so locally, you can download
+the details about all images available in the archive (if you're) calling
+the ```IsicApi``` object with the cache_folder parameter) like so:
 
-using the same two parameters as the actual images.
+~~~~
+# Populate image cache
+api.cache_images()
+~~~~
+
+When called for the first time, this may take several minutes. Once the
+information is downloaded, however, only a single call will be made to the
+web-based API to confirm that, indeed, no new images are available. **For
+this to work, however, it is important that you do not use the same
+cache folder for sessions where you are either logged in (authenticated)
+versus not!**
 
 ## Quick primer on the API itself
 Any interaction with the web-based API is performed by the ```IsicApi```
