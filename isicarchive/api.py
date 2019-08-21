@@ -64,9 +64,10 @@ __version__ = '0.4.3'
 
 import copy
 import os
+import re
 import tempfile
 import time
-from typing import Any, Optional, Tuple
+from typing import Any, Optional, Tuple, Union
 import warnings
 
 import getpass
@@ -519,6 +520,68 @@ class IsicApi(object):
             else:
                 yield dataset
 
+    # download selected images
+    def download_selected(self,
+        target_folder:str = None,
+        filename_pattern:str = None,
+        from_selection:Union[dict, list] = None,
+        ) -> bool:
+        """
+        Download images from the (or a) selection.
+
+        Parameters
+        ----------
+        target_folder : str
+            Target folder to download images to
+        filename_pattern : str
+            Pattern containing $field terms; extension will be added!
+        from_selection : dict (default: self.image_selection)
+            Dictionary with imageIds as keys
+        
+        No return values. If both `target_folder` and `filename_pattern`
+        are unset (None), download the images (and their superpixel) to
+        cache folder (if set, otherwise an error is raised). If only the
+        `target_folder` is set, the pattern will be set to '$name'.
+        """
+        if target_folder is None and (not filename_pattern is None):
+            raise ValueError('Setting a filename pattern requires a target folder.')
+        if from_selection is None:
+            from_selection = self.image_selection
+        if isinstance(from_selection, list):
+            old_selection = self.image_selection
+            full_selection = self.select_images([[]])
+            self.image_selection = old_selection
+            full_names = dict()
+            for (image_id, item) in full_selection.items():
+                full_names[item['name']] = image_id
+            selection_details = dict()
+            for item in from_selection:
+                if isinstance(item, dict) and item['_id'] and item['name']:
+                    selection_details[item['_id']] = item
+                elif item in full_selection:
+                    selection_details[item] = full_selection[item]
+                elif item in full_names:
+                    selection_details[item] = full_selection[full_names[item]]
+                else:
+                    raise ValueError('Invalid selection item.')
+            from_selection = selection_details
+        if target_folder and filename_pattern is None:
+            filename_pattern = '$name'
+        for (image_id, item) in from_selection:
+            try:
+                image_req = func.get(self._base_url,
+                    'image/' + image_id + '/download', self._auth_token)
+                image_ext = func.guess_file_extension(image_req.headers)
+            except Exception as e:
+                warnings.warn('Error downloading {0:s}: {1:s}'.format(
+                    item['name'], str(e)))
+            if target_folder is None:
+                image_filename = 'None' + image_ext
+            else:
+                image_filename = 'None' + image_ext
+            with open(image_filename, 'wb') as image_file:
+                image_file.write(image_req.content)
+
     # find images
     def find_images(self, filter_spec:dict) -> Any:
         if not self._cache_folder:
@@ -680,8 +743,63 @@ class IsicApi(object):
                 len(study_obj.questions)))
 
     # Select images from the archive (regardless of study/dataset)
-    def select_images(self, criteria:dict) -> None:
-        pass
+    def select_images(self,
+        criteria:list,
+        sub_select:Union[bool, dict] = False,
+        add_to_selection:bool = False,
+        remove_from_selection:bool = False,
+        ) -> dict:
+        """
+        Select from all available images in the ISIC Archive
+
+        Parameters:
+        criteria : list
+            Search criteria passed on to func.select_from(...)
+        sub_select : bool (default: False)
+            If True, select from among previously selected items
+        add_to_selection : bool (default: False)
+            If True, add to previously selected items
+        remove_from_selection : bool (default: False)
+            If True, remove found items from previously selected ones
+        """
+        if not self.image_cache:
+            if not self._cache_folder:
+                warnings.warn('Attempting to download all image information.')
+                params = {
+                    'detail': 'true',
+                    'limit': '0',
+                    'offset': '0',
+                }
+                try:
+                    all_images = func.get(self._base_url,
+                        'image', self._auth_token, params).json()
+                except Exception as e:
+                    warnings.warn('Error retrieving images information: ' + str(e))
+                    return
+                for image in all_images:
+                    self.image_cache[image['_id']] = image
+                self._image_cache_last = all_images[-1]['_id']
+                self._image_cache_timeout = time.time() + vars.ISIC_IMAGE_CACHE_UPDATE_LASTS
+            else:
+                self.cache_images()
+        if isinstance(sub_select, dict):
+            selection = func.select_from(sub_select, criteria)
+        elif sub_select:
+            if not self.image_selection:
+                return self.image_selection
+            selection = func.select_from(self.image_selection, criteria)
+            add_to_selection = False
+        else:
+            selection = func.select_from(self.image_cache, criteria)
+        if not add_to_selection and not remove_from_selection:
+            self.image_selection = selection
+        elif add_to_selection:
+            for (image_id, item) in selection.items():
+                self.image_selection[image_id] = item
+        else:
+            for image_id in selection.keys():
+                self.image_selection.pop(image_id, None)
+        return self.image_selection
 
     # Generic /study endpoint
     def study(self,

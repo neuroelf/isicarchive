@@ -46,7 +46,7 @@ uri_encode
     Encodes non-letter/number characters into %02x sequences
 """
 
-__version__ = '0.4.4'
+__version__ = '0.4.5'
 
 import copy
 import gzip
@@ -310,7 +310,10 @@ def get(
     url = make_url(base_url, endpoint)
     headers = {'Girder-Token': auth_token} if auth_token else None
     if save_as is None:
-        return requests.get(url, headers=headers, params=params)
+        return requests.get(url,
+        headers=headers,
+        params=params,
+        allow_redirects=True)
     req = requests.get(url,
         headers=headers,
         params=params,
@@ -716,6 +719,121 @@ def print_progress(
         print()
         if not clear_output is None:
             clear_output()
+
+# select from list
+def selected(item:object, criteria:list) -> bool:
+    """
+    Returns true if item matches criteria, false otherwise.
+
+    Parameters
+    ----------
+    item : object
+        Item from a list, iterated through by select_from(...)
+    criteria : list
+        List of criteria to apply as tests (see example below), whereas
+        each criteria entry is a 3-element list with attribute name,
+        operator, and comparison value. Supported operators are:
+        '==', '!=', '<', '<=', '>', '>=', 'in', 'not in', 'ni', 'not ni',
+        'match', 'not match', 'is', 'not is', 'is None', 'not is None'.
+        The name can be a complex expression, such as 'meta.clinical.age',
+        and will be extracted from the item using getxattr(item, name).
+        If an error occurs, the item will not be selected.
+    
+    Returns
+    -------
+    is_selected : bool
+        True if the item matches the criteria, False otherwise
+    
+    Example
+    -------
+    elderly = selected(
+        {'name': 'Peter', 'age': 72},
+        ['age', '>=', 65])
+    """
+    is_selected = True
+    if (len(criteria) == 3 and isinstance(criteria[0], str)):
+        criteria = [criteria]
+    try:
+        for c in criteria:
+            if not is_selected:
+                break
+            if len(c) != 3:
+                raise ValueError('Invalid criterion.')
+            c_op = c[1]
+            c_test = c[2]
+            val = getxattr(item, c[0], None)
+            if c_op == '==':
+                is_selected = is_selected and (val == c_test)
+            elif c_op == '!=':
+                is_selected = is_selected and (val != c_test)
+            elif c_op == '<':
+                is_selected = is_selected and (val < c_test)
+            elif c_op == '<=':
+                is_selected = is_selected and (val <= c_test)
+            elif c_op == '>':
+                is_selected = is_selected and (val > c_test)
+            elif c_op == '>=':
+                is_selected = is_selected and (val >= c_test)
+            elif c_op == 'in':
+                is_selected = is_selected and (val in c_test)
+            elif c_op == 'not in':
+                is_selected = is_selected and (not val in c_test)
+            elif c_op == 'ni':
+                is_selected = is_selected and (c_test in val)
+            elif c_op == 'not ni':
+                is_selected = is_selected and (not c_test in val)
+            elif c_op == 'match':
+                is_selected = is_selected and (not c_test.match(val) is None)
+            elif c_op == 'not match':
+                is_selected = is_selected and (c_test.match(val) is None)
+            elif c_op == 'is':
+                is_selected = is_selected and (val is c_test)
+            elif c_op == 'not is':
+                is_selected = is_selected and (not val is c_test)
+            elif c_op == 'is None':
+                is_selected = is_selected and (val is None)
+            elif c_op == 'not is None':
+                is_selected = is_selected and (not val is None)
+            else:
+                raise ValueError('Invalid criterion.')
+    except:
+        is_selected = False
+    return is_selected
+
+# select from a list (or dict) of items
+def select_from(items:Union[list, dict], criteria:list) -> Union[list, dict]:
+    """
+    Sub-select from a list (or dict) of items using criteria.
+
+    Parameters
+    ----------
+    items : list or dict
+        List or dictionary with items (values) to be selected from
+    criteria : list
+        List of criteria, which an item must match to be included
+    
+    Returns
+    -------
+    subsel - list or dict
+        Sub-selection made by applying selected(...) to each item.
+    
+    Example
+    -------
+    sub_selection = select_from(big_list,
+        ['diagnosis', '==', 'melanoma'])
+    """
+    if isinstance(items, list):
+        try:
+            return [item for item in items if selected(item, criteria)]
+        except:
+            raise
+    elif isinstance(items, dict):
+        try:
+            return {k: v for (k,v) in items.items() if selected(v, criteria)}
+        except:
+            raise
+    else:
+        raise ValueError('Invalid collection.')
 
 # decode image superpixel
 def superpixel_decode(rgb_array:numpy.ndarray) -> numpy.ndarray:

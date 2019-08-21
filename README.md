@@ -267,13 +267,14 @@ study = api.study('ISBI 2016: 100 Lesion Classification')
 # Download all accessible images and superpixel images for this study
 study.cache_imagedata()
 
-# Display an annotation for an image
-
+# Print study features
+study.load_annotations()
+print(study.features)
 ~~~~
 
 In addition to the information regularly provided by the ISIC Archive API,
-the IsicApi object's implementation will also attempt to already download
-information about annotations.
+the IsicApi object's implementation can also attempt to mass-download
+information about all annotations.
 
 ### Retrieving information about a dataset
 ~~~~
@@ -298,14 +299,37 @@ like to make the binary data available, please use the following methods:
 
 ~~~~
 # Load image data
-image.load_data()
+image.load_imagedata()
 
 # Load superpixel image data
 image.load_superpixels()
 
-# Parse superpixels into a python dict (map) to pixel indices
+# Parse superpixels into a mapping-to-pixel-indices array
 image.map_superpixels()
 ~~~~
 
-The mapping of an image takes a few seconds, but storing the map in a
+The mapping of an image takes a second or so, but storing the map in a
 different format would be relatively wasteful, and so this seems preferable.
+
+### Selecting images
+The ```IsicApi``` object allows to select images based on the contents of
+any subfield in the image details (JSON) representation:
+
+~~~~
+# Make initial selection
+selection = api.select_images([
+    ['meta.acquisition.pixelsX', '>=', 2048],
+    ['meta.acquisition.image_type', '==', 'dermoscopic'],
+    ['meta.clinical.diagnosis', '!=', 'nevus'],
+])
+
+# refine selection (you can inspect the results after each step)
+selection = api.select_images(['dataset._accessLevel', '==', 0], sub_select=True)
+selection = api.select_images(['notes.tags', 'ni', 'ISBI 2017: Training'], sub_select=True)
+selection = api.select_images(['meta.unstructured.biopsy done', '==', 'Y'], sub_select=True)
+selection = api.select_images(['meta.clinical.melanocytic', 'is', True], sub_select=True)
+~~~~
+The selection will both be returned, and also stored in the
+```api.image_selection``` field. So, in a Jupyter notebook, please assign the
+result to a variable if it is the last statement in a cell and you wish not
+to print the output!
