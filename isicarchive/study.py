@@ -330,12 +330,12 @@ class Study(object):
                     'max': 0,
                     'shp': (0, 0),
                 }
-                if not image_id in self._api._image_cache:
+                if not image_id in self._api.image_cache:
                     image_obj = self._api.image(image_id,
                         load_imagedata=False, load_superpixels=False)
                     self._obj_images[image_id] = image_obj
                 else:
-                    image_obj = Image(self._api._image_cache[image_id],
+                    image_obj = Image(self._api.image_cache[image_id],
                         load_imagedata=False, load_superpixels=False)
                     self._obj_images[image_id] = image_obj
                     self._api._obj_images[image_id] = image_obj
@@ -359,7 +359,7 @@ class Study(object):
         study_anno_filename = func.cache_filename(self.id,
             'stann', '.json.gz', api=self._api)
         study_anno_data = dict()
-        if os.path.exists(study_anno_filename):
+        if self._api._cache_folder and os.path.exists(study_anno_filename):
             try:
                 study_anno_data = func.gzip_load_var(study_anno_filename)
             except Exception as e:
@@ -390,13 +390,11 @@ class Study(object):
                         annotation['_id'], str(e)))
         func.print_progress(total, total, 'Loading annotations:')
         if didwarn:
-            warnings.warn
-            pass
-        if len(study_anno_data) > 0:
+            warnings.warn('Problems retrieving {0:d} annotations.'.format(len(didwarn)))
+        if self._api._cache_folder and len(study_anno_data) > 0:
             if os.path.exists(study_anno_filename):
                 os.remove(study_anno_filename)
             func.gzip_save_var(study_anno_filename, study_anno_data)
-
 
     # load images
     def load_images(self,
@@ -407,16 +405,17 @@ class Study(object):
         params = {
             'detail': 'true',
             'imageIds': '',
+            'limit': '0',
         }
         to_load = []
         rep_idx = dict()
         for count in range(len(self.images)):
             image_id = self.images[count]['_id']
-            if image_id in self._api._image_cache:
+            if image_id in self._api.image_cache:
                 if image_id in self._api._image_objs:
                     self._obj_images[image_id] = self._api._image_objs[image_id]
                     continue
-                image_detail = self._api._image_cache[image_id]
+                image_detail = self._api.image_cache[image_id]
                 image_obj = Image(from_json=image_detail,
                     api=self._api, load_imagedata=load_imagedata)
                 self._obj_images[image_id] = image_obj
@@ -454,8 +453,9 @@ class Study(object):
             params['imageIds'] = '["' + '","'.join(to_load) + '"]'
             image_info = func.get(self._api._base_url,
                 'image', self._api._auth_token, params=params).json()
-            warnings.warn('{0:d} images could not be loaded.'.format(
-                len(to_load) - len(image_info)))
+            if len(image_info) != len(to_load):
+                warnings.warn('{0:d} images could not be loaded.'.format(
+                    len(to_load) - len(image_info)))
             total = len(image_info)
             for repcount in range(len(image_info)):
                 image_detail = image_info[repcount]

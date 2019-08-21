@@ -36,31 +36,43 @@ object_pretty
     Pretty-prints an objects representation from fields
 print_progress
     Text-based progress bar
-superpixel_decode_img
-    Decodes a superpixel (index) array into a 2D mapping array
-superpixel_index
+superpixel_decode
     Converts an RGB superpixel image to a 2D superpixel index array
+superpixel_map
+    Decodes a superpixel (index) array into a 2D mapping array
+superpixel_map_rgb
+    Chain superpixel_map(superpixel_decode(image))
 uri_encode
     Encodes non-letter/number characters into %02x sequences
 """
 
-__version__ = '0.4.2'
+__version__ = '0.4.4'
 
 import copy
 import gzip
+import io
 import json
 import os
 import re
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple, Union
 import warnings
 import time
 
+import imageio
 import numba
 import numpy
 import requests
 
+from .vars import ISIC_FUNC_PPI, ISIC_IMAGE_DISPLAY_SIZE_MAX
+
 # cache filename
-def cache_filename(oid:str = None, otype:str = None, oext:str = None, extra:str = None, api:object = None) -> str:
+def cache_filename(
+    oid:str = None,
+    otype:str = None,
+    oext:str = None,
+    extra:str = None,
+    api:object = None,
+    ) -> str:
     """
     Creates a filename out of an object (type, id, ext).
 
@@ -101,9 +113,58 @@ def cache_filename(oid:str = None, otype:str = None, oext:str = None, extra:str 
 
 # lookup color code
 def color_code(api:object = None, name:str = None) -> list:
+    """
+    Returns a specific 3-element list color code for a (feature) name
+
+    Parameters
+    ----------
+    api : object
+        Reference to IsicApi object
+    name : str
+        Feature (or other) name
+    
+    Returns
+    -------
+    color_code : list
+        3-element list with [R,G,B] values, random if name not found.
+    """
     if api is None or name is None or not name in api._feature_colors:
         return numpy.random.randint(0, 255, 3).tolist()
     return api._feature_colors[name]
+
+# color superpixels in an image
+def color_superpixels(
+    image:numpy.ndarray,
+    splst:numpy.ndarray,
+    spmap:numpy.ndarray,
+    color:list,
+    alpha:float,
+    spval:numpy.ndarray = None,
+    copy_image:bool = False) -> Optional[numpy.ndarray]:
+    im_shape = image.shape
+    if copy_image:
+        image = numpy.copy(image)
+    if len(im_shape) == 3 or im_shape[1] > 3:
+        planes = im_shape[2] if len(im_shape) == 3 else 1
+        image.shape = (im_shape[0] * im_shape[1], planes)
+    else:
+        planes = im_shape[1]
+    if spval is None:
+        spval = numpy.ones(len(splst), dtype=numpy.float32)
+    for idx in range(len(splst)):
+        spidx = splst[idx]
+        spnum = spmap[spidx, -1]
+        sppidx = spmap[spidx, 0:spnum]
+        spalpha = alpha * numpy.float(spval[idx])
+        spinv_alpha = 1.0 - spalpha
+        for p in range(planes):
+            if spalpha == 1.0:
+                image[sppidx, p] = color[p]
+            else:
+                image[sppidx, p] = numpy.round(
+                    alpha * color[p] + spinv_alpha * image[sppidx, p])
+    image.shape = im_shape
+    return image
 
 # helper function that returns True for valid looking mongo ObjectId strings
 _mongo_object_id_pattern = re.compile(r"^[0-9a-f]{24}$")
@@ -119,10 +180,99 @@ def could_be_mongo_object_id(test_id:str = "") -> bool:
     Returns
     -------
     test_val : bool
-        True if test_id is 24 characters of lower-case hexadecimal characters
+        True if test_id is 24 lower-case hexadecimal characters
     """
     return (len(test_id) == 24
             and (not re.match(_mongo_object_id_pattern, test_id) is None))
+
+# display image
+def display_image(
+    image_data:Union[bytes, str, numpy.ndarray, imageio.core.util.Array],
+    image_size:Tuple,
+    max_size:int = ISIC_IMAGE_DISPLAY_SIZE_MAX,
+    library:str = 'ipython',
+    ipython_as_object:bool = False,
+    mpl_axes:object = None,
+    ) -> Optional[object]:
+    if image_data is None:
+        return
+    if not isinstance(library, str):
+        raise ValueError('Invalid library selection.')
+    library = library.lower()
+    if library == 'ipython':
+        try:
+            from ipywidgets import Image as ImageWidget
+            from IPython.display import display
+        except:
+            warnings.warn('Requested library not available')
+            return
+    elif library == 'matplotlib':
+        try:
+            import matplotlib.pyplot as mpl_pyplot
+        except:
+            warnings.warn('Requested library not available')
+            return
+    else:
+        raise ValueError('Invalid library selection.')
+    if (isinstance(image_data, numpy.ndarray) or
+        isinstance(image_data, imageio.core.util.Array)):
+        if library == 'ipython':
+            try:
+                image_data = write_image(image_data, 'buffer', 'jpg')
+            except:
+                raise
+    elif isinstance(image_data, str) and (len(image_data) < 256):
+        try:
+            with open(image_data, 'rb') as image_file:
+                image_data = image_file.read()
+        except:
+            raise
+    if library == 'matplotlib' and isinstance(image_data, bytes):
+        try:
+            image_data = imageio.imread(image_data)
+        except:
+            raise
+    if not isinstance(max_size, int) or (max_size < 32) or (max_size > 5120):
+        max_size = ISIC_IMAGE_DISPLAY_SIZE_MAX
+    if image_size is None:
+        try:
+            if library == 'ipython':
+                image_array = imageio.imread(image_data)
+                image_size = image_array.shape
+            else:
+                image_size = image_data.shape
+        except:
+            raise
+    image_height = image_size[0]
+    image_width = image_size[1]
+    image_max_xy = max(image_width, image_height)
+    shrink_factor = max(1.0, image_max_xy / max_size)
+    image_width = int(image_width / shrink_factor)
+    image_height = int(image_height / shrink_factor)
+    if library == 'ipython':
+        try:
+            image_out = ImageWidget(value=image_data,
+                width=image_width, height=image_height)
+            if not ipython_as_object:
+                display(image_out)
+            return image_out
+        except Exception as e:
+            warnings.warn('Problem producing image for display: ' + str(e))
+            return None
+    else:
+        try:
+            display_width = image_width / ISIC_FUNC_PPI
+            display_height = image_height / ISIC_FUNC_PPI
+            if mpl_axes is None:
+                mpl_pyplot.figure(figsize=(display_width, display_height))
+                ax_img = mpl_pyplot.imshow(image_data)
+                ax_img.axes.set_axis_off()
+                mpl_pyplot.show()
+            else:
+                mpl_axes.imshow(image_data)
+        except Exception as e:
+            warnings.warn('Problem producing image for display: ' + str(e))
+            return None
 
 # Generic endpoint API, allowing arbitrary commands
 def get(
@@ -302,7 +452,7 @@ def guess_file_extension(headers:dict) -> str:
     Returns
     -------
     file_ext : str
-        File extension guess (including leading dot!), or '.bin' otherwise
+        File extension guess including leading dot, or '.bin' otherwise
     """
     ctype = None
     cdisp = None
@@ -387,9 +537,9 @@ def isic_auth_token(base_url:str, username:str, password:str) -> str:
     base_url : str
         Fully qualified hostname + API URI, e.g. https://host/api/v0
     username : str
-        Username to log into the API (elem[0] in auth=() tuple in .get(...))
+        Username to log into API (elem[0] in auth=() tuple in .get(...))
     password : str
-        Password to pass into the API (elem[1] in auth=() tuple in .get(...))
+        Password to pass into API (elem[1] in auth=() tuple in .get(...))
     
     Returns
     -------
@@ -397,7 +547,7 @@ def isic_auth_token(base_url:str, username:str, password:str) -> str:
         Authentication (Girder-) Token (if successful, otherwise None)
     """
     auth_response = requests.get(make_url(base_url, 'user/authentication'),
-                                 auth=(username, password))
+        auth=(username, password))
     if not auth_response.ok:
         warnings.warn('Login error: ' + auth_response.json()['message'])
         return None
@@ -418,7 +568,12 @@ def make_url(base_url:str, endpoint:str) -> str:
     return base_url + '/' + endpoint
 
 # pretty print objects (shared implementation)
-def object_pretty(obj:object, p:object, cycle:bool = False, fields:list = None):
+def object_pretty(
+    obj:object,
+    p:object,
+    cycle:bool = False,
+    fields:list = None,
+    ) -> None:
     """
     Pretty print object's main fields
 
@@ -456,49 +611,56 @@ def object_pretty(obj:object, p:object, cycle:bool = False, fields:list = None):
             for field in fields:
                 p.breakable()
                 if not '.' in field:
-                    field_val = getattr(obj, field)
+                    val = getattr(obj, field)
                 else:
-                    field_val = getxattr(obj, field)
-                if isinstance(field_val, str):
-                    p.text('\'' + field + '\': \'' + field_val + '\',')
-                elif isinstance(field_val, dict):
+                    val = getxattr(obj, field)
+                if isinstance(val, str):
+                    p.text('\'' + field + '\': \'' + val + '\',')
+                elif isinstance(val, dict):
                     p.text('\'' + field + '\': { ... dict with ' +
-                        str(len(field_val)) + ' fields},')
-                elif isinstance(field_val, list):
+                        str(len(val)) + ' fields},')
+                elif isinstance(val, list):
                     p.text('\'' + field + '\': [ ... list with ' +
-                        str(len(field_val)) + ' items],')
+                        str(len(val)) + ' items],')
                 else:
-                    field_str = str(field_val)
-                    if len(field_str) > 60:
-                        field_str = field_str[:27] + ' ... ' + field_str[-27:]
-                    p.text('\'' + field + '\': ' + field_str + ',')
+                    val = str(val)
+                    if len(val) > 60:
+                        val = val[:27] + ' ... ' + val[-27:]
+                    p.text('\'' + field + '\': ' + val + ',')
         elif isinstance(fields, dict):
             for name, field in fields.items():
                 p.breakable()
                 if not '.' in field:
-                    field_val = getattr(obj, field)
+                    val = getattr(obj, field)
                 else:
-                    field_val = getxattr(obj, field)
-                if isinstance(field_val, str):
-                    p.text('\'' + name + '\': \'' + field_val + '\',')
-                elif isinstance(field_val, dict):
+                    val = getxattr(obj, field)
+                if isinstance(val, str):
+                    p.text('\'' + name + '\': \'' + val + '\',')
+                elif isinstance(val, dict):
                     p.text('\'' + name + '\': { ... dict with ' +
-                        str(len(field_val)) + ' fields},')
-                elif isinstance(field_val, list):
+                        str(len(val)) + ' fields},')
+                elif isinstance(val, list):
                     p.text('\'' + name + '\': [ ... list with ' +
-                        str(len(field_val)) + ' items],')
+                        str(len(val)) + ' items],')
                 else:
-                    field_str = str(field_val)
-                    if len(field_str) > 60:
-                        field_str = field_str[:27] + ' ... ' + field_str[-27:]
-                    p.text('\'' + name + '\': ' + field_str + ',')
+                    val = str(val)
+                    if len(val) > 60:
+                        val = val[:27] + ' ... ' + val[-27:]
+                    p.text('\'' + name + '\': ' + val + ',')
         else:
             raise ValueError('Invalid list of fields.')
 
 # progress bar (text)
 _progress_bar_widget = None
-def print_progress(count:int, total:int, prefix:str = '', suffix:str = '',
-    decimals:int = 1, length:int = 72, fill:str = '#'):
+def print_progress(
+    count:int,
+    total:int,
+    prefix:str = '',
+    suffix:str = '',
+    decimals:int = 1,
+    length:int = 72,
+    fill:str = '#',
+    ) -> None:
     """
     Call in a loop to create terminal progress bar
 
@@ -518,7 +680,15 @@ def print_progress(count:int, total:int, prefix:str = '', suffix:str = '',
         Character length of bar (default: 72)
     fill : str
         Bar fill character (default: '#')
+    
+    No return value.
+
+    Please be advised that if you're using this in notebooks,
     """
+    try:
+        from IPython.display import clear_output
+    except:
+        clear_output = None
     if guessed_environment == 'jupyter':
         try:
             from ipywidgets import IntProgress
@@ -537,18 +707,20 @@ def print_progress(count:int, total:int, prefix:str = '', suffix:str = '',
             return
         except:
             pass
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (count / float(total)))
+    percent = ("{0:." + str(decimals) + "f}").format(
+        100 * (count / float(total)))
     filledLength = int(length * count // total)
     bar = fill * filledLength + '-' * (length - filledLength)
     print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end = '\r')
-    if count == total: 
+    if count == total:
         print()
+        if not clear_output is None:
+            clear_output()
 
 # decode image superpixel
-def superpixel_index(rgb_array:numpy.ndarray) -> numpy.ndarray:
+def superpixel_decode(rgb_array:numpy.ndarray) -> numpy.ndarray:
     """
-    Decode an RGB representation of a superpixel label into its native scalar
-    value.
+    Decode RGB version of a superpixel image into an index array.
 
     Parameters
     ----------
@@ -562,15 +734,17 @@ def superpixel_index(rgb_array:numpy.ndarray) -> numpy.ndarray:
     superpixel_index : 2d numpy.ndarray
         2D Image (uint16) with superpixel indices
     """
+    shift1 = numpy.uint32(8)
+    shift2 = numpy.uint32(16)
     return (rgb_array[..., 0].astype(numpy.uint32) + 
-        (rgb_array[..., 1].astype(numpy.uint32) << numpy.uint32(8)) +
-        (rgb_array[..., 2].astype(numpy.uint32) << numpy.uint32(16))).astype(numpy.int32)
+        (rgb_array[..., 1].astype(numpy.uint32) << shift1) +
+        (rgb_array[..., 2].astype(numpy.uint32) << shift2)).astype(numpy.int32)
 
 # create superpixel -> pixel index array
-@numba.jit('i4[:,:](i4[:,:])', nopython=True) # (numba.int32[:,:](numba.int32[:,:]), nopython=True)
-def superpixel_decode_img(pixel_img):
+@numba.jit('i4[:,:](i4[:,:])', nopython=True)
+def superpixel_map(pixel_img:numpy.ndarray) -> numpy.ndarray:
     """
-    Decode a superpixel (patch) image to a dictionary with (1D) coordinates.
+    Map a superpixel (patch) image to a dictionary with (1D) coordinates.
 
     Parameters
     ----------
@@ -600,8 +774,87 @@ def superpixel_decode_img(pixel_img):
         sp_to_p[idx, -1] = spcounts[idx]
     return sp_to_p
 
+# convenience pass through
+def superpixel_map_rgb(pixel_img:numpy.ndarray) -> numpy.ndarray:
+    """
+    Chain superpixel_map(superpixel_decode(image)).
+    """
+    try:
+        return superpixel_map(superpixel_decode(pixel_img))
+    except:
+        raise
+
 # URI encode
-_uri_letters = ' !"#$%&\'()*+,/:;<=>?@[\\]^`{|}~'
+_uri_tohex = ' !"#$%&\'()*+,/:;<=>?@[\\]^`{|}~'
 def uri_encode(uri:str) -> str:
-    letters = ['%' + hex(ord(c))[-2:] if c in _uri_letters else c for c in uri]
+    """
+    Encode non-letter/number characters (below 127) to %02x for URI
+
+    Parameters
+    ----------
+    uri : str
+        URI element as string
+    
+    Returns
+    -------
+    encoded_uri : str
+        URI with non-letters/non-numbers encoded
+    """
+    letters = ['%' + hex(ord(c))[-2:] if c in _uri_tohex else c for c in uri]
     return ''.join(letters)
+
+# write image
+_write_imformats = {
+    '.gif': 'gif',
+    'gif': 'gif',
+    '.jpeg': 'jpg',
+    'jpeg': 'jpg',
+    '.jpg': 'jpg',
+    'jpg': 'jpg',
+    '.png': 'png',
+    'png': 'png',
+    '.tif': 'tif',
+    'tif': 'tif',
+}
+def write_image(
+    image:numpy.ndarray,
+    out:str,
+    imformat:str = None,
+    imshape:Tuple = None,
+    ) -> Union[bool, bytes]:
+    """
+    Writes an image (data array) to file or buffer (return value)
+    """
+    if imformat is None:
+        if not '.' in out:
+            raise ValueError('Cannot determine format.')
+        out_parts = out.split('.')
+        imformat = out_parts[-1].lower()
+    else:
+        imformat = imformat.lower()
+    if not imformat in _write_imformats:
+        raise ValueError('Format {0:s} not supported'.format(imformat))
+    imformat = _write_imformats[imformat]
+    oshape = image.shape
+    if not imshape is None:
+        try:
+            image.shape = imshape
+        except:
+            raise
+    with io.BytesIO() as buffer:
+        try:
+            imageio.imwrite(buffer, image, imformat)
+        except:
+            raise
+        buffer_data = buffer.getvalue()
+    image.shape = oshape
+    if out == 'buffer':
+        return buffer_data
+    try:
+        with open(out, 'wb') as outfile:
+            if outfile.write(buffer_data) == len(buffer_data):
+                return True
+            else:
+                return False
+    except:
+        raise

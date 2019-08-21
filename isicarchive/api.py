@@ -59,7 +59,7 @@ study_list
     Yields a generator for study JSON dicts
 """
 
-__version__ = '0.4.2'
+__version__ = '0.4.3'
 
 
 import copy
@@ -85,7 +85,7 @@ _repr_pretty_list = {
     'base_url': '_base_url',
     'username': 'username',
     'cache_folder': '_cache_folder',
-    'cached_images': '_image_cache',
+    'image_cache': 'image_cache',
     'loaded_datasets': 'datasets',
     'loaded_studies': 'studies',
     'obj_annotations': '_annotation_objs',
@@ -198,7 +198,6 @@ class IsicApi(object):
         self._dataset_objs = dict()
         self._feature_colors = dict()
         self._hostname = hostname
-        self._image_cache = dict()
         self._image_cache_last = '0' * 24
         self._image_cache_timeout = 0.0
         self._image_objs = dict()
@@ -206,6 +205,8 @@ class IsicApi(object):
         self._study_objs = dict()
         self._temp_file = None
         self.datasets = dict()
+        self.image_cache = dict()
+        self.image_selection = None
         self.images = dict()
         self.meta_hist = dict()
         self.studies = dict()
@@ -253,7 +254,7 @@ class IsicApi(object):
 
     # output
     def __repr__(self) -> str:
-        return 'IsicApi(\'%s\', None, \'%s\', \'%s\', \'%s\')' % (
+        return 'isicarchive.api.IsicApi(\'%s\', None, \'%s\', \'%s\', \'%s\')' % (
             self.username, self._hostname, self._api_uri, self._cache_folder)
     def __str__(self) -> str:
         if self._auth_token:
@@ -364,8 +365,8 @@ class IsicApi(object):
     # cache image information
     def _cache_images(self, from_list:dict):
         for item in from_list:
-            if not item['_id'] in self._image_cache:
-                self._image_cache[item['_id']] = item
+            if not item['_id'] in self.image_cache:
+                self.image_cache[item['_id']] = item
     def cache_images(self):
         """
         Create or update the local image details cache file
@@ -380,8 +381,8 @@ class IsicApi(object):
             'imcache', '.json.gz', api=self)
         if os.path.exists(image_cache_filename):
             try:
-                self._image_cache = func.gzip_load_var(image_cache_filename)
-                self._image_cache_last = sorted(self._image_cache.keys())[-1]
+                self.image_cache = func.gzip_load_var(image_cache_filename)
+                self._image_cache_last = sorted(self.image_cache.keys())[-1]
             except:
                 os.remove(image_cache_filename)
                 warnings.warn('Invalid image cache file.')
@@ -396,7 +397,7 @@ class IsicApi(object):
             'sort': '_id',
             'sortdir': '1',
         }
-        num_loaded = len(self._image_cache)
+        num_loaded = len(self.image_cache)
         last_id = self._image_cache_last
         if num_loaded > 0:
             initial_offset = max(0, num_loaded - limit_half)
@@ -418,12 +419,14 @@ class IsicApi(object):
             partial_list = self.image(params=params)
             self._cache_images(partial_list)
         try:
-            if num_loaded < len(self._image_cache):
-                func.gzip_save_var(image_cache_filename, self._image_cache)
-                self._image_cache_last = sorted(self._image_cache.keys())[-1]
+            if num_loaded < len(self.image_cache):
+                func.gzip_save_var(image_cache_filename, self.image_cache)
+                self._image_cache_last = sorted(self.image_cache.keys())[-1]
         except:
             warnings.warn('Error writing cache file.')
         self._image_cache_timeout = time.time() + vars.ISIC_IMAGE_CACHE_UPDATE_LASTS
+        for (image_id, image) in self.image_cache.items():
+            self.images[image['name']] = image_id
 
     # Generic /dataset endpoint
     def dataset(self,
@@ -593,8 +596,8 @@ class IsicApi(object):
             if load_superpixels and self._current_image.superpixels['idx'] is None:
                 self._current_image.load_superpixels()
             return self._current_image
-        if object_id in self._image_cache:
-            image = self._image_cache[object_id]
+        if object_id in self.image_cache:
+            image = self.image_cache[object_id]
         else:
             try:
                 image = func.get(self._base_url,
@@ -675,6 +678,10 @@ class IsicApi(object):
                 len(study_obj.images), len(study_obj._obj_images)))
             print('     - {0:d} questions'.format(
                 len(study_obj.questions)))
+
+    # Select images from the archive (regardless of study/dataset)
+    def select_images(self, criteria:dict) -> None:
+        pass
 
     # Generic /study endpoint
     def study(self,

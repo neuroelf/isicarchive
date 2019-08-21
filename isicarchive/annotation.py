@@ -365,33 +365,19 @@ class Annotation(object):
                 dtype=numpy.uint8)
         planes = min(3, planes)
         for (feature, color_spec) in features.items():
-            splist = self.features[feature]['idx']
-            spvals = self.features[feature]['lst']
-            color_code = color_spec[0]
-            alpha = numpy.float(color_spec[1])
-            for idx in range(len(splist)):
-                spidx = splist[idx]
-                spnum = image_spmap[spidx, -1]
-                sppidx = image_spmap[spidx, 0:spnum]
-                spalpha = alpha * numpy.float(spvals[idx])
-                spinv_alpha = 1.0 - spalpha
-                for p in range(planes):
-                    if spalpha == 1.0:
-                        image_data[sppidx, p] = color_code[p]
-                    else:
-                        image_data[sppidx, p] = numpy.round(
-                            alpha * color_code[p] +
-                            spinv_alpha * image_data[sppidx, p])
+            splist = numpy.asarray(self.features[feature]['idx'])
+            spvals = numpy.asarray(self.features[feature]['lst'])
+            func.color_superpixels(image_data,
+                splist, image_spmap, color_spec[0], color_spec[1], spvals)
         image_data.shape = (image_height, image_width, planes)
         if not self._image_obj is None:
             self._image_obj.data = image_odata
             self._image_obj.superpixels = image_osp
-        with io.BytesIO() as buffer:
-            if on_image:
-                imageio.imwrite(buffer, image_data, 'jpg')
-            else:
-                imageio.imwrite(buffer, image_data, 'png')
-            buffer_data = buffer.getvalue()
+        if on_image:
+            imformat = 'jpg'
+        else:
+            imformat = 'png'
+        buffer_data = func.write_image(image_data, 'buffer', imformat)
         image_max_xy = max(image_width, image_height)
         shrink_factor = max(1.0, image_max_xy / max_size)
         image_width = int(image_width / shrink_factor)

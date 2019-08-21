@@ -249,7 +249,7 @@ class Dataset(object):
             raise ValueError('Requires IsicApi object with cache folder set.')
         self._api.cache_images()
         dataset_id = self.id
-        self.images = [item for item in self._api._image_cache.values() if (
+        self.images = [item for item in self._api.image_cache.values() if (
             item['dataset']['_id'] == dataset_id)]
         if len(self.images) == 0:
             return

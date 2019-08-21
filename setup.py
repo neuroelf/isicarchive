@@ -9,6 +9,7 @@ with open("README.md", "r") as fh:
 
 requires = [
     'imageio>=2.5.0',
+    'matplotlib>=3.1.0',
     'numba>=0.45.1',
     'numpy>=1.16.2',
     'requests>=2.22.0',

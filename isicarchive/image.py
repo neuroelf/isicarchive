@@ -266,7 +266,7 @@ class Image(object):
                         with open(spimg_filename, 'rb') as image_file:
                             image_raw = image_file.read()
                         image_png = imageio.imread(image_raw)
-                        self.superpixels['idx'] = func.superpixel_index(image_png)
+                        self.superpixels['idx'] = func.superpixel_decode(image_png)
                         self.superpixels['max'] = numpy.amax(
                             self.superpixels['idx']).item()
                         self.superpixels['shp'] = self.superpixels['idx'].shape
@@ -274,7 +274,9 @@ class Image(object):
                     except Exception as e:
                         os.remove(spimg_filename)
                         warnings.warn('Error loading image: ' + str(e))
-        if self._in_archive and self._api._base_url and (not os.path.exists(spidx_filename)):
+        if self._in_archive and self._api._base_url and (
+            (not self._api._cache_folder) or
+            (not os.path.exists(spidx_filename))):
             try:
                 if self._api._auth_token:
                     headers = {'Girder-Token': self._api._auth_token}
@@ -289,7 +291,7 @@ class Image(object):
                     if self._api._cache_folder:
                         with open(spimg_filename, 'wb') as image_file:
                             image_file.write(image_raw)
-                    self.superpixels['idx'] = func.superpixel_index(image_png)
+                    self.superpixels['idx'] = func.superpixel_decode(image_png)
                     self.superpixels['max'] = numpy.amax(
                         self.superpixels['idx']).item()
                     self.superpixels['shp'] = self.superpixels['idx'].shape
@@ -321,7 +323,7 @@ class Image(object):
             return
         pixel_img = self.superpixels['idx']
         try:
-            self.superpixels['map'] = func.superpixel_decode_img(pixel_img)
+            self.superpixels['map'] = func.superpixel_map(pixel_img)
         except Exception as e:
             warnings.warn('Error mapping superpixels: ' + str(e))
 

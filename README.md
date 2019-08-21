@@ -112,7 +112,19 @@ Once the information is downloaded, however, only a single call will be made to
 the web-based API to confirm that, indeed, no new images are available. **For
 this to work, however, it is important that you do not use the same
 cache folder for sessions where you are either logged in (authenticated)
-versus not!**
+versus not!** The cache file itself will be stored in the file named
+```[cache_folder]/0/imcache_000000000000000000000000.json.gz```.
+
+Finally, feature annotations associated with a specific study can be
+downloaded in bulk and cached using this syntax:
+
+~~~~
+# Load annotation markup feature superpixel arrays
+study.load_annotations()
+~~~~
+
+The resulting file will be stored in ```stann_[objectId].json.gz```, and not
+for each annotation object separately, so that loading will be much faster.
 
 ## Some more details on the web-based API
 Any interaction with the web-based API is performed by the ```IsicApi```
@@ -125,11 +137,11 @@ one specific image would be achieved by accessing the following URL:
 
 ```https://isic-archive.com/api/v1/image/5436e3abbae478396759f0cf```
 
+### Object IDs and element representation
 This last portion of the URL that appears after the ```image/``` part is
 called the (object) id, and is a system-wide unique value that identifies
-each element to ensure that one interacts only with the intended target.
-
-The output of the URL above is (slightly truncated for brevity):
+each element to ensure that one interacts only with the intended target. The
+output of the URL above is (slightly truncated for brevity):
 
 ~~~~
 {
@@ -170,20 +182,23 @@ The output of the URL above is (slightly truncated for brevity):
 ~~~~
 
 Pretty much all elements available through the API are returned in the form of
-their [JSON](https://en.wikipedia.org/wiki/JSON) representation (notation). And
-lists of elements are returned as arrays. The exception are binary blobs (such
-as image data, superpixel image data, and mask images).
+their [JSON](https://en.wikipedia.org/wiki/JSON) representation (notation) as
+text. Lists of elements are returned as arrays. The exception are binary blobs
+(such as image data, superpixel image data, and mask images).
 
 Within the ISIC archive (and thus for the API), the following elements are
 recognized:
 
-- images (having both a JSON and several associated binary blob elements)
-- segmentations (also having a JSON and a binary mask image component)
-- datasets (collection of images)
-- studies (selection of images from multiple datasets, together with questions and features to be annotated by users)
-- annotations (responses to questions and image-based per-feature annotation as a selection of "superpixels")
-- users (information about each registered user)
-- tasks (information about tasks assigned to the logged in user)
+- **images** (having both a JSON and several associated binary blob elements)
+- **segmentations** (also having a JSON and a binary mask image component)
+- **datasets** (collection of images)
+- **studies** (selection of images from multiple datasets, together with questions and features to be annotated by users)
+- **annotations** (responses to questions and image-based per-feature annotation as a selection of "superpixels")
+- **users** (information about each registered user)
+- **tasks** (information about tasks assigned to the logged in user)
+
+Of these, currently accessible via the ```IsicApi``` object are **image, study,
+dataset, and annotation**.
 
 ### Image superpixels
 As part of the image processing capabilities of the ISIC Archive itself, each
@@ -210,17 +225,51 @@ image.map_superpixels()
 superpixel_mapping = image.superpixels['map']
 ~~~~
 
+This mapping array can be used to rapidly access (e.g. extract or paint over)
+the pixels in the actual color image of a skin lesion:
+
+~~~~
+# paint over superpixel with index 472 in an image with red (RGB=(255,0,0))
+image = api.image('ISIC_0000000')
+image.load_imagedata()
+image.load_superpixels()
+image.map_superpixels()
+image_data = image.data
+image_shape = image_data.shape
+image_data.shape = (image_shape[0] * image_shape[1], -1)
+map = image.superpixels['map']
+superpixel_index = 472
+pixel_count = map[superpixel_index, -1]
+superpixel_pixels = map[superpixel_index, 0:pixel_count]
+image_data[superpixel_pixels, 0] = 255
+image_data[superpixel_pixels, 1] = 0
+image_data[superpixel_pixels, 2] = 0
+image_data.shape = image_shape
+
+# show image
+import matplotlib.pyplot as plt
+plt.imshow(image_data)
+plt.show()
+~~~~
+
 ### Retrieving information about a study
-~~~~
-study = api.study(study_name)
-~~~~
-
-This will make a call to the ISIC archive web API, and retrieve the
+The syntax below will make a call to the web-based API, and retrieve the
 information about the study named in ```study_name```. If the study is not
-found, an exception is raised!
-
+found, an exception is raised! Other than the web-based API (which does
+not support names), you do not have to look up the object ID manually first.
 The returned value, ```study``` is an object of type ```isicarchive.Study```,
-and this provides some additional methods.
+which provides some additional methods.
+
+~~~~
+# Retrieve study object
+study = api.study('ISBI 2016: 100 Lesion Classification')
+
+# Download all accessible images and superpixel images for this study
+study.cache_imagedata()
+
+# Display an annotation for an image
+
+~~~~
 
 In addition to the information regularly provided by the ISIC Archive API,
 the IsicApi object's implementation will also attempt to already download
