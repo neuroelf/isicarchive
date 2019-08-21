@@ -82,9 +82,9 @@ into a single folder, which would slow down the operation later on. For each
 file, the sub-folder is determined by the last hexadecimal digit of the
 unique object ID (explained below).
 
-Images are stored with a filename pattern of ```image_[objectId]_[name].EXT```
+Images are stored with a filename pattern of ```image_[objectId]_[name].ext```
 whereas ```objectId``` is the unique ID for this image within the archive,
-```name``` is the filename (typically ```ISIC_xxxxxxx```), and ```.EXT``` is
+```name``` is the filename (typically ```ISIC_xxxxxxx```), and ```.ext``` is
 the extension as provided by the Content-Type header of the downloaded image.
 
 Superpixel images (also explained below) are stored with the filename pattern
@@ -101,16 +101,20 @@ the ```IsicApi``` object with the cache_folder parameter) like so:
 ~~~~
 # Populate image cache
 api.cache_images()
+
+# display information about image ISIC_000000 (by its ID) from the cache
+image_info = api.image_cache[api.images['ISIC_0000000']]
+print(image_info)
 ~~~~
 
-When called for the first time, this may take several minutes. Once the
-information is downloaded, however, only a single call will be made to the
-web-based API to confirm that, indeed, no new images are available. **For
+When called for the first time, building the cache may take several minutes.
+Once the information is downloaded, however, only a single call will be made to
+the web-based API to confirm that, indeed, no new images are available. **For
 this to work, however, it is important that you do not use the same
 cache folder for sessions where you are either logged in (authenticated)
 versus not!**
 
-## Quick primer on the API itself
+## Some more details on the web-based API
 Any interaction with the web-based API is performed by the ```IsicApi```
 object through the HTTPS protocol, using the
 [requests](https://2.python-requests.org/en/master/) package methods. As part
