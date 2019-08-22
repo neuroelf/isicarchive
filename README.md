@@ -345,6 +345,12 @@ closely with Brian Helba and Dan LaManna (both with
 [Kitware](https://www.kitware.com)), who work on the web-based API.
 
 ### History
+- 8/22/2019
+  - began work on segmentations-related code
+  - updated ```image.Image.show_in_notebook``` to use ```func.display_image```
+  - added some more documentation
+  - improved ```func.getxattr``` by adding ```-index``` and ```name=val``` syntax
+  - moved ```cache_filename``` from ```func``` module to ```api.IsicApi``` class
 - 8/21/2019
   - added infrastructure for conda-forge (thanks to [Marius van Niekerk](https://www.linkedin.com/in/mariusvniekerk/))
   - began refactoring test code (with unit testing)
