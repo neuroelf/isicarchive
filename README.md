@@ -333,3 +333,25 @@ The selection will both be returned, and also stored in the
 ```api.image_selection``` field. So, in a Jupyter notebook, please assign the
 result to a variable if it is the last statement in a cell and you wish not
 to print the output!
+
+## Housekeeping
+This section contains information about the package.
+
+### Author information
+```isicarchive``` is being developed by Jochen Weber, who works at Memorial
+Sloan Kettering Cancer Center in New York City. He is supported by Nick
+Kurtansky and Dr. Konstantinos Liopyris (both MSKCC as well) and collaborates
+closely with Brian Helba and Dan LaManna (both with
+[Kitware](https://www.kitware.com)), who work on the web-based API.
+
+### History
+- 8/21/2019
+  - added infrastructure for conda-forge (thanks to [Marius van Niekerk](https://www.linkedin.com/in/mariusvniekerk/))
+  - began refactoring test code (with unit testing)
+  - added ```api.select_images(...)``` to select images from the entire archive
+  - added ```func.selected(...)``` and ```func.select_from(...)``` for selection logic
+  - improved ```func``` module with better Typing hints (and general cleanup)
+  - added ```func.write_image(...)``` to write out images, including into a buffer
+  - moved code from ```Annotation.show_in_notebook(...)``` to ```func.color_superpixels(...)```
+- 8/20/2019
+  - added ```func.print_progress(...)``` function (text-based progress bar)
