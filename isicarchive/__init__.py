@@ -8,9 +8,9 @@ To instantiate the API object and retrieve some study information use
 
    >>> from isicarchive import IsicApi
    >>> api = IsicApi(username)
-   >>> studyInfo = api.study(study_name)
+   >>> study_info = api.study(study_name)
 
-:copyright: (c) 2019, MSKCC.
+:copyright: (c) 2019, Jochen Weber, MSKCC.
 :license: MIT, see LICENSE for details.
 """
 

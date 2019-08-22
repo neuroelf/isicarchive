@@ -64,6 +64,7 @@ __version__ = '0.4.6'
 
 import copy
 import os
+import re
 import tempfile
 import time
 from typing import Any, Optional, Tuple, Union
@@ -542,6 +543,8 @@ class IsicApi(object):
         """
         if target_folder is None and (not filename_pattern is None):
             raise ValueError('Setting a filename pattern requires a target folder.')
+        elif target_folder is None and not self._cache_folder:
+            raise ValueError('Without cache folder, a target folder is required.')
         if from_selection is None:
             from_selection = self.image_selection
         if isinstance(from_selection, list):
@@ -564,6 +567,9 @@ class IsicApi(object):
             from_selection = selection_details
         if target_folder and filename_pattern is None:
             filename_pattern = '$name'
+        elif target_folder is None or target_folder == '':
+            repl = re.compile(r'(\$[a-zA-Z._\-]+)')
+            target_folder = None
         for (image_id, item) in from_selection:
             try:
                 image_req = func.get(self._base_url,
@@ -573,9 +579,12 @@ class IsicApi(object):
                 warnings.warn('Error downloading {0:s}: {1:s}'.format(
                     item['name'], str(e)))
             if target_folder is None:
-                image_filename = 'None' + image_ext
+                image_filename = func.cache_filename(image_id, 'image',
+                    image_ext, extra=item['name'], api=self)
             else:
-                image_filename = 'None' + image_ext
+                image_filename = target_folder + os.sep + repl.sub(lambda x:
+                    func.getxattr(item, x.group(1)[1:]),
+                    filename_pattern) + image_ext
             with open(image_filename, 'wb') as image_file:
                 image_file.write(image_req.content)
 

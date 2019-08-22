@@ -48,7 +48,7 @@ uri_encode
     Encodes non-letter/number characters into %02x sequences
 """
 
-__version__ = '0.4.6'
+__version__ = '0.4.8'
 
 
 import gzip
