@@ -2,13 +2,16 @@
 
 import setuptools
 
-from isicarchive.vars import __version__
+with open('isicarchive/version.py', 'r') as fh:
+    __version__ = fh.read().strip().split('=')[-1].strip(' \'"')
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
 requires = [
     'imageio>=2.5.0',
+    'ipython>=7.1.0',
+    'ipywidgets>=7.1.0',
     'matplotlib>=3.1.0',
     'numba>=0.45.1',
     'numpy>=1.16.2',

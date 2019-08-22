@@ -9,7 +9,8 @@ ISIC_BASE_URL : str
     hostname of ISIC Archive, including https:// protocol id
 """
 
-__version__ = '0.4.5'
+from .version import __version__
+
 
 # IsicApi: default URL/URI
 ISIC_API_URI = '/api/v1'
