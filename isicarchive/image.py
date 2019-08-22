@@ -13,12 +13,11 @@ or can be generated
    >>> image = Image(...)
 """
 
-__version__ = '0.4.2'
+__version__ = '0.4.6'
 
 
 import datetime
 import glob
-import io
 import json
 import os
 import warnings
