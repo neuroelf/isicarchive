@@ -279,7 +279,7 @@ class Annotation(object):
         if not isinstance(alpha, float) or (alpha < 0.0) or (alpha > 1.0):
             alpha = 1.0
         if features is None:
-            features = {name: [func.color_code(name), alpha] for
+            features = {name: [self._api.feature_color(name), alpha] for
                 name in self.features.keys()}
         elif isinstance(features, str):
             if not features in self.features:

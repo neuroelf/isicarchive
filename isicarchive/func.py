@@ -36,9 +36,11 @@ object_pretty
     Pretty-prints an objects representation from fields
 print_progress
     Text-based progress bar
+select_from
+    Complex field-based criteria selection of list or dict elements
 superpixel_decode
     Converts an RGB superpixel image to a 2D superpixel index array
-superpixel_map
+superpixel_map (using @jit)
     Decodes a superpixel (index) array into a 2D mapping array
 superpixel_map_rgb
     Chain superpixel_map(superpixel_decode(image))
@@ -46,9 +48,9 @@ uri_encode
     Encodes non-letter/number characters into %02x sequences
 """
 
-__version__ = '0.4.5'
+__version__ = '0.4.6'
 
-import copy
+
 import gzip
 import io
 import json
@@ -59,6 +61,9 @@ import warnings
 import time
 
 import imageio
+from ipywidgets import Image as ipy_Image
+from IPython.display import display as ipy_display
+import matplotlib.pyplot as mpl_pyplot
 import numba
 import numpy
 import requests
@@ -94,6 +99,8 @@ def cache_filename(
     filename : str
         Filename of object in cache
     """
+
+    # checks
     if api is None or api._cache_folder is None:
         return None
     if not isinstance(oid, str) or (not could_be_mongo_object_id(oid)):
@@ -108,39 +115,23 @@ def cache_filename(
         extra = '_' + extra
     else:
         extra = ''
+    
+    # concatenate items
     return (api._cache_folder +
         os.sep + oid[-1] + os.sep + otype + '_' + oid + extra + oext)
-
-# lookup color code
-def color_code(api:object = None, name:str = None) -> list:
-    """
-    Returns a specific 3-element list color code for a (feature) name
-
-    Parameters
-    ----------
-    api : object
-        Reference to IsicApi object
-    name : str
-        Feature (or other) name
-    
-    Returns
-    -------
-    color_code : list
-        3-element list with [R,G,B] values, random if name not found.
-    """
-    if api is None or name is None or not name in api._feature_colors:
-        return numpy.random.randint(0, 255, 3).tolist()
-    return api._feature_colors[name]
 
 # color superpixels in an image
 def color_superpixels(
     image:numpy.ndarray,
     splst:numpy.ndarray,
     spmap:numpy.ndarray,
-    color:list,
-    alpha:float,
+    color:Union[list, numpy.ndarray],
+    alpha:Union[float, numpy.float],
     spval:numpy.ndarray = None,
     copy_image:bool = False) -> Optional[numpy.ndarray]:
+    """
+    Paint the pixels belong to a superpixel list in a specific color.
+    """
     im_shape = image.shape
     if copy_image:
         image = numpy.copy(image)
@@ -149,9 +140,17 @@ def color_superpixels(
         image.shape = (im_shape[0] * im_shape[1], planes)
     else:
         planes = im_shape[1]
+    numsp = len(splst)
     if spval is None:
-        spval = numpy.ones(len(splst), dtype=numpy.float32)
-    for idx in range(len(splst)):
+        spval = numpy.ones(numsp, dtype=numpy.float32)
+    elif not isinstance(spval, numpy.ndarray):
+        try:
+            spval = spval * numpy.ones(numsp, dtype=numpy.float32)
+        except:
+            raise
+    if len(color) == 3 and isinstance(color[0], int):
+        color = [color] * numsp
+    for idx in range(numsp):
         spidx = splst[idx]
         spnum = spmap[spidx, -1]
         sppidx = spmap[spidx, 0:spnum]
@@ -159,10 +158,10 @@ def color_superpixels(
         spinv_alpha = 1.0 - spalpha
         for p in range(planes):
             if spalpha == 1.0:
-                image[sppidx, p] = color[p]
+                image[sppidx, p] = color[idx][p]
             else:
                 image[sppidx, p] = numpy.round(
-                    alpha * color[p] + spinv_alpha * image[sppidx, p])
+                    alpha * color[idx][p] + spinv_alpha * image[sppidx, p])
     image.shape = im_shape
     return image
 
@@ -188,7 +187,7 @@ def could_be_mongo_object_id(test_id:str = "") -> bool:
 # display image
 def display_image(
     image_data:Union[bytes, str, numpy.ndarray, imageio.core.util.Array],
-    image_size:Tuple,
+    image_size:Tuple = None,
     max_size:int = ISIC_IMAGE_DISPLAY_SIZE_MAX,
     library:str = 'ipython',
     ipython_as_object:bool = False,
@@ -199,20 +198,7 @@ def display_image(
     if not isinstance(library, str):
         raise ValueError('Invalid library selection.')
     library = library.lower()
-    if library == 'ipython':
-        try:
-            from ipywidgets import Image as ImageWidget
-            from IPython.display import display
-        except:
-            warnings.warn('Requested library not available')
-            return
-    elif library == 'matplotlib':
-        try:
-            import matplotlib.pyplot as mpl_pyplot
-        except:
-            warnings.warn('Requested library not available')
-            return
-    else:
+    if library in ['ipython', 'matplotlib']:
         raise ValueError('Invalid library selection.')
     if (isinstance(image_data, numpy.ndarray) or
         isinstance(image_data, imageio.core.util.Array)):
@@ -251,10 +237,10 @@ def display_image(
     image_height = int(image_height / shrink_factor)
     if library == 'ipython':
         try:
-            image_out = ImageWidget(value=image_data,
+            image_out = ipy_Image(value=image_data,
                 width=image_width, height=image_height)
             if not ipython_as_object:
-                display(image_out)
+                ipy_display(image_out)
             return image_out
         except Exception as e:
             warnings.warn('Problem producing image for display: ' + str(e))
@@ -942,6 +928,23 @@ def write_image(
     ) -> Union[bool, bytes]:
     """
     Writes an image (data array) to file or buffer (return value)
+
+    Parameters
+    ----------
+    image : numpy.ndarray
+        Image data (HxWxplanes)
+    out : str
+        Output filename or 'buffer' (in that case returns the content)
+    imformat : str
+        Image format (only necessary if out == 'buffer')
+    imshape : Tuple
+        Image data shape (if given, will attempt to set prior to writing)
+    
+    Returns
+    -------
+    result : either bool or bytes
+        For actual filenames returns True if write was successful, for
+        out == 'buffer' returns the resulting byte stream
     """
     if imformat is None:
         if not '.' in out:

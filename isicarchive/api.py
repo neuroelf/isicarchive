@@ -59,21 +59,18 @@ study_list
     Yields a generator for study JSON dicts
 """
 
-__version__ = '0.4.3'
+__version__ = '0.4.6'
 
 
 import copy
 import os
-import re
 import tempfile
 import time
 from typing import Any, Optional, Tuple, Union
 import warnings
 
 import getpass
-import imageio
-import json
-import requests
+import numpy
 
 from . import func
 from . import vars
@@ -581,6 +578,27 @@ class IsicApi(object):
                 image_filename = 'None' + image_ext
             with open(image_filename, 'wb') as image_file:
                 image_file.write(image_req.content)
+
+    # lookup color code
+    def feature_color(self, feature:str = None) -> list:
+        """
+        Returns a specific 3-element list color code for a feature (name)
+
+        Parameters
+        ----------
+        feature : str
+            Feature (or other) name
+        
+        Returns
+        -------
+        color_code : list
+            3-element list with [R,G,B] values, random if name not found.
+        """
+        if feature is None:
+            return numpy.random.randint(0, 255, 3).tolist()
+        elif feature not in self._feature_colors:
+            self._feature_colors[feature] = self.feature_color()
+        return self._feature_colors[feature]
 
     # find images
     def find_images(self, filter_spec:dict) -> Any:
