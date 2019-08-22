@@ -13,7 +13,7 @@ or can be generated
    >>> image = Image(...)
 """
 
-__version__ = '0.4.6'
+__version__ = '0.4.8'
 
 
 import datetime
@@ -52,6 +52,8 @@ _repr_pretty_list = {
     'name': 'name',
     'dataset_id': 'dataset._id',
     'dataset_name': 'dataset.name',
+    'dataset_description': '_dataset.description',
+    'dataset_license': '_dataset.license',
     'meta_acquisition': 'meta.acquisition.{}',
     'meta_clinical': 'meta.clinical.{keys}',
     'meta_clinical_benign_malignant': 'meta.clinical.benign_malignant',
@@ -73,20 +75,20 @@ class Image(object):
 
     To generate a new image object (for later storage), use
 
-       >>> image = Image(name=study_name, data=...)
+       >>> image = Image(name=image_name, data=...)
 
     Attributes
     ----------
     created : Date
-        Study creation date (w.r.t. in the database!)
+        Image creation date (w.r.t. in the database!)
     creator : dict
         Contains _id and (short) name field identifying the creator
-    data : dict
+    data : numpy.ndarray (or None)
         Once data is loaded, the imread decoded image will be in this field
     dataset : dict
         Dataset fields (non-detailed)
     id : str
-        mongodb objectId of the study
+        mongodb objectId of the image
     meta : dict
         Metadata associated with the image, containing fields
         'acquisition': dict (image type, size)
@@ -117,8 +119,10 @@ class Image(object):
         """Image init."""
 
         self._api = api
+        self._dataset = None
         self._detail = False
         self._in_archive = False
+        self._model_type = 'image'
         self._rawdata = None
         # still needs timezone information!!
         self.created = datetime.datetime.now().strftime(
@@ -165,6 +169,9 @@ class Image(object):
             self.creator = from_json['creator']
             if 'dataset' in from_json:
                 self.dataset = from_json['dataset']
+                if '_id' in self.dataset and (self.dataset['_id'] in
+                    self._api._datasets):
+                    self._dataset = self._api._datasets[self.dataset['_id']]
             if 'meta' in from_json:
                 self.meta = from_json['meta']
             if 'notes' in from_json:
@@ -203,7 +210,7 @@ class Image(object):
         if not self._api:
             raise ValueError('Invalid image object to load image data for.')
         if self._api._cache_folder:
-            image_filename = func.cache_filename(self.id, 'image', '.*', '*', api=self._api)
+            image_filename = self._api.cache_filename(self.id, 'image', '.*', '*')
             image_list = glob.glob(image_filename)
             if image_list:
                 try:
@@ -232,9 +239,13 @@ class Image(object):
                         self._rawdata = image_raw
                     self.data = imageio.imread(image_raw)
                     if self._api._cache_folder:
-                        extra = self.name if (self.name and len(self.name) > 5) else None
-                        image_filename = func.cache_filename(self.id, 'image',
-                            func.guess_file_extension(req.headers), extra, api=self._api)
+                        if self.name and (len(self.name) > 5):
+                            extra = self.name
+                        else:
+                            extra = None
+                        image_filename = self._api.cache_filename(self.id,
+                            'image', func.guess_file_extension(req.headers),
+                            extra)
                         with open(image_filename, 'wb') as image_file:
                             image_file.write(image_raw)
             except Exception as e:
@@ -244,8 +255,8 @@ class Image(object):
     def load_superpixels(self, map_superpixels:bool = False):
         if not self._api:
             raise ValueError('Invalid image object to load superpixels for.')
-        spimg_filename = func.cache_filename(self.id, 'spimg', '.png', api=self._api)
-        spidx_filename = func.cache_filename(self.id, 'spidx', '.npz', api=self._api)
+        spimg_filename = self._api.cache_filename(self.id, 'spimg', '.png')
+        spidx_filename = self._api.cache_filename(self.id, 'spidx', '.npz')
         if self._api._cache_folder:
             if os.path.exists(spidx_filename):
                 try:
@@ -349,55 +360,13 @@ class Image(object):
     # show image in notebook
     def show_in_notebook(self,
         max_size:int = None,
+        library:str = 'matplotlib',
         call_display:bool = True,
         ) -> object:
-        if max_size is None:
-            max_size = ISIC_IMAGE_DISPLAY_SIZE_MAX
         try:
-            from ipywidgets import Image as ImageWidget
-            from IPython.display import display
-        except:
-            warnings.warn('ipywidgets.Image or IPython.display.display not available')
-            return
-        image_rawdata = self._rawdata
-        if self._api._cache_folder:
-            image_filename = func.cache_filename(self.id, 'image', '.*', '*', api=self._api)
-            image_list = glob.glob(image_filename)
-            if image_list:
-                image_rawdata = image_list[0]
-            else:
-                image_data = self.data
-                self.load_imagedata(keep_rawdata=True)
-                image_list = glob.glob(image_filename)
-                if not image_list:
-                    warnings.warn('Problem caching image files!')
-                    image_rawdata = self._rawdata
-                else:
-                    image_rawdata, self._rawdata = image_list[0], image_rawdata
-                self.data = image_data
-        else:
-            if image_rawdata is None:
-                image_data = self.data
-                self.load_imagedata(keep_rawdata=True)
-                image_rawdata, self._rawdata = self._rawdata, image_rawdata
-                self.data = image_data
-        try:
-            image_x = self.meta['acquisition']['pixelsX']
-            image_y = self.meta['acquisition']['pixelsY']
-            image_max_xy = max(image_x, image_y)
-            shrink_factor = max(1.0, image_max_xy / max_size)
-            image_width = int(image_x / shrink_factor)
-            image_height = int(image_y / shrink_factor)
-        except:
-            image_width = None
-            image_height = None
-        try:
-            image_out = ImageWidget(value=image_rawdata,
-                width=image_width, height=image_height)
-            if call_display:
-                display(image_out)
-                return None
-            return image_out
+            if self.data is None:
+                self.load_imagedata()
+            return func.display_image(self.data, max_size=max_size,
+                ipython_as_object=(not call_display), library=library)
         except Exception as e:
-            warnings.warn('Problem producing image for display: ' + str(e))
-            return None
+            warnings.warn('show_in_notebook(...) failed: ' + str(e))

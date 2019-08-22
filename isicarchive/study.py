@@ -13,7 +13,7 @@ or can be generated
    >>> study = Study(...)
 """
 
-__version__ = '0.4.2'
+__version__ = '0.4.8'
 
 import copy
 import datetime
@@ -129,6 +129,7 @@ class Study(object):
         self._api = api
         self._detail = False
         self._in_archive = False
+        self._model_type = 'study'
         self._obj_annotations = dict()
         self._obj_images = dict()
         # still needs timezone information!!
@@ -297,14 +298,14 @@ class Study(object):
         for count in range(total):
             image_info = self.images[count]
             image_id = image_info['_id']
-            image_filename = func.cache_filename(
-                image_id, 'image', '.*', '*', api=self._api)
+            image_filename = self._api.cache_filename(
+                image_id, 'image', '.*', '*')
             image_list = glob.glob(image_filename)
             load_imagedata = not image_list
-            spimg_filename = func.cache_filename(
-                image_id, 'spimg', '.png', api=self._api)
-            spidx_filename = func.cache_filename(
-                image_id, 'spidx', '.npz', api=self._api)
+            spimg_filename = self._api.cache_filename(
+                image_id, 'spimg', '.png')
+            spidx_filename = self._api.cache_filename(
+                image_id, 'spidx', '.npz')
             load_superpixels = not (
                 os.path.exists(spimg_filename) and
                 os.path.exists(spidx_filename))
@@ -356,8 +357,8 @@ class Study(object):
     def load_annotations(self):
         if (not self._api) or len(self._obj_annotations) == len(self.annotations):
             return
-        study_anno_filename = func.cache_filename(self.id,
-            'stann', '.json.gz', api=self._api)
+        study_anno_filename = self._api.cache_filename(self.id,
+            'stann', '.json.gz')
         study_anno_data = dict()
         if self._api._cache_folder and os.path.exists(study_anno_filename):
             try:

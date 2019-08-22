@@ -13,7 +13,7 @@ or can be generated
    >>> dataset = Dataset(...)
 """
 
-__version__ = '0.4.0'
+__version__ = '0.4.8'
 
 
 import datetime
@@ -125,6 +125,7 @@ class Dataset(object):
         self._api = api
         self._detail = False
         self._in_archive = False
+        self._model_type = 'dataset'
         self._obj_images = dict()
         # still needs timezone information!!
         self.access_level = 2

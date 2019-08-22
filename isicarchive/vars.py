@@ -20,6 +20,9 @@ ISIC_BASE_URL = 'https://isic-archive.com'
 ISIC_IMAGE_CACHE_UPDATE_LASTS = 900.0 # minimum time between updates in seconds
 ISIC_IMAGES_PER_CACHING = 500 # number of image detail items per get(...) call
 
+# IsicApi: segmentation cache settings
+ISIC_SEG_SAVE_EVERY = 50
+
 # func: screen settings
 ISIC_FUNC_PPI = 72
 

@@ -7,6 +7,59 @@ several further sub-fields (or lists), it is then possible to extract
 a specific value (or return a default value) using this function, somewhat
 simplifying the syntax involved.
 
+### Help from docstring
+~~~~
+Get attribute or key-based value from object
+
+Parameters
+----------
+obj : object
+    Either a dictionary or object with attributes
+name : str
+    String describing what to retrieve
+default : Any
+    Value to return if name is not found (or error)
+
+Returns
+-------
+value : Any
+    Value from obj.name where name can be name1.name2.name3
+
+Field (name) syntax
+-------------------
+If the name does not contain a period ('.'), the object will be
+accessed in the following order:
+- for both dicts and lists, the pseudo-name '#' returns len(obj)
+- for dicts, the name is used as a key to extract a value
+- for anything but a list, getattr(obj, name) is called
+- a numeral (e.g. '0', '14', or '-1') is used as index (for a list!)
+- if the name contains '=', it assumes the list contains dicts, and
+  returns the first match 'field=val' of obj[IDX]['field'] == 'val',
+  whereas name will be split by '>' and joined again by '.' to
+  allow selection of subfields
+- if the name contains '=#=', this comparison uses the numeric value
+- if the name contains '~', performs the same with re.search,
+- if the object is a list, *AND* the name begins in '[].', a list
+  of equal size will be returned, whereas each element in the result
+  is determined by calling getxattr(obj[IDX], name[3:], default)
+
+Valid name expressions would be
+- 'field.sub-field.another one'
+  extracts 'field' from obj, then 'sub-field', and then 'another one'
+- 'metadata.files.#'
+  extracts metadata, then files, and returns the number of files
+- 'metadata.files.-1'
+  returns the last item from list in metadata.files
+- 'reviews.author=John Doe.description'
+  extracts reviews, then looks for element where author == 'John Doe',
+  and then extracts description
+- 'reviews.author>name>last_name=Doe.description'
+  performs the search on author.name.last_name within reviews
+- '[].author.name'
+  returns a list with elements: getxattr(obj[IDX], 'author.name')
+~~~~
+
+### Examples
 Below are some examples based on the following object list:
 
 ~~~~
@@ -120,25 +173,5 @@ obj_list = [
 ]
 ~~~~
 
-
-
-### Accessing the last item of a list stored in a dictionary field
-~~~~
-Get attribute or key-based value from object
-
-Parameters
-----------
-obj : object
-    Either a dictionary or object with attributes
-name : str
-    String describing what to retrieve
-default : Any
-    Value to return if name is not found (or error)
-
-Returns
--------
-value : Any
-    Value from obj.name where name can be name1.name2.name3
-~~~~
-
-## Examples
+#### Creating list of ages for each person
+func.getxattr(obj_list, '[].meta.clinical.age_approx')

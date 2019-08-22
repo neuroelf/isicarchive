@@ -14,7 +14,7 @@ or can be generated
    >>> annotation = Annotation(...)
 """
 
-__version__ = '0.4.2'
+__version__ = '0.4.8'
 
 
 import copy
@@ -132,6 +132,7 @@ class Annotation(object):
         self._api = api
         self._image_obj = None
         self._in_archive = False
+        self._model_type = 'annotation'
         self._study = None
         self.features = dict()
         self.id = ''

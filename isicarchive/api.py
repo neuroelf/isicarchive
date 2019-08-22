@@ -59,7 +59,7 @@ study_list
     Yields a generator for study JSON dicts
 """
 
-__version__ = '0.4.6'
+__version__ = '0.4.8'
 
 
 import copy
@@ -78,6 +78,7 @@ from . import vars
 from .annotation import Annotation
 from .dataset import Dataset
 from .image import Image
+from .segmentation import Segmentation
 from .study import Study
 
 _repr_pretty_list = {
@@ -192,6 +193,7 @@ class IsicApi(object):
         self._current_annotation = None
         self._current_dataset = None
         self._current_image = None
+        self._current_segmentation = None
         self._current_study = None
         self._datasets = dict()
         self._dataset_objs = dict()
@@ -200,6 +202,7 @@ class IsicApi(object):
         self._image_cache_last = '0' * 24
         self._image_cache_timeout = 0.0
         self._image_objs = dict()
+        self._segmentation_objs = dict()
         self._studies = dict()
         self._study_objs = dict()
         self._temp_file = None
@@ -208,6 +211,7 @@ class IsicApi(object):
         self.image_selection = None
         self.images = dict()
         self.meta_hist = dict()
+        self.segmentation_cache = dict()
         self.studies = dict()
         self.username = None
 
@@ -361,6 +365,53 @@ class IsicApi(object):
             else:
                 yield item
 
+    # cache filename
+    def cache_filename(self,
+        oid:str = None,
+        otype:str = None,
+        oext:str = None,
+        extra:str = None,
+        ) -> str:
+        """
+        Creates a filename out of an object (type, id, ext).
+
+        Parameters
+        ----------
+        oid : str
+            object_id (mongodb objectId)
+        otype : str
+            Arbitrary object type str (first part of filename)
+        oext : str
+            Arbitrary extension, will be .bin if none
+        extra : str
+            String folder in before extension
+        
+        Returns
+        -------
+        filename : str
+            Filename of object in cache
+        """
+
+        # checks
+        if self._cache_folder is None:
+            return None
+        if not isinstance(oid, str) or (not func.could_be_mongo_object_id(oid)):
+            raise ValueError('Invalid object_id')
+        if otype is None or (otype == ''):
+            otype = 'object'
+        if oext is None or (oext == ''):
+            oext = '.bin'
+        elif oext[0] != '.':
+            oext = '.' + oext
+        if (not extra is None) and (extra != ''):
+            extra = '_' + extra
+        else:
+            extra = ''
+        
+        # concatenate items
+        return (self._cache_folder +
+            os.sep + oid[-1] + os.sep + otype + '_' + oid + extra + oext)
+
     # cache image information
     def _cache_images(self, from_list:dict):
         for item in from_list:
@@ -368,7 +419,7 @@ class IsicApi(object):
                 self.image_cache[item['_id']] = item
     def cache_images(self):
         """
-        Create or update the local image details cache file
+        Create or update the local image details cache file.
 
         No input parameters and no return value.
         """
@@ -376,8 +427,8 @@ class IsicApi(object):
             return
         if self._image_cache_timeout >= time.time():
             return
-        image_cache_filename = func.cache_filename('0' * 24,
-            'imcache', '.json.gz', api=self)
+        image_cache_filename = self.cache_filename('0' * 24,
+            'imcache', '.json.gz')
         if os.path.exists(image_cache_filename):
             try:
                 self.image_cache = func.gzip_load_var(image_cache_filename)
@@ -426,6 +477,72 @@ class IsicApi(object):
         self._image_cache_timeout = time.time() + vars.ISIC_IMAGE_CACHE_UPDATE_LASTS
         for (image_id, image) in self.image_cache.items():
             self.images[image['name']] = image_id
+
+    # cache segmentation information
+    def cache_segmentations(self,
+        image_list:Union[list, dict] = None):
+        """
+        Create or update the local segmentations details cache file.
+
+        No input parameters and no return value.
+        """
+        if not self._cache_folder or (not os.path.isdir(self._cache_folder)):
+            return
+        segmentation_cache_filename = self.cache_filename('0' * 24,
+            'sgcache', '.json.gz')
+        if os.path.exists(segmentation_cache_filename):
+            try:
+                self.segmentation_cache = func.gzip_load_var(
+                    segmentation_cache_filename)
+            except:
+                os.remove(segmentation_cache_filename)
+                warnings.warn('Invalid segmentation cache file.')
+        if image_list is None:
+            if not self.image_cache:
+                self.cache_images()
+            image_list = self.image_cache
+        if isinstance(image_list, dict):
+            image_list = [image for image in image_list.values()]
+        elif not isinstance(image_list, list):
+            raise ValueError('Invalid image_list argument.')
+        params = {
+            'limit': '0',
+            'sort': 'created',
+            'sortdir': '-1',
+            'imageId': '',
+        }
+        sub_list = dict()
+        images_cached = {seg['imageId']: True for
+            seg in self.segmentation_cache.values()}
+        for image in image_list:
+            if not image['_id'] in images_cached:
+                sub_list[image['_id']] = True
+        sub_list = [key for key in sub_list.keys()]
+        to_load = len(sub_list)
+        for idx in range(to_load):
+            func.print_progress(idx, to_load, 'Caching segmentations: ')
+            params['imageId'] = sub_list[idx]
+            seg_infos = func.get(self._base_url,
+                'segmentation', self._auth_token, params).json()
+            for seg_info in seg_infos:
+                seg_detail = func.get(self._base_url,
+                    'segmentation/' + seg_info['_id']).json()
+                seg_detail['skill'] = seg_info['skill']
+                self.segmentation_cache[seg_info['_id']] = seg_detail
+            if (idx % vars.ISIC_SEG_SAVE_EVERY) == 0:
+                try:
+                    func.gzip_save_var(segmentation_cache_filename,
+                        self.segmentation_cache)
+                except:
+                    warnings.warn('Error writing segmentation cache file.')
+                    return
+        func.print_progress(to_load, to_load, 'Caching segmentations: ')
+        try:
+            func.gzip_save_var(segmentation_cache_filename,
+                self.segmentation_cache)
+        except:
+            warnings.warn('Error writing segmentation cache file.')
+            return
 
     # Generic /dataset endpoint
     def dataset(self,
@@ -579,8 +696,8 @@ class IsicApi(object):
                 warnings.warn('Error downloading {0:s}: {1:s}'.format(
                     item['name'], str(e)))
             if target_folder is None:
-                image_filename = func.cache_filename(image_id, 'image',
-                    image_ext, extra=item['name'], api=self)
+                image_filename = self.cache_filename(image_id, 'image',
+                    image_ext, extra=item['name'])
             else:
                 image_filename = target_folder + os.sep + repl.sub(lambda x:
                     func.getxattr(item, x.group(1)[1:]),
@@ -633,21 +750,25 @@ class IsicApi(object):
         Parameters
         ----------
         object_id : str
-            valid 24-character mongodb objectId for the dataset
+            valid 24-character mongodb objectId for the image
         name : str
-            alternatively the name of the dataset
+            alternatively the name of the image
         params : dict
             optional parameters for the GET request
         save_as : str
             Optional filename for the image to be saved as, in which
             case nothing is returned and the images is ONLY downloaded!
+        load_imagedata : bool
+            If true, immediately attempt to download image data as well
+        load_superpixels : bool
+            If true, immediately attempt to download superpixels as well
         
         Returns
         -------
         object
-            for a single dataset, returns a JSON object with _id and name
+            for a single image, returns a JSON object with _id and name
         list
-            for multiple datasets, a list of JSON objects
+            for multiple images, a list of JSON objects
         """
         (object_id, name) = _mangle_id_name(object_id, name)
         if object_id is None:
@@ -769,6 +890,90 @@ class IsicApi(object):
             print('     - {0:d} questions'.format(
                 len(study_obj.questions)))
 
+    # Generic /segmentation endpoint
+    def segmentation(self,
+        object_id:str = None,
+        params:dict = None,
+        load_maskdata:bool = False,
+        ) -> any:
+        """
+        segmentation endpoint, allows to
+        - retrieve information about segmentations
+        - retrieve (or download) one segmentation (object)
+
+        Parameters
+        ----------
+        object_id : str
+            valid 24-character mongodb objectId for the segmentation
+        name : str
+            alternatively the name of the segmentation
+        params : dict
+            optional parameters for the GET request
+        load_maskdata : bool
+            If true, immediately attempt to download mask data as well
+        
+        Returns
+        -------
+        object
+            for a single segmentation, returns a JSON object with _id
+        list
+            for multiple segmentations, a list of JSON objects
+        """
+        object_id = _mangle_id_name(object_id, 'null')
+        if isinstance(object_id, tuple):
+            object_id = object_id[0]
+        if object_id is None:
+            if not isinstance(params, dict):
+                raise ValueError(
+                    'Segmentation list requires a params dict with a image_id.')
+            if 'image_id' in params:
+                params = copy.copy(params)
+                params['imageId'] = params['image_id']
+                del params['image_id']
+            if not 'imageId' in params:
+                raise ValueError(
+                    'Annotation list requires field image_id in params.')
+            return func.get(self._base_url,
+                'segmentation', self._auth_token, params).json()
+        if not func.could_be_mongo_object_id(object_id):
+            raise ValueError('Invalid objectId format of object_id parameter.')
+        if object_id in self._segmentation_objs:
+            self._current_segmentation = self._segmentation_objs[object_id]
+            return self._current_segmentation
+        segmentation = func.get(self._base_url,
+            'segmentation/' + object_id, self._auth_token, params).json()
+        if not '_id' in segmentation:
+            raise KeyError('segmentation with id %s not found.' % (object_id))
+        segmentation_obj = Segmentation(segmentation, api=self,
+            load_maskdata=load_maskdata)
+        self._segmentation_objs[segmentation['_id']] = segmentation_obj
+        self._current_segmentation = segmentation_obj
+        return segmentation_obj
+
+    # Segmentation list (generator)
+    def segmentation_list(self, params:dict = None, as_object:bool = False) -> iter:
+        """
+        Segmentation list/iterator
+
+        Parameters
+        ----------
+        params : dict
+            Optional GET parameters for the query string
+        as_object : bool
+            If set to false (default), yields dicts, otherwise objects
+        
+        Yields
+        ------
+        object
+            Segmentation as JSON dict or object
+        """
+        segs = self.segmentation(params=params)
+        for seg in segs:
+            if as_object:
+                yield Segmentation(seg, api=self)
+            else:
+                yield seg
+
     # Select images from the archive (regardless of study/dataset)
     def select_images(self,
         criteria:list,
@@ -791,7 +996,7 @@ class IsicApi(object):
         """
         if not self.image_cache:
             if not self._cache_folder:
-                warnings.warn('Attempting to download all image information.')
+                print('Downloading all image information...')
                 params = {
                     'detail': 'true',
                     'limit': '0',

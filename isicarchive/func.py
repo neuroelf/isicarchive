@@ -6,12 +6,12 @@ imported from outside the main package functionality (isicapi).
 
 Functions
 ---------
-cache_filename
-    Creates a filename of a specific type from an id
-color_code
-    Looks up a unique color code per feature name (from IsicApi object)
+color_superpixel
+    Paint the pixels belong to a superpixel list in a specific color.
 could_be_mongo_object_id
     Returns true if the input is a 24 lower-case hex character string
+display_image
+    Display an image (in a Jupyter notebook!)
 get
     Specific URL mangling rules prior to calling requests.get(...)
 get_json
@@ -38,11 +38,11 @@ print_progress
     Text-based progress bar
 select_from
     Complex field-based criteria selection of list or dict elements
-superpixel_decode
+superpixel_decode (using @numba.jit)
     Converts an RGB superpixel image to a 2D superpixel index array
-superpixel_map (using @jit)
+superpixel_map (using @numba.jit)
     Decodes a superpixel (index) array into a 2D mapping array
-superpixel_map_rgb
+superpixel_map_rgb (using @numba.jit)
     Chain superpixel_map(superpixel_decode(image))
 uri_encode
     Encodes non-letter/number characters into %02x sequences
@@ -70,80 +70,79 @@ import requests
 
 from .vars import ISIC_FUNC_PPI, ISIC_IMAGE_DISPLAY_SIZE_MAX
 
-# cache filename
-def cache_filename(
-    oid:str = None,
-    otype:str = None,
-    oext:str = None,
-    extra:str = None,
-    api:object = None,
-    ) -> str:
+# color superpixels in an image
+def color_superpixels(
+    image:Union[numpy.ndarray, Tuple],
+    splst:Union[list, numpy.ndarray],
+    spmap:numpy.ndarray,
+    color:Union[list, numpy.ndarray],
+    alpha:Union[float, numpy.float, None],
+    spval:numpy.ndarray = None,
+    copy_image:bool = False) -> numpy.ndarray:
     """
-    Creates a filename out of an object (type, id, ext).
+    Paint the pixels belong to a superpixel list in a specific color.
 
     Parameters
     ----------
-    oid : str
-        object_id (mongodb objectId)
-    otype : str
-        Arbitrary object type str (first part of filename)
-    oext : str
-        Arbitrary extension, will be .bin if none
-    extra : str
-        String folder in before extension
-    api : IsicApi
-        Necessary to access cache folder, if api not valid, returns None
+    image : numpy.ndarray or 2- or 3-element Tuple with image size
+        Image to be colored, if shape tuple, will be all 0 (black)
+    splst : list or flat numpy.ndarray
+        List of superpixels to color in the image
+    spmap : numpy.ndarray
+        Mapping array from func.superpixels_map(...)
+    color : either a list or numpy.ndarray
+        RGB Color code or list of codes to use to color superpixels
+    alpha : either float or numpy.float value or None
+        Alpha (opacity) value between 0.0 and 1.0, if None, set to 1.0
+    spval : optional numpy.ndarray
+        Per-pixel opacity value (e.g. confidence, etc.)
+    copy_image : bool
+        Copy the input image prior to painting, default: False
     
     Returns
     -------
-    filename : str
-        Filename of object in cache
+    image : numpy.ndarray
+        Image with superpixels painted
     """
-
-    # checks
-    if api is None or api._cache_folder is None:
-        return None
-    if not isinstance(oid, str) or (not could_be_mongo_object_id(oid)):
-        raise ValueError('Invalid object_id')
-    if otype is None or (otype == ''):
-        otype = 'object'
-    if oext is None or (oext == ''):
-        oext = '.bin'
-    elif oext[0] != '.':
-        oext = '.' + oext
-    if (not extra is None) and (extra != ''):
-        extra = '_' + extra
+    if isinstance(image, tuple):
+        if len(image) == 2 and (isinstance(image[0], int) and
+            isinstance(image[1], int)):
+            im_shape = image
+            image = numpy.zeros(image[0] * image[1], dtype=numpy.uint8)
+        elif len(image) == 3 and (isinstance(image[0], int) and
+            isinstance(image[1], int) and isinstance(image[2], int) and
+            (image[2] == 1 or image[2] == 3)):
+            im_shape = image
+            image = numpy.zeros(image[0] * image[1] * image[2],
+                dtype=numpy.uint8).reshape((image[0] * image[1], image[2]))
+        else:
+            raise ValueError('Invalid image shape.')
+        copy_image = False
     else:
-        extra = ''
-    
-    # concatenate items
-    return (api._cache_folder +
-        os.sep + oid[-1] + os.sep + otype + '_' + oid + extra + oext)
-
-# color superpixels in an image
-def color_superpixels(
-    image:numpy.ndarray,
-    splst:numpy.ndarray,
-    spmap:numpy.ndarray,
-    color:Union[list, numpy.ndarray],
-    alpha:Union[float, numpy.float],
-    spval:numpy.ndarray = None,
-    copy_image:bool = False) -> Optional[numpy.ndarray]:
-    """
-    Paint the pixels belong to a superpixel list in a specific color.
-    """
-    im_shape = image.shape
+        im_shape = image.shape
     if copy_image:
         image = numpy.copy(image)
     if len(im_shape) == 3 or im_shape[1] > 3:
         planes = im_shape[2] if len(im_shape) == 3 else 1
         image.shape = (im_shape[0] * im_shape[1], planes)
     else:
-        planes = im_shape[1]
+        if len(im_shape) > 1:
+            planes = im_shape[1]
+        else:
+            planes = 1
+    has_alpha = False
+    if planes > 3:
+        planes = 3
+        has_alpha = True
     numsp = len(splst)
     if spval is None:
         spval = numpy.ones(numsp, dtype=numpy.float32)
-    elif not isinstance(spval, numpy.ndarray):
+    elif isinstance(spval, list) and (len(spval) == numsp):
+        try:
+            spval = numpy.asarray(spval, dtype=numpy.float32)
+        except:
+            raise
+    elif not (isinstance(spval, numpy.ndarray) and (len(spval) == numsp)):
         try:
             spval = spval * numpy.ones(numsp, dtype=numpy.float32)
         except:
@@ -161,7 +160,10 @@ def color_superpixels(
                 image[sppidx, p] = color[idx][p]
             else:
                 image[sppidx, p] = numpy.round(
-                    alpha * color[idx][p] + spinv_alpha * image[sppidx, p])
+                    spalpha * color[idx][p] + spinv_alpha * image[sppidx, p])
+        if has_alpha:
+            image[sppidx, 3] = numpy.maximum(image[sppidx, 3], numpy.round(
+                255.0 * spalpha).astype(numpy.uint8))
     image.shape = im_shape
     return image
 
@@ -189,7 +191,7 @@ def display_image(
     image_data:Union[bytes, str, numpy.ndarray, imageio.core.util.Array],
     image_size:Tuple = None,
     max_size:int = ISIC_IMAGE_DISPLAY_SIZE_MAX,
-    library:str = 'ipython',
+    library:str = 'matplotlib',
     ipython_as_object:bool = False,
     mpl_axes:object = None,
     ) -> Optional[object]:
@@ -198,7 +200,7 @@ def display_image(
     if not isinstance(library, str):
         raise ValueError('Invalid library selection.')
     library = library.lower()
-    if library in ['ipython', 'matplotlib']:
+    if not library in ['ipython', 'matplotlib']:
         raise ValueError('Invalid library selection.')
     if (isinstance(image_data, numpy.ndarray) or
         isinstance(image_data, imageio.core.util.Array)):
@@ -241,6 +243,7 @@ def display_image(
                 width=image_width, height=image_height)
             if not ipython_as_object:
                 ipy_display(image_out)
+                return None
             return image_out
         except Exception as e:
             warnings.warn('Problem producing image for display: ' + str(e))
@@ -351,7 +354,7 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
     obj : object
         Either a dictionary or object with attributes
     name : str
-        String describing what to retrieve
+        String describing what to retrieve, see below.
     default : Any
         Value to return if name is not found (or error)
     
@@ -359,16 +362,79 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
     -------
     value : Any
         Value from obj.name where name can be name1.name2.name3
+    
+    Field (name) syntax
+    -------------------
+    If the name does not contain a period ('.'), the object will be
+    accessed in the following order:
+    - for both dicts and lists, the pseudo-name '#' returns len(obj)
+    - for dicts, the name is used as a key to extract a value
+    - for anything but a list, getattr(obj, name) is called
+    - a numeral (e.g. '0', '14', or '-1') is used as index (for a list!)
+    - if the name contains '=', it assumes the list contains dicts, and
+      returns the first match 'field=val' of obj[IDX]['field'] == 'val',
+      whereas name will be split by '>' and joined again by '.' to
+      allow selection of subfields
+    - if the name contains '=#=', this comparison uses the numeric value
+    - if the name contains '~', performs the same with re.search,
+    - if the object is a list, *AND* the name begins in '[].', a list
+      of equal size will be returned, whereas each element in the result
+      is determined by calling getxattr(obj[IDX], name[3:], default)
+
+    Valid name expressions would be
+    - 'field.sub-field.another one'
+      extracts 'field' from obj, then 'sub-field', and then 'another one'
+    - 'metadata.files.#'
+      extracts metadata, then files, and returns the number of files
+    - 'metadata.files.-1'
+      returns the last item from list in metadata.files
+    - 'reviews.author=John Doe.description'
+      extracts reviews, then looks for element where author == 'John Doe',
+      and then extracts description
+    - 'reviews.author>name>last_name=Doe.description'
+      performs the search on author.name.last_name within reviews
+    - '[].author.name'
+      returns a list with elements: getxattr(obj[IDX], 'author.name')
     """
     val = default
     if obj is None:
         return val
+    if name is None or (name == ''):
+        return obj
     if not '.' in name:
         try:
             if isinstance(obj, dict):
-                val = obj.get(name)
-            elif isinstance(obj, list) and name.isdigit():
+                if name == '#':
+                    val = len(obj)
+                else:
+                    val = obj.get(name)
+            elif not isinstance(obj, list):
+                val = getattr(obj, name)
+            elif name.isdigit() or (name[0] == '-' and name[1:].isdigit()):
                 val = obj[int(name)]
+            elif name == '#':
+                val = len(obj)
+            elif '=' in name:
+                name_parts = name.split('=')
+                name = '.'.join(name_parts[0].split('>'))
+                cont = name_parts[-1]
+                if len(name_parts) == 3 and (name_parts[1] == '#'):
+                    cont = int(cont)
+                for subobj in obj:
+                    if isinstance(subobj, dict) and (
+                        getxattr(subobj, name) == cont):
+                        val = subobj
+                        break
+            elif '~' in name:
+                name_parts = name.split('~')
+                name = '.'.join(name_parts[0].split('>'))
+                cont = '~'.join(name_parts[1:])
+                rexp = re.compile(cont)
+                for subobj in obj:
+                    if isinstance(subobj, dict) and (
+                        rexp.search(getxattr(subobj, name))):
+                        val = subobj
+                        break
             else:
                 val = getattr(obj, name)
         except:
@@ -822,6 +888,7 @@ def select_from(items:Union[list, dict], criteria:list) -> Union[list, dict]:
         raise ValueError('Invalid collection.')
 
 # decode image superpixel
+@numba.jit('i4[:,:](u1[:,:,:])', nopython=True)
 def superpixel_decode(rgb_array:numpy.ndarray) -> numpy.ndarray:
     """
     Decode RGB version of a superpixel image into an index array.
