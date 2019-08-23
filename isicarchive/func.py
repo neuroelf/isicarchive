@@ -582,6 +582,204 @@ def gzip_save_var(gzip_file:str, save_var:Any) -> bool:
     except:
         raise
 
+# image mixing
+@numba.jit('u1[:](u1[:],u1[:],optional(f4[:]))', nopython=True)
+def _image_mix_gray_gray(
+    i1:numpy.ndarray,
+    i2:numpy.ndarray,
+    a2:numpy.ndarray = None,
+    ) -> numpy.ndarray:
+    ishape = i1.shape
+    oi = numpy.zeros(i1.size, dtype=numpy.uint8).reshape(ishape) 
+    numpix = ishape[0]
+    if a2 is None:
+        for p in numba.prange(numpix): #pylint: disable=not-an-iterable
+            oi[p] = max(i1[p], i2[p])
+    else:
+        o = numpy.float32(1.0)
+        for p in numba.prange(numpix): #pylint: disable=not-an-iterable
+            a = a2[p]
+            ia = o - a
+            oi[p] = round(ia * numpy.float32(i1[p]) + a * numpy.float32(i2[p]))
+    return oi
+@numba.jit('u1[:,:](u1[:,:],u1[:,:],optional(f4[:]))', nopython=True)
+def _image_mix(
+    i1:numpy.ndarray,
+    i2:numpy.ndarray,
+    a2:numpy.ndarray = None,
+    ) -> numpy.ndarray:
+    ishape = i1.shape
+    i2shape = i2.shape
+    oi = numpy.zeros(i1.size, dtype=numpy.uint8).reshape(ishape) 
+    numpix = ishape[0]
+    if i2shape[0] != numpix:
+        raise ValueError('Images mismatch in number of pixels')
+    if (not a2 is None) and (a2.size != numpix):
+        raise ValueError('Alpha mismatch in number of pixels')
+    if ishape[1] == 1:
+        if i2shape[1] == 1:
+            if a2 is None:
+                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
+                    oi[p,0] = max(i1[p,0], i2[p,0])
+            else:
+                o = numpy.float32(1.0)
+                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
+                    a = a2[p]
+                    ia = o - a
+                    oi[p,0] = round(
+                        ia * numpy.float32(i1[p,0]) + 
+                        a * numpy.float32(i2[p,0]))
+        elif i2shape[1] != 3:
+            raise ValueError('i2 not a valid image array')
+        else:
+            th = numpy.float32(1.0) / numpy.float32(3)
+            if a2 is None:
+                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
+                    i2m = round(th * (
+                        numpy.float32(i2[p,0]) +
+                        numpy.float32(i2[p,1]) +
+                        numpy.float32(i2[p,2])))
+                    oi[p,0] = max(i1[p,0], i2m)
+            else:
+                o = numpy.float32(1.0)
+                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
+                    a = a2[p]
+                    ia = o - a
+                    i2m = th * (
+                        numpy.float32(i2[p,0]) +
+                        numpy.float32(i2[p,1]) +
+                        numpy.float32(i2[p,2]))
+                    oi[p,0] = round(ia * numpy.float32(i1[p,0]) + a * i2m)
+    elif ishape[1] != 3:
+        raise ValueError('i1 not a valid image array')
+    else:
+        if i2shape[1] == 1:
+            if a2 is None:
+                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
+                    oi[p,0] = max(i1[p,0], i2[p,0])
+                    oi[p,1] = max(i1[p,1], i2[p,0])
+                    oi[p,2] = max(i1[p,2], i2[p,0])
+            else:
+                o = numpy.float32(1.0)
+                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
+                    a = a2[p]
+                    ia = o - a
+                    i2ap = a * numpy.float32(i2[p,0])
+                    oi[p,0] = round(ia * numpy.float32(i1[p,0]) + i2ap)
+                    oi[p,1] = round(ia * numpy.float32(i1[p,1]) + i2ap)
+                    oi[p,2] = round(ia * numpy.float32(i1[p,2]) + i2ap)
+        elif i2shape[1] != 3:
+            raise ValueError('i2 not a valid image array')
+        else:
+            if a2 is None:
+                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
+                    oi[p,0] = max(i1[p,0], i2[p,0])
+                    oi[p,1] = max(i1[p,1], i2[p,1])
+                    oi[p,2] = max(i1[p,2], i2[p,2])
+            else:
+                o = numpy.float32(1.0)
+                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
+                    a = a2[p]
+                    ia = o - a
+                    oi[p,0] = round(
+                        ia * numpy.float32(i1[p,0]) + 
+                        a * numpy.float32(i2[p,0]))
+                    oi[p,1] = round(
+                        ia * numpy.float32(i1[p,1]) + 
+                        a * numpy.float32(i2[p,1]))
+                    oi[p,2] = round(
+                        ia * numpy.float32(i1[p,2]) + 
+                        a * numpy.float32(i2[p,2]))
+    return oi
+def image_mix(
+    image_1:numpy.ndarray,
+    image_2:numpy.ndarray,
+    alpha_2:Union[float, numpy.ndarray, None] = 0.5,
+    ) -> numpy.ndarray:
+    # get original shapes and perform necessary checks and reshaping
+    im1shape = image_1.shape
+    im2shape = image_2.shape
+    if image_1.shape[0] != image_2.shape[0]:
+        raise ValueError('Invalid input images.')
+    if not alpha_2 is None and isinstance(alpha_2, numpy.ndarray):
+        a2shape = alpha_2.shape
+        if not alpha_2.dtype is numpy.float32:
+            alpha_2 = alpha_2.astype(numpy.float32)
+    im1pix = im1shape[0]
+    im1planes = 1
+    if len(im1shape) > 1:
+        if im1shape[1] == 3 and len(im1shape) == 2:
+            im1planes = 3
+        else:
+            im1pix *= im1shape[1]
+            if len(im1shape) > 2:
+                im1planes = im1shape[2]
+    if not im1planes in [1, 3]:
+        raise ValueError('Invalid input image_1.')
+    im2pix = im2shape[0]
+    im2planes = 1
+    if len(im2shape) > 1:
+        if im2shape[1] == 3 and len(im2shape) == 2:
+            im2planes = 3
+        else:
+            im2pix *= im2shape[1]
+            if len(im2shape) > 2:
+                im2planes = im2shape[2]
+    if not im2planes in [1, 3]:
+        raise ValueError('Invalid input image_2.')
+    if im1pix != im2pix:
+        raise ValueError('Invalid input images.')
+    if isinstance(alpha_2, numpy.ndarray) and alpha_2.size not in [1, im1pix]:
+        raise ValueError('Invalid Alpha size.')
+    try:
+        image_1.shape = (im1pix, im1planes)
+    except:
+        try:
+            image_1 = image_1.reshape((im1pix, im1planes))
+        except:
+            raise ValueError('Unabled to format image_1.')
+    try:
+        image_2.shape = (im1pix, im2planes)
+    except:
+        try:
+            image_2 = image_2.reshape((im1pix, im2planes))
+        except:
+            image_1.shape = im1shape
+            raise ValueError('Unabled to format image_2.')
+    if not alpha_2 is None:
+        if isinstance(alpha_2, float):
+            alpha_2 = numpy.float32(alpha_2) * numpy.ones(im1pix,
+                dtype=numpy.float32)
+            a2shape = alpha_2.shape
+        else:
+            if alpha_2.size == 1:
+                alpha_2 = alpha_2 * numpy.ones(im1pix, dtype=numpy.float32)
+                a2shape = alpha_2.shape
+            else:
+                try:
+                    alpha_2.shape = (numpix)
+                except:
+                    try:
+                        alpha_2 = alpha_2.reshape(numpix)
+                    except:
+                        image_1.shape = im1shape
+                        image_2.shape = im2shape
+                        raise ValueError('Unable to format alpha_2.')
+    try:
+        immix = _image_mix(image_1, image_2, alpha_2)
+    except:
+        image_1.shape = im1shape
+        image_2.shape = im2shape
+        if not alpha_2 is None:
+            alpha_2.shape = a2shape
+        raise
+    image_1.shape = im1shape
+    image_2.shape = im2shape
+    if not alpha_2 is None:
+        alpha_2.shape = a2shape
+    immix.shape = im1shape
+    return immix
+
 # authentication
 def isic_auth_token(base_url:str, username:str, password:str) -> str:
     """
@@ -905,11 +1103,19 @@ def superpixel_decode(rgb_array:numpy.ndarray) -> numpy.ndarray:
     superpixel_index : 2d numpy.ndarray
         2D Image (uint16) with superpixel indices
     """
-    shift1 = numpy.uint32(8)
-    shift2 = numpy.uint32(16)
-    return (rgb_array[..., 0].astype(numpy.uint32) + 
-        (rgb_array[..., 1].astype(numpy.uint32) << shift1) +
-        (rgb_array[..., 2].astype(numpy.uint32) << shift2)).astype(numpy.int32)
+    ishape = rgb_array.shape
+    numpixx = ishape[0]
+    numpixy = ishape[1]
+    numpix = ishape[0] * ishape[1]
+    idx = numpy.zeros(numpix, dtype=numpy.int32).reshape((numpixx, numpixy))
+    s1 = numpy.int32(8)
+    s2 = numpy.int32(16)
+    for x in numba.prange(numpixx): #pylint: disable=not-an-iterable
+        for y in range(numpixy):
+            idx[x,y] = (numpy.int32(rgb_array[x,y,0]) + 
+                (numpy.int32(rgb_array[x,y,1]) << s1) + 
+                (numpy.int32(rgb_array[x,y,2]) << s2))
+    return idx
 
 # create superpixel -> pixel index array
 @numba.jit('i4[:,:](i4[:,:])', nopython=True)
