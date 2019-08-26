@@ -524,6 +524,21 @@ class IsicApi(object):
             params['imageId'] = sub_list[idx]
             seg_infos = func.get(self._base_url,
                 'segmentation', self._auth_token, params).json()
+            if len(seg_infos) == 0:
+                randid = 'ffffff{0:06x}{1:06x}{2:06x}'.format(
+                    numpy.random.randint(0, 16777216),
+                    numpy.random.randint(0, 16777216),
+                    numpy.random.randint(0, 16777216))
+                self.segmentation_cache[randid] = {
+                    '_id': randid,
+                    'created': None,
+                    'creator': {'_id': randid, 'name': None},
+                    'failed': True,
+                    'imageId': sub_list[idx],
+                    'meta': None,
+                    'reviews': [],
+                    'skill': 'None',
+                }
             for seg_info in seg_infos:
                 seg_detail = func.get(self._base_url,
                     'segmentation/' + seg_info['_id']).json()
