@@ -67,7 +67,9 @@ import matplotlib.pyplot as mpl_pyplot
 import numba
 import numpy
 import requests
+import scipy.ndimage as ndimage
 
+from .jitfunc import image_mix_jit, superpixel_outline_dir
 from .vars import ISIC_FUNC_PPI, ISIC_IMAGE_DISPLAY_SIZE_MAX
 
 # color superpixels in an image
@@ -189,7 +191,7 @@ def could_be_mongo_object_id(test_id:str = "") -> bool:
 # display image
 def display_image(
     image_data:Union[bytes, str, numpy.ndarray, imageio.core.util.Array],
-    image_size:Tuple = None,
+    image_shape:Tuple = None,
     max_size:int = ISIC_IMAGE_DISPLAY_SIZE_MAX,
     library:str = 'matplotlib',
     ipython_as_object:bool = False,
@@ -222,17 +224,17 @@ def display_image(
             raise
     if not isinstance(max_size, int) or (max_size < 32) or (max_size > 5120):
         max_size = ISIC_IMAGE_DISPLAY_SIZE_MAX
-    if image_size is None:
+    if image_shape is None:
         try:
             if library == 'ipython':
                 image_array = imageio.imread(image_data)
-                image_size = image_array.shape
+                image_shape = image_array.shape
             else:
-                image_size = image_data.shape
+                image_shape = image_data.shape
         except:
             raise
-    image_height = image_size[0]
-    image_width = image_size[1]
+    image_height = image_shape[0]
+    image_width = image_shape[1]
     image_max_xy = max(image_width, image_height)
     shrink_factor = max(1.0, image_max_xy / max_size)
     image_width = int(image_width / shrink_factor)
@@ -582,115 +584,7 @@ def gzip_save_var(gzip_file:str, save_var:Any) -> bool:
     except:
         raise
 
-# image mixing
-@numba.jit('u1[:](u1[:],u1[:],optional(f4[:]))', nopython=True)
-def _image_mix_gray_gray(
-    i1:numpy.ndarray,
-    i2:numpy.ndarray,
-    a2:numpy.ndarray = None,
-    ) -> numpy.ndarray:
-    ishape = i1.shape
-    oi = numpy.zeros(i1.size, dtype=numpy.uint8).reshape(ishape) 
-    numpix = ishape[0]
-    if a2 is None:
-        for p in numba.prange(numpix): #pylint: disable=not-an-iterable
-            oi[p] = max(i1[p], i2[p])
-    else:
-        o = numpy.float32(1.0)
-        for p in numba.prange(numpix): #pylint: disable=not-an-iterable
-            a = a2[p]
-            ia = o - a
-            oi[p] = round(ia * numpy.float32(i1[p]) + a * numpy.float32(i2[p]))
-    return oi
-@numba.jit('u1[:,:](u1[:,:],u1[:,:],optional(f4[:]))', nopython=True)
-def _image_mix(
-    i1:numpy.ndarray,
-    i2:numpy.ndarray,
-    a2:numpy.ndarray = None,
-    ) -> numpy.ndarray:
-    ishape = i1.shape
-    i2shape = i2.shape
-    oi = numpy.zeros(i1.size, dtype=numpy.uint8).reshape(ishape) 
-    numpix = ishape[0]
-    if i2shape[0] != numpix:
-        raise ValueError('Images mismatch in number of pixels')
-    if (not a2 is None) and (a2.size != numpix):
-        raise ValueError('Alpha mismatch in number of pixels')
-    if ishape[1] == 1:
-        if i2shape[1] == 1:
-            if a2 is None:
-                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
-                    oi[p,0] = max(i1[p,0], i2[p,0])
-            else:
-                o = numpy.float32(1.0)
-                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
-                    a = a2[p]
-                    ia = o - a
-                    oi[p,0] = round(
-                        ia * numpy.float32(i1[p,0]) + 
-                        a * numpy.float32(i2[p,0]))
-        elif i2shape[1] != 3:
-            raise ValueError('i2 not a valid image array')
-        else:
-            th = numpy.float32(1.0) / numpy.float32(3)
-            if a2 is None:
-                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
-                    i2m = round(th * (
-                        numpy.float32(i2[p,0]) +
-                        numpy.float32(i2[p,1]) +
-                        numpy.float32(i2[p,2])))
-                    oi[p,0] = max(i1[p,0], i2m)
-            else:
-                o = numpy.float32(1.0)
-                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
-                    a = a2[p]
-                    ia = o - a
-                    i2m = th * (
-                        numpy.float32(i2[p,0]) +
-                        numpy.float32(i2[p,1]) +
-                        numpy.float32(i2[p,2]))
-                    oi[p,0] = round(ia * numpy.float32(i1[p,0]) + a * i2m)
-    elif ishape[1] != 3:
-        raise ValueError('i1 not a valid image array')
-    else:
-        if i2shape[1] == 1:
-            if a2 is None:
-                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
-                    oi[p,0] = max(i1[p,0], i2[p,0])
-                    oi[p,1] = max(i1[p,1], i2[p,0])
-                    oi[p,2] = max(i1[p,2], i2[p,0])
-            else:
-                o = numpy.float32(1.0)
-                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
-                    a = a2[p]
-                    ia = o - a
-                    i2ap = a * numpy.float32(i2[p,0])
-                    oi[p,0] = round(ia * numpy.float32(i1[p,0]) + i2ap)
-                    oi[p,1] = round(ia * numpy.float32(i1[p,1]) + i2ap)
-                    oi[p,2] = round(ia * numpy.float32(i1[p,2]) + i2ap)
-        elif i2shape[1] != 3:
-            raise ValueError('i2 not a valid image array')
-        else:
-            if a2 is None:
-                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
-                    oi[p,0] = max(i1[p,0], i2[p,0])
-                    oi[p,1] = max(i1[p,1], i2[p,1])
-                    oi[p,2] = max(i1[p,2], i2[p,2])
-            else:
-                o = numpy.float32(1.0)
-                for p in numba.prange(numpix): #pylint: disable=not-an-iterable
-                    a = a2[p]
-                    ia = o - a
-                    oi[p,0] = round(
-                        ia * numpy.float32(i1[p,0]) + 
-                        a * numpy.float32(i2[p,0]))
-                    oi[p,1] = round(
-                        ia * numpy.float32(i1[p,1]) + 
-                        a * numpy.float32(i2[p,1]))
-                    oi[p,2] = round(
-                        ia * numpy.float32(i1[p,2]) + 
-                        a * numpy.float32(i2[p,2]))
-    return oi
+# image mixing (python portion)
 def image_mix(
     image_1:numpy.ndarray,
     image_2:numpy.ndarray,
@@ -766,11 +660,11 @@ def image_mix(
                         image_2.shape = im2shape
                         raise ValueError('Unable to format alpha_2.')
     try:
-        immix = _image_mix(image_1, image_2, alpha_2)
+        immix = image_mix_jit(image_1, image_2, alpha_2)
     except:
         image_1.shape = im1shape
         image_2.shape = im2shape
-        if not alpha_2 is None:
+        if isinstance(alpha_2, numpy.ndarray):
             alpha_2.shape = a2shape
         raise
     image_1.shape = im1shape
@@ -1125,7 +1019,7 @@ def superpixel_map(pixel_img:numpy.ndarray) -> numpy.ndarray:
 
     Parameters
     ----------
-    idx_array : 2d numpy.ndarray
+    idx_array : 2d numpy.ndarray (order='C' !)
         Image with superpixel index in each pixel
     
     Returns
@@ -1160,6 +1054,70 @@ def superpixel_map_rgb(pixel_img:numpy.ndarray) -> numpy.ndarray:
         return superpixel_map(superpixel_decode(pixel_img))
     except:
         raise
+
+def superpixel_outlines(
+    pixel_map:numpy.ndarray,
+    image_shape:Tuple,
+    out_format:str = 'coords'
+    ) -> dict:
+    """
+    Extract superpixel outlines (shape paths) from superpixel map
+    """
+    if not isinstance(out_format, str) or (not out_format in
+        ['coords', 'image', 'svg']):
+        raise ValueError('Invalid out_format.')
+    rowlen = image_shape[1]
+    map_shape = pixel_map.shape
+    numidx = map_shape[0]
+    if out_format == 'image':
+        pix_shapes = numpy.zeros(image_shape, dtype=numpy.uint8, order='C')
+    else:
+        pix_shapes = dict()
+        if out_format == 'svg':
+            ddict = {
+                1000001:'h1',
+                1000999:'h-1',
+                1001000:'v1',
+                1001001:'h1v1',
+                1001999:'v1h-1',
+                1999000:'v-1',
+                1999001:'v-1h1',
+                1999999:'h-1v-1',
+                }
+    for idx in range(numidx):
+        numpix = pixel_map[idx,-1]
+        pixidx = pixel_map[idx, 0:numpix]
+        ycoords = pixidx // rowlen
+        xcoords = pixidx - (rowlen * ycoords)
+        minx = numpy.amin(xcoords)
+        maxx = numpy.amax(xcoords)
+        miny = numpy.amin(ycoords)
+        maxy = numpy.amax(ycoords)
+        spsx = 1 + maxx - minx
+        spsy = 1 + maxy - miny
+        spx_map = numpy.zeros((spsy+4, spsx+4), dtype=numpy.bool, order='C')
+        spx_map.flat[(xcoords - (minx-2)) + (spsx+4) * (ycoords - (miny-2))] = True
+        spx_eroded = ndimage.binary_erosion(spx_map)
+        spx_map[spx_eroded] = False
+        outcoords = numpy.where(spx_map)
+        num_pix = outcoords[0].size
+        if out_format == 'coords':
+            pix_shapes[idx] = numpy.concatenate((
+                outcoords[0].reshape((num_pix, 1)) + (miny-2),
+                outcoords[1].reshape((num_pix, 1)) + (minx-2)), axis=1)
+        elif out_format == 'image':
+            pix_shapes[miny:(miny+spsy), minx:(minx+spsx)] = numpy.maximum(
+                pix_shapes[miny:(miny+spsy), minx:(minx+spsx)], numpy.uint8(
+                255) * spx_map[2:-2, 2:-2].astype(numpy.uint8))
+        else:
+            (ycoord, xcoord, out_moves) = superpixel_outline_dir(num_pix, spx_map)
+            svg_dirs = [ddict[move] for move in out_moves]
+            svg = """<svg id="superpixel_{0:d}" width="{1:d}" height="{2:d}" xmlns="{3:s}">
+                <path id="superpixelp_{4:d}" d="M{5:d} {6:d}{7:s}z" /></svg>""".format(
+                idx, rowlen, image_shape[0], 'http://www.w3.org/2000/svg',
+                idx, xcoord + (minx - 2), ycoord + (miny - 2), ''.join(svg_dirs))
+            pix_shapes[idx] = svg
+    return pix_shapes
 
 # URI encode
 _uri_tohex = ' !"#$%&\'()*+,/:;<=>?@[\\]^`{|}~'
