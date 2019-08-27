@@ -556,3 +556,39 @@ def superpixel_path(
     if idx < num_pix:
         out = out[0:idx,:]
     return out
+
+# SVG path from v/h list
+@jit('i1[:](i4[:,:])', nopython=True)
+def svg_path_from_list(vh_list:numpy.ndarray) -> numpy.ndarray:
+    llen = vh_list.shape[0]
+    omax = 4 * llen
+    olen = omax + 6
+    vbuff = numpy.zeros(8, dtype=numpy.int8).reshape((8,))
+    out = numpy.zeros(olen, dtype=numpy.int8).reshape((olen,))
+    idx = 0
+    for elem in range(llen):
+        if idx > omax:
+            break
+        v = vh_list[elem,0]
+        h = vh_list[elem,1]
+        if v == 0 and h == 0:
+            continue
+        if v != 0:
+            out[idx] = 118 # 'v'
+        else:
+            out[idx] = 104 # 'h'
+            v = h
+        idx += 1
+        if v < 0:
+            out[idx] = 45 # '-'
+            idx +=1
+            v = -v
+        vbc = 0
+        while v >= 10:
+            vbuff[vbc] = 48 + (v % 10) # '0' - '9'
+            v //= 10
+            vbc += 1
+        vbuff[vbc] = 48 + v
+        out[idx:idx+vbc+1] = vbuff[vbc::-1]
+        idx += vbc+1
+    return out[0:idx]

@@ -56,7 +56,7 @@ import io
 import json
 import os
 import re
-from typing import Any, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 import warnings
 import time
 
@@ -69,7 +69,7 @@ import numpy
 import requests
 import scipy.ndimage as ndimage
 
-from .jitfunc import image_mix_jit, superpixel_outline_dir, superpixel_path
+from . import jitfunc
 from .vars import ISIC_FUNC_PPI, ISIC_IMAGE_DISPLAY_SIZE_MAX
 
 # color superpixels in an image
@@ -660,7 +660,7 @@ def image_mix(
                         image_2.shape = im2shape
                         raise ValueError('Unable to format alpha_2.')
     try:
-        immix = image_mix_jit(image_1, image_2, alpha_2)
+        immix = jitfunc.image_mix_jit(image_1, image_2, alpha_2)
     except:
         image_1.shape = im1shape
         image_2.shape = im2shape
@@ -1011,6 +1011,34 @@ def superpixel_decode(rgb_array:numpy.ndarray) -> numpy.ndarray:
                 (numpy.int32(rgb_array[x,y,2]) << s2))
     return idx
 
+# superpixel default colors
+def superpixel_colors(
+    num_pix:int = 1536,
+    schema:Union[List,str] = 'rgb',
+    stroke:str = '',
+    ) -> List:
+    colors = [''] * num_pix
+    if not schema in ['random', 'rgb']:
+        raise ValueError('invalid schema requested.')
+    if schema == 'rgb':
+        if stroke:
+            for idx in range(num_pix):
+                colors[idx] = 'fill="#{0:02x}{1:02x}{2:02x}" {3:s}'.format(
+                    idx % 256, (idx // 256) % 256, (idx // 65536) % 256, stroke)
+        else:
+            for idx in range(num_pix):
+                colors[idx] = 'fill="#{0:02x}{1:02x}{2:02x}"'.format(
+                    idx % 256, (idx // 256) % 256, (idx // 65536) % 256)
+    else:
+        randcols = numpy.random.randint(0, 16777126, num_pix)
+        if stroke:
+            for idx in range(num_pix):
+                colors[idx] = 'fill="#{0:06x} {1:s}"'.format(randcols[idx], stroke)
+        else:
+            for idx in range(num_pix):
+                colors[idx] = 'fill="#{0:06x}"'.format(randcols[idx])
+    return colors
+
 # create superpixel -> pixel index array
 @jit('i4[:,:](i4[:,:])', nopython=True)
 def superpixel_map(pixel_img:numpy.ndarray) -> numpy.ndarray:
@@ -1055,16 +1083,19 @@ def superpixel_map_rgb(pixel_img:numpy.ndarray) -> numpy.ndarray:
     except:
         raise
 
+# superpixel outlines (coordinates, image, or SVG/paths)
 def superpixel_outlines(
     pixel_map:numpy.ndarray,
     image_shape:Tuple,
-    out_format:str = 'coords'
+    out_format:str = 'coords',
+    pix_selection:List = None,
+    path_attribs:Union[List,str] = None,
     ) -> dict:
     """
     Extract superpixel outlines (shape paths) from superpixel map
     """
     if not isinstance(out_format, str) or (not out_format in
-        ['coords', 'image', 'osvg', 'svg']):
+        ['coords', 'image', 'osvg', 'osvgp', 'osvgs', 'svg', 'svgp', 'svgs']):
         raise ValueError('Invalid out_format.')
     rowlen = image_shape[1]
     map_shape = pixel_map.shape
@@ -1073,7 +1104,7 @@ def superpixel_outlines(
         pix_shapes = numpy.zeros(image_shape, dtype=numpy.uint8, order='C')
     else:
         pix_shapes = dict()
-        if out_format == 'svg':
+        if out_format in ['svg', 'svgp', 'svgs']:
             ddict = {
                 1000001:'h1',
                 1000999:'h-1',
@@ -1084,7 +1115,16 @@ def superpixel_outlines(
                 1999001:'v-1h1',
                 1999999:'h-1v-1',
                 }
-    for idx in range(num_idx):
+    if pix_selection is None:
+        pix_selection = range(num_idx)
+    if isinstance(path_attribs, str):
+        pa = path_attribs
+    elif isinstance(path_attribs, list):
+        if len(path_attribs) < num_idx:
+            raise ValueError('path_attribs must be given for all superpixels.')
+    else:
+        pa = ''
+    for idx in pix_selection:
         num_pix = pixel_map[idx,-1]
         pixidx = pixel_map[idx, 0:num_pix]
         ycoords = pixidx // rowlen
@@ -1110,26 +1150,40 @@ def superpixel_outlines(
             pix_shapes[miny:(miny+spsy), minx:(minx+spsx)] = numpy.maximum(
                 pix_shapes[miny:(miny+spsy), minx:(minx+spsx)], numpy.uint8(
                 255) * spx_out[2:-2, 2:-2].astype(numpy.uint8))
-        elif out_format == 'osvg':
-            spx_path = superpixel_path(
-                num_pix, outcoords[0][0], outcoords[1][0], spx_map)
-            svg_dirs = [
-                'h' + str(spx_path[idx,1]) if spx_path[idx,1] != 0 else
-                'v' + str(spx_path[idx,0]) for idx in range(1,spx_path.shape[0])]
-            svg = """<svg id="superpixel_{0:d}" width="{1:d}" height="{2:d}" xmlns="{3:s}">
-                <path id="superpixelp_{4:d}" d="M{5:.1f},{6:.1f}{7:s}z" /></svg>""".format(
-                idx, rowlen, image_shape[0], 'http://www.w3.org/2000/svg', idx,
-                float(outcoords[1][0] + minx)-2.5, float(outcoords[0][0] + miny)-2.5,
-                ''.join(svg_dirs))
+        elif out_format[0] == 'o':
+            svg_path = jitfunc.svg_path_from_list(jitfunc.superpixel_path(
+                num_pix, outcoords[0][0], outcoords[1][0], spx_map)).tostring().decode('utf-8')
+            if isinstance(path_attribs, list):
+                pa = path_attribs[idx]
+            if out_format[-1] == 's':
+                svg = ('<svg id="superpixel_{0:d}" width="{1:d}" height="{2:d}" xmlns="{3:s}">' +
+                    '<path id="superpixelp_{4:d}" d="M{5:.1f} {6:.1f}{7:s}z" {8:s} /></svg>').format(
+                    idx, rowlen, image_shape[0], 'http://www.w3.org/2000/svg', idx,
+                    float(outcoords[1][0] + minx)-2.5, float(outcoords[0][0] + miny)-2.5,
+                    svg_path, pa)
+            else:
+                svg = '<path id="superpixel_{0:d}" d="M{1:.1f} {2:.1f}{3:s}z" {4:s} />'.format(
+                    idx, float(outcoords[1][0] + minx)-2.5, float(outcoords[0][0] + miny)-2.5,
+                    svg_path, pa)
             pix_shapes[idx] = svg
         else:
-            (ycoord, xcoord, out_moves) = superpixel_outline_dir(num_pix, spx_out)
+            (ycoord, xcoord, out_moves) = jitfunc.superpixel_outline_dir(num_pix, spx_out)
             svg_dirs = [ddict[move] for move in out_moves]
-            svg = """<svg id="superpixel_{0:d}" width="{1:d}" height="{2:d}" xmlns="{3:s}">
-                <path id="superpixelp_{4:d}" d="M{5:d} {6:d}{7:s}z" /></svg>""".format(
-                idx, rowlen, image_shape[0], 'http://www.w3.org/2000/svg',
-                idx, xcoord + (minx - 2), ycoord + (miny - 2), ''.join(svg_dirs))
+            if isinstance(path_attribs, list):
+                pa = path_attribs[idx]
+            if out_format[-1] == 's':
+                svg = ('<svg id="superpixel_{0:d}" width="{1:d}" height="{2:d}" xmlns="{3:s}">' +
+                    '<path id="superpixelp_{4:d}" d="M{5:d} {6:d}{7:s}z" {8:s} /></svg>').format(
+                    idx, rowlen, image_shape[0], 'http://www.w3.org/2000/svg',
+                    idx, xcoord + (minx - 2), ycoord + (miny - 2), ''.join(svg_dirs), pa)
+            else:
+                svg = '<path id="superpixelp_{0:d}" d="M{1:d} {2:d}{3:s}z" {4:s} />'.format(
+                    idx, xcoord + (minx - 2), ycoord + (miny - 2), ''.join(svg_dirs), pa)
             pix_shapes[idx] = svg
+    if out_format in ['osvg', 'svg']:
+        pix_shapes = ('<svg id="superpixels" width="{0:d}" height="{1:d}" ' +
+            'xmlns="http://www.w3.org/2000/svg">\n    {2:s}\n</svg>').format(
+            rowlen, image_shape[0], '\n    '.join(pix_shapes.values()))
     return pix_shapes
 
 # URI encode
