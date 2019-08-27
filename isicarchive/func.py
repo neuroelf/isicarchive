@@ -913,6 +913,79 @@ def print_progress(
         if not clear_output is None:
             clear_output()
 
+# segmentation outline (coordinates, image, or SVG/path)
+def segmentation_outline(
+    seg_mask:numpy.ndarray,
+    out_format:str = 'osvg',
+    negative:bool = True,
+    path_attrib:str = '',
+    ) -> Any:
+    """
+    Extract segmentation outline (shape path) from segmentation mask
+
+    Parameters
+    ----------
+    seg_mask : ndarray
+        Gray-scale mask with values > 0 being included
+    out_format : str
+        Format selection:
+        'coords' - return a list with 2D coordinates for each outline pixel
+        'image'  - return a grayscale image with boundary set to 255
+        'osvg'   - outline SVG (along the outer pixel borders) string
+        'osvgp'  - return a the SVG path (without SVG container)
+    negative : bool
+        If true (default), the path describes the non-segmentated part
+    path_attrib : str
+        Optional path attributes
+    
+    Returns
+    -------
+    outline : Any
+        Segmentation outline in the selected format
+    """
+    if not isinstance(out_format, str) or (not out_format in
+        ['coords', 'image', 'osvg', 'osvgp']):
+        raise ValueError('Invalid out_format.')
+    if seg_mask.dtype != numpy.bool:
+        seg_mask = seg_mask > 0
+    image_shape = seg_mask.shape
+    rowlen = image_shape[1]
+    if out_format == 'image':
+        outline = numpy.zeros(image_shape, dtype=numpy.uint8, order='C')
+    if not isinstance(path_attrib, str):
+        path_attrib = ''
+    ext_mask = numpy.zeros((image_shape[0]+4, rowlen+4), dtype=numpy.bool, order='C')
+    ext_mask[2:-2, 2:-2] = seg_mask
+    ext_eroded = ndimage.binary_erosion(ext_mask)
+    ext_out = ext_mask.copy()
+    ext_out[ext_eroded] = False
+    if out_format == 'image':
+        outline[ext_out[2:-2, 2:-2]] = 255
+        return outline
+    outcoords = numpy.where(ext_out)
+    num_pix = outcoords[0].size
+    if out_format == 'coords':
+        outline = numpy.concatenate((outcoords[0].reshape((num_pix, 1)),
+            outcoords[1].reshape((num_pix, 1))), axis=1) - 2
+    else:
+        if negative:
+            neg_path = 'M0 0v{0:d}h{1:d}v-{0:d}h-{1:d}zM'.format(image_shape[0], rowlen)
+        else:
+            neg_path = 'M'
+        svg_path = jitfunc.svg_path_from_list(jitfunc.superpixel_path(
+            num_pix, outcoords[0][0], outcoords[1][0], ext_mask)).tostring().decode('utf-8')
+        if out_format[-1] != 'p':
+            outline = ('<svg id="segmentation" width="{0:d}" height="{1:d}" xmlns="{2:s}">' +
+                '<path id="segmentationp" d="{3:s}{4:.1f} {5:.1f}{6:s}z" {7:s} /></svg>').format(
+                rowlen, image_shape[0], 'http://www.w3.org/2000/svg',
+                neg_path, float(outcoords[1][0])-2.5, float(outcoords[0][0])-2.5,
+                svg_path, path_attrib)
+        else:
+            outline = '<path id="segmentationp" d="{0:s}{1:.1f} {2:.1f}{3:s}z" {4:s} />'.format(
+                neg_path, float(outcoords[1][0])-2.5, float(outcoords[0][0])-2.5,
+                svg_path, path_attrib)
+    return outline
+
 # select from list
 def selected(item:object, criteria:list) -> bool:
     """
@@ -1160,7 +1233,7 @@ def superpixel_map_rgb(pixel_img:numpy.ndarray) -> numpy.ndarray:
 def superpixel_outlines(
     pixel_map:numpy.ndarray,
     image_shape:Tuple = None,
-    out_format:str = 'coords',
+    out_format:str = 'osvgp',
     pix_selection:List = None,
     path_attribs:Union[List,str] = None,
     ) -> dict:

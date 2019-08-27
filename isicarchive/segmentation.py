@@ -20,6 +20,7 @@ import datetime
 import glob
 import json
 import os
+from typing import Tuple
 import warnings
 
 import imageio
@@ -57,6 +58,7 @@ _repr_pretty_list = {
     'meta_source': 'meta.source',
     'reviews': 'reviews.#',
     'reviews_expert_approved': 'reviews.skill=expert.approved',
+    'reviews_highest_skill': 'skill',
 }
 _skill_precedence = {
     'novice': 2,
@@ -199,6 +201,19 @@ class Segmentation(object):
                 json.dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
 
+    # clear data
+    def clear_data(self,
+        clear_raw_data:bool = True,
+        clear_mask:bool = True,
+        deref_image:bool = False):
+        if deref_image:
+            self._image = None
+            self._image_obj = None
+        if clear_raw_data:
+            self._raw_data = None
+        if clear_mask:
+            self.mask = None
+
     # load mask data
     def load_maskdata(self, keep_rawdata:bool = False):
         if not self._api:
@@ -249,6 +264,8 @@ class Segmentation(object):
 
     # show image in notebook
     def show_in_notebook(self,
+        on_image:bool = True,
+        mask_color:Tuple = None,
         max_size:int = None,
         library:str = 'matplotlib',
         call_display:bool = True,
@@ -256,7 +273,26 @@ class Segmentation(object):
         try:
             if self.mask is None:
                 self.load_maskdata()
-            return func.display_image(self.mask, max_size=max_size,
+            image_data = self.mask
+            mask = (image_data == 0)
+            if isinstance(mask_color, tuple) and len(mask_color) == 3:
+                shp = image_data.shape
+                image_data = image_data.reshape(
+                    (shp[0] * shp[1], 1,)).repeat(3, axis=1)
+                image_data[mask.reshape(shp[0] * shp[1], 1), :] = [
+                    mask_color[0], mask_color[1], mask_color[2]]
+                image_data.shape = (shp[0], shp[1], 3)
+            if on_image:
+                if not self._image_obj:
+                    if self.image_id in self._api._image_objs:
+                        self._image_obj = self._api._image_objs[self.image_id]
+                    else:
+                        self._image_obj = self._api.image(self.image_id)
+                self._image_obj.load_imagedata()
+                alpha = numpy.zeros(image_data.shape, dtype=numpy.float32, order='C')
+                alpha[image_data == 0] = 0.5
+                image_data = func.image_mix(self._image_obj.data, image_data, alpha)
+            return func.display_image(image_data, max_size=max_size,
                 ipython_as_object=(not call_display), library=library)
         except Exception as e:
             warnings.warn('show_in_notebook(...) failed: ' + str(e))

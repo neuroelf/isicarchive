@@ -33,6 +33,8 @@ from .api import IsicApi
 from .annotation import Annotation
 from .dataset import Dataset
 from .image import Image
+from .segmentation import Segmentation
+from .statsimage import StatsImage, StatsLayer
 from .study import Study
 
 name = 'isicarchive'

@@ -20,6 +20,7 @@ import datetime
 import glob
 import json
 import os
+from typing import List
 import warnings
 
 import imageio
@@ -123,7 +124,7 @@ class Image(object):
         self._detail = False
         self._in_archive = False
         self._model_type = 'image'
-        self._rawdata = None
+        self._raw_data = None
         # still needs timezone information!!
         self.created = datetime.datetime.now().strftime(
             '%Y-%m-%dT%H:%M:%S.%f+00:00')
@@ -205,8 +206,28 @@ class Image(object):
                 json.dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
 
+    # clear data
+    def clear_data(self,
+        clear_raw_data:bool = True,
+        clear_data:bool = True,
+        clear_superpixels:bool = True,
+        deref_dataset:bool = False):
+        if deref_dataset:
+            self._dataset = None
+        if clear_raw_data:
+            self._raw_data = None
+        if clear_data:
+            self.data = None
+        if clear_superpixels:
+            self.superpixels = {
+                'idx': None,
+                'map': None,
+                'max': 0,
+                'shp': (0, 0),
+            }
+
     # load image data
-    def load_imagedata(self, keep_rawdata:bool = False):
+    def load_imagedata(self, keep_raw_data:bool = False):
         if not self._api:
             raise ValueError('Invalid image object to load image data for.')
         if self._api._cache_folder:
@@ -217,8 +238,8 @@ class Image(object):
                     self.data = None
                     with open(image_list[0], 'rb') as image_file:
                         image_raw = image_file.read()
-                    if keep_rawdata:
-                        self._rawdata = image_raw
+                    if keep_raw_data:
+                        self._raw_data = image_raw
                     self.data = imageio.imread(image_raw)
                     return
                 except Exception as e:
@@ -235,8 +256,8 @@ class Image(object):
                     headers=headers, allow_redirects=True)
                 if req.ok:
                     image_raw = req.content
-                    if keep_rawdata:
-                        self._rawdata = image_raw
+                    if keep_raw_data:
+                        self._raw_data = image_raw
                     self.data = imageio.imread(image_raw)
                     if self._api._cache_folder:
                         if self.name and (len(self.name) > 5):
@@ -356,6 +377,12 @@ class Image(object):
             warnings.warn("Image metadata posting failed: " + req.text)
             return ''
         return req.json()
+
+    # retrieve associated segmentations
+    def segmentations(self,
+        as_objects:bool = True,
+        ) -> List:
+        pass
 
     # show image in notebook
     def show_in_notebook(self,

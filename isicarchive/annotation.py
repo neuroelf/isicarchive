@@ -140,6 +140,7 @@ class Annotation(object):
         self.image_id = image
         self.log = []
         self.markups = dict()
+        self.masks = dict()
         self.responses = dict()
         self.start_time = ''
         self.state = 'active'
@@ -163,13 +164,19 @@ class Annotation(object):
                 raise
 
     # parse JSON
-    def _from_json(self, from_json:dict, load_data:bool = False):
+    def _from_json(self,
+        from_json:dict,
+        load_data:bool = True,
+        load_masks:bool = False,
+        ):
         self.id = from_json['_id']
         self.state = from_json['state']
         self.study_id = from_json['studyId']
         if 'image' in from_json:
             self.image = from_json['image']
             self.image_id = self.image['_id']
+            if self._api and self.image_id in self._api._image_objs:
+                self._image_obj = self._api._image_objs[self.image_id]
         elif 'imageId' in from_json:
             self.image_id = from_json['imageId']
         if 'log' in from_json:
@@ -223,7 +230,7 @@ class Annotation(object):
                             lambda v: v > 0, feat_lst)]
                         self.features[key]['idx'] = feat_idx
                         self.features[key]['num'] = len(feat_idx)
-                    if not load_data:
+                    if not load_masks:
                         continue
                     feat_req = requests.get(
                         self._api._base_url + '/annotation/' + self.id +
@@ -232,6 +239,7 @@ class Annotation(object):
                     if not feat_req.ok:
                         raise ValueError('Error loading feature mask ' + key)
                     self.features[key]['msk'] = feat_req.content
+                    self.masks[key] = imageio.imread(feat_req.content)
             except Exception as e:
                 warnings.warn('Error loading annotation: ' + str(e))
 
@@ -259,6 +267,18 @@ class Annotation(object):
             json_list.append('"%s": %s' % (json_field,
                 json.dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
+
+    # clear data
+    def clear_data(self,
+        clear_features:bool = True,
+        clear_masks:bool = True,
+        deref_image:bool = False):
+        if deref_image:
+            self._image_obj = None
+        if clear_features:
+            self.features = dict()
+        if clear_masks:
+            self.masks = dict()
 
     # show image in notebook
     def show_in_notebook(self,

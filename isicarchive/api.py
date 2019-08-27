@@ -1,7 +1,7 @@
 """
 isicarchive.IsicApi
 
-This module provides the isicapi class/object to access the ISIC
+This module provides the IsicApi class/object to access the ISIC
 archive programmatically.
 
 To instantiate a connection object without credentials (public use),
@@ -78,8 +78,9 @@ from . import vars
 from .annotation import Annotation
 from .dataset import Dataset
 from .image import Image
-from .segmentation import Segmentation
+from .segmentation import Segmentation, _skill_precedence
 from .study import Study
+
 
 _repr_pretty_list = {
     'base_url': '_base_url',
@@ -126,6 +127,7 @@ def _mangle_id_name(object_id:str, name:str) -> Tuple[str, str]:
         else:
             object_id = None
     return object_id, name
+
 
 class IsicApi(object):
     """
@@ -208,6 +210,7 @@ class IsicApi(object):
         self._temp_file = None
         self.datasets = dict()
         self.image_cache = dict()
+        self.image_segmentations = dict()
         self.image_selection = None
         self.images = dict()
         self.meta_hist = dict()
@@ -226,6 +229,7 @@ class IsicApi(object):
                         if not os.path.exists(cs_folder):
                             os.mkdir(cs_folder)
                 except:
+                    self._cache_folder = None
                     warnings.warn('Error creating a file in ' + cache_folder)
 
         # Login required
@@ -254,6 +258,24 @@ class IsicApi(object):
         for item in items:
             self._studies[item['_id']] = item
             self.studies[item['name']] = item['_id']
+        if self._cache_folder:
+            cache_filename = self.cache_filename('0' * 24, 'imcache', '.json.gz')
+            if os.path.exists(cache_filename):
+                try:
+                    self.image_cache = func.gzip_load_var(cache_filename)
+                    self._image_cache_last = sorted(self.image_cache.keys())[-1]
+                except:
+                    os.remove(cache_filename)
+                    warnings.warn('Invalid image cache file.')
+            cache_filename = self.cache_filename('0' * 24, 'sgcache', '.json.gz')
+            if os.path.exists(cache_filename):
+                try:
+                    self.segmentation_cache = func.gzip_load_var(cache_filename)
+                    if not self.image_segmentations:
+                        self.parse_segmentations()
+                except:
+                    os.remove(cache_filename)
+                    warnings.warn('Invalid segmentation cache file.')
 
     # output
     def __repr__(self) -> str:
@@ -494,6 +516,8 @@ class IsicApi(object):
             try:
                 self.segmentation_cache = func.gzip_load_var(
                     segmentation_cache_filename)
+                if not self.image_segmentations:
+                    self.parse_segmentations()
             except:
                 os.remove(segmentation_cache_filename)
                 warnings.warn('Invalid segmentation cache file.')
@@ -519,6 +543,8 @@ class IsicApi(object):
                 sub_list[image['_id']] = True
         sub_list = [key for key in sub_list.keys()]
         to_load = len(sub_list)
+        if to_load == 0:
+            return
         for idx in range(to_load):
             func.print_progress(idx, to_load, 'Caching segmentations: ')
             params['imageId'] = sub_list[idx]
@@ -905,9 +931,41 @@ class IsicApi(object):
             print('     - {0:d} questions'.format(
                 len(study_obj.questions)))
 
+    # parse segmentations
+    def parse_segmentations(self):
+        for (seg_id, item) in self.segmentation_cache.items():
+            if item['failed']:
+                continue
+            max_skill = -1
+            for r in item['reviews']:
+                if r['approved']:
+                    max_skill = max(max_skill, _skill_precedence[r['skill']])
+            image_id = item['imageId']
+            if image_id in self.image_segmentations:
+                o_seg_id = self.image_segmentations[image_id]
+                try:
+                    o_seg = self.segmentation_cache[o_seg_id]
+                except:
+                    continue
+                o_max_skill = -1
+                if not o_seg['failed']:
+                    for r in o_seg['reviews']:
+                        if r['approved']:
+                            o_max_skill = max(o_max_skill,
+                                _skill_precedence[r['skill']])
+                if o_max_skill < max_skill:
+                    self.image_segmentations[image_id] = seg_id
+                else:
+                    continue
+            else:
+                self.image_segmentations[image_id] = seg_id
+            if image_id in self.image_cache:
+                self.image_segmentations[self.image_cache[image_id]['name']] = seg_id
+
     # Generic /segmentation endpoint
     def segmentation(self,
         object_id:str = None,
+        name:str = None,
         params:dict = None,
         load_maskdata:bool = False,
         ) -> any:
@@ -921,7 +979,7 @@ class IsicApi(object):
         object_id : str
             valid 24-character mongodb objectId for the segmentation
         name : str
-            alternatively the name of the segmentation
+            alternatively the name of the image for the segmentation
         params : dict
             optional parameters for the GET request
         load_maskdata : bool
@@ -934,7 +992,13 @@ class IsicApi(object):
         list
             for multiple segmentations, a list of JSON objects
         """
-        object_id = _mangle_id_name(object_id, 'null')
+        if not name is None:
+            if name in self.image_segmentations:
+                object_id = self.image_segmentations[name]
+                name = None
+            elif name in self.images:
+                name = self.images[name]
+        object_id = _mangle_id_name(object_id, name)
         if isinstance(object_id, tuple):
             object_id = object_id[0]
         if object_id is None:
@@ -958,6 +1022,23 @@ class IsicApi(object):
         segmentation = func.get(self._base_url,
             'segmentation/' + object_id, self._auth_token, params).json()
         if not '_id' in segmentation:
+            try:
+                segmentations = self.segmentation(params={
+                    'imageId': object_id})
+                max_skill = -1
+                max_id = None
+                for segmentation in segmentations:
+                    if segmentation['failed']:
+                        continue
+                    seg_skill = _skill_precedence[segmentation['skill']]
+                    if seg_skill > max_skill:
+                        max_skill = seg_skill
+                        max_id = segmentation['_id']
+                if not max_id is None:
+                    return self.segmentation(max_id,
+                        load_maskdata=load_maskdata)
+            except:
+                pass
             raise KeyError('segmentation with id %s not found.' % (object_id))
         segmentation_obj = Segmentation(segmentation, api=self,
             load_maskdata=load_maskdata)
