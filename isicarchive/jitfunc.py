@@ -18,7 +18,7 @@ __version__ = '0.4.8'
 from typing import Tuple
 
 #import matplotlib.pyplot as pyplot
-from numba import jit, prange
+from numba import int32 as numba_int32, jit, prange
 import numpy
 
 from .vars import ISIC_FUNC_PPI, ISIC_IMAGE_DISPLAY_SIZE_MAX
@@ -33,19 +33,19 @@ def image_mix_jit(
     ishape = i1.shape
     i2shape = i2.shape
     oi = numpy.zeros(i1.size, dtype=numpy.uint8).reshape(ishape) 
-    numpix = ishape[0]
-    if i2shape[0] != numpix:
+    num_pix = ishape[0]
+    if i2shape[0] != num_pix:
         raise ValueError('Images mismatch in number of pixels')
-    if (not a2 is None) and (a2.size != numpix):
+    if (not a2 is None) and (a2.size != num_pix):
         raise ValueError('Alpha mismatch in number of pixels')
     if ishape[1] == 1:
         if i2shape[1] == 1:
             if a2 is None:
-                for p in prange(numpix): #pylint: disable=not-an-iterable
+                for p in prange(num_pix): #pylint: disable=not-an-iterable
                     oi[p,0] = max(i1[p,0], i2[p,0])
             else:
                 o = numpy.float32(1.0)
-                for p in prange(numpix): #pylint: disable=not-an-iterable
+                for p in prange(num_pix): #pylint: disable=not-an-iterable
                     a = a2[p]
                     ia = o - a
                     oi[p,0] = round(
@@ -56,7 +56,7 @@ def image_mix_jit(
         else:
             th = numpy.float32(1.0) / numpy.float32(3)
             if a2 is None:
-                for p in prange(numpix): #pylint: disable=not-an-iterable
+                for p in prange(num_pix): #pylint: disable=not-an-iterable
                     i2m = round(th * (
                         numpy.float32(i2[p,0]) +
                         numpy.float32(i2[p,1]) +
@@ -64,7 +64,7 @@ def image_mix_jit(
                     oi[p,0] = max(i1[p,0], i2m)
             else:
                 o = numpy.float32(1.0)
-                for p in prange(numpix): #pylint: disable=not-an-iterable
+                for p in prange(num_pix): #pylint: disable=not-an-iterable
                     a = a2[p]
                     ia = o - a
                     i2m = th * (
@@ -77,13 +77,13 @@ def image_mix_jit(
     else:
         if i2shape[1] == 1:
             if a2 is None:
-                for p in prange(numpix): #pylint: disable=not-an-iterable
+                for p in prange(num_pix): #pylint: disable=not-an-iterable
                     oi[p,0] = max(i1[p,0], i2[p,0])
                     oi[p,1] = max(i1[p,1], i2[p,0])
                     oi[p,2] = max(i1[p,2], i2[p,0])
             else:
                 o = numpy.float32(1.0)
-                for p in prange(numpix): #pylint: disable=not-an-iterable
+                for p in prange(num_pix): #pylint: disable=not-an-iterable
                     a = a2[p]
                     ia = o - a
                     i2ap = a * numpy.float32(i2[p,0])
@@ -94,13 +94,13 @@ def image_mix_jit(
             raise ValueError('i2 not a valid image array')
         else:
             if a2 is None:
-                for p in prange(numpix): #pylint: disable=not-an-iterable
+                for p in prange(num_pix): #pylint: disable=not-an-iterable
                     oi[p,0] = max(i1[p,0], i2[p,0])
                     oi[p,1] = max(i1[p,1], i2[p,1])
                     oi[p,2] = max(i1[p,2], i2[p,2])
             else:
                 o = numpy.float32(1.0)
-                for p in prange(numpix): #pylint: disable=not-an-iterable
+                for p in prange(num_pix): #pylint: disable=not-an-iterable
                     a = a2[p]
                     ia = o - a
                     oi[p,0] = round(
@@ -117,15 +117,15 @@ def image_mix_jit(
 # superpixel outlines
 @jit('Tuple((i4,i4,i4[:]))(i4,b1[:,::1])', nopython=True)
 def superpixel_outline_dir(
-    num_pix:numpy.int32,
+    num_pix:numba_int32,
     spx_map:numpy.ndarray,
     ) -> Tuple:
     out = numpy.zeros(2 * num_pix, dtype=numpy.int32).reshape((2 * num_pix,))
     map_shape = spx_map.shape
     spsx = map_shape[1] - 2
     spsy = map_shape[0] - 2
-    ycoord = numpy.int32(2)
-    xcoord = numpy.int32(2)
+    ycoord = numba_int32(2)
+    xcoord = numba_int32(2)
     while not (
         spx_map[ycoord, xcoord] and
         spx_map[ycoord, xcoord+1] and
@@ -133,12 +133,12 @@ def superpixel_outline_dir(
         if xcoord < spsx:
             xcoord += 1
         elif ycoord < spsy:
-            xcoord = numpy.int32(2)
+            xcoord = numba_int32(2)
             ycoord += 1
         else:
             out = numpy.zeros(0, dtype=numpy.int32).reshape(0,)
-            ycoord = numpy.int32(1 + spsy // 2)
-            xcoord = numpy.int32(1 + spsx // 2)
+            ycoord = numba_int32(1 + spsy // 2)
+            xcoord = numba_int32(1 + spsx // 2)
             return (ycoord,xcoord,out)
     y0 = ycoord
     x0 = xcoord
@@ -464,3 +464,95 @@ def superpixel_outline_dir(
     if idx < out.size:
         out = out[0:idx].reshape((idx,))
     return (y0,x0,out)
+
+# superpixel path
+@jit('i4[:,:](i4,i4,i4,b1[:,::1])', nopython=True)
+def superpixel_path(
+    num_pix:numba_int32,
+    ypos:numba_int32,
+    xpos:numba_int32,
+    spx_map:numpy.ndarray,
+    ) -> numpy.ndarray:
+    if not spx_map[ypos, xpos]:
+        return numpy.zeros(0, dtype=numpy.int32).reshape((0,2,))
+    num_pix = 4 + 2 * num_pix
+    out = numpy.zeros(2 * num_pix, dtype=numpy.int32).reshape((num_pix,2,))
+    step = numba_int32(1)
+    yval = 0
+    xval = 1
+    idx = 1
+    out[idx,1] = step
+    if spx_map[ypos-1,xpos+1]:
+        ypos -= 1
+        xpos += 1
+        side = 1
+    elif spx_map[ypos,xpos+1]:
+        xpos += 1
+        side = 2
+    else:
+        side = 3
+    while idx < num_pix and ((yval != 0) or (xval != 0)):
+        if side == 1:
+            yval -= 1
+            if out[idx,1] == 0:
+                out[idx,0] -= step
+            else:
+                idx += 1
+                out[idx,0] = -step
+            if spx_map[ypos-1,xpos-1]:
+                ypos -= 1
+                xpos -= 1
+                side = 4
+            elif spx_map[ypos-1,xpos]:
+                ypos -= 1
+            else:
+                side = 2
+        elif side == 2:
+            xval += 1
+            if out[idx,0] == 0:
+                out[idx,1] += step
+            else:
+                idx += 1
+                out[idx,1] = step
+            if spx_map[ypos-1,xpos+1]:
+                ypos -= 1
+                xpos += 1
+                side = 1
+            elif spx_map[ypos,xpos+1]:
+                xpos += 1
+            else:
+                side = 3
+        elif side == 3:
+            yval += 1
+            if out[idx,1] == 0:
+                out[idx,0] += step
+            else:
+                idx += 1
+                out[idx,0] = step
+            if spx_map[ypos+1,xpos+1]:
+                ypos += 1
+                xpos += 1
+                side = 2
+            elif spx_map[ypos+1,xpos]:
+                ypos += 1
+            else:
+                side = 4
+        else:
+            xval -= 1
+            if out[idx,0] == 0:
+                out[idx,1] -= step
+            else:
+                idx += 1
+                out[idx,1] = -step
+            if spx_map[ypos+1,xpos-1]:
+                ypos += 1
+                xpos -= 1
+                side = 3
+            elif spx_map[ypos,xpos-1]:
+                xpos -= 1
+            else:
+                side = 1
+    idx += 1
+    if idx < num_pix:
+        out = out[0:idx,:]
+    return out

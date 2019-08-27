@@ -345,6 +345,10 @@ closely with Brian Helba and Dan LaManna (both with
 [Kitware](https://www.kitware.com)), who work on the web-based API.
 
 ### History
+- 8/26/2019
+  - removed func import in ```__init__.py```
+  - moved two functions from ```func.py``` to ```jitfunc.py``` (smaller modules)
+  - worked on converting superpixel map to SVG paths
 - 8/22/2019
   - began work on segmentations-related code
   - updated ```image.Image.show_in_notebook``` to use ```func.display_image```

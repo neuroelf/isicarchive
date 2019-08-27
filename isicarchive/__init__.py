@@ -27,11 +27,12 @@ def check_dep_versions():
 check_dep_versions()
 
 from .vars import __version__, ISIC_API_URI, ISIC_BASE_URL
+
+# allow shortcuts here
 from .api import IsicApi
 from .annotation import Annotation
 from .dataset import Dataset
 from .image import Image
 from .study import Study
-from . import func
 
 name = 'isicarchive'

@@ -64,12 +64,12 @@ import imageio
 from ipywidgets import Image as ipy_Image
 from IPython.display import display as ipy_display
 import matplotlib.pyplot as mpl_pyplot
-import numba
+from numba import jit, prange
 import numpy
 import requests
 import scipy.ndimage as ndimage
 
-from .jitfunc import image_mix_jit, superpixel_outline_dir
+from .jitfunc import image_mix_jit, superpixel_outline_dir, superpixel_path
 from .vars import ISIC_FUNC_PPI, ISIC_IMAGE_DISPLAY_SIZE_MAX
 
 # color superpixels in an image
@@ -651,10 +651,10 @@ def image_mix(
                 a2shape = alpha_2.shape
             else:
                 try:
-                    alpha_2.shape = (numpix)
+                    alpha_2.shape = (im1pix)
                 except:
                     try:
-                        alpha_2 = alpha_2.reshape(numpix)
+                        alpha_2 = alpha_2.reshape(im1pix)
                     except:
                         image_1.shape = im1shape
                         image_2.shape = im2shape
@@ -980,7 +980,7 @@ def select_from(items:Union[list, dict], criteria:list) -> Union[list, dict]:
         raise ValueError('Invalid collection.')
 
 # decode image superpixel
-@numba.jit('i4[:,:](u1[:,:,:])', nopython=True)
+@jit('i4[:,:](u1[:,:,:])', nopython=True)
 def superpixel_decode(rgb_array:numpy.ndarray) -> numpy.ndarray:
     """
     Decode RGB version of a superpixel image into an index array.
@@ -998,21 +998,21 @@ def superpixel_decode(rgb_array:numpy.ndarray) -> numpy.ndarray:
         2D Image (uint16) with superpixel indices
     """
     ishape = rgb_array.shape
-    numpixx = ishape[0]
-    numpixy = ishape[1]
-    numpix = ishape[0] * ishape[1]
-    idx = numpy.zeros(numpix, dtype=numpy.int32).reshape((numpixx, numpixy))
+    num_pixx = ishape[0]
+    num_pixy = ishape[1]
+    num_pix = num_pixx * num_pixy
+    idx = numpy.zeros(num_pix, dtype=numpy.int32).reshape((num_pixx, num_pixy))
     s1 = numpy.int32(8)
     s2 = numpy.int32(16)
-    for x in numba.prange(numpixx): #pylint: disable=not-an-iterable
-        for y in range(numpixy):
+    for x in prange(num_pixx): #pylint: disable=not-an-iterable
+        for y in range(num_pixy):
             idx[x,y] = (numpy.int32(rgb_array[x,y,0]) + 
                 (numpy.int32(rgb_array[x,y,1]) << s1) + 
                 (numpy.int32(rgb_array[x,y,2]) << s2))
     return idx
 
 # create superpixel -> pixel index array
-@numba.jit('i4[:,:](i4[:,:])', nopython=True)
+@jit('i4[:,:](i4[:,:])', nopython=True)
 def superpixel_map(pixel_img:numpy.ndarray) -> numpy.ndarray:
     """
     Map a superpixel (patch) image to a dictionary with (1D) coordinates.
@@ -1064,11 +1064,11 @@ def superpixel_outlines(
     Extract superpixel outlines (shape paths) from superpixel map
     """
     if not isinstance(out_format, str) or (not out_format in
-        ['coords', 'image', 'svg']):
+        ['coords', 'image', 'osvg', 'svg']):
         raise ValueError('Invalid out_format.')
     rowlen = image_shape[1]
     map_shape = pixel_map.shape
-    numidx = map_shape[0]
+    num_idx = map_shape[0]
     if out_format == 'image':
         pix_shapes = numpy.zeros(image_shape, dtype=numpy.uint8, order='C')
     else:
@@ -1084,9 +1084,9 @@ def superpixel_outlines(
                 1999001:'v-1h1',
                 1999999:'h-1v-1',
                 }
-    for idx in range(numidx):
-        numpix = pixel_map[idx,-1]
-        pixidx = pixel_map[idx, 0:numpix]
+    for idx in range(num_idx):
+        num_pix = pixel_map[idx,-1]
+        pixidx = pixel_map[idx, 0:num_pix]
         ycoords = pixidx // rowlen
         xcoords = pixidx - (rowlen * ycoords)
         minx = numpy.amin(xcoords)
@@ -1098,8 +1098,9 @@ def superpixel_outlines(
         spx_map = numpy.zeros((spsy+4, spsx+4), dtype=numpy.bool, order='C')
         spx_map.flat[(xcoords - (minx-2)) + (spsx+4) * (ycoords - (miny-2))] = True
         spx_eroded = ndimage.binary_erosion(spx_map)
-        spx_map[spx_eroded] = False
-        outcoords = numpy.where(spx_map)
+        spx_out = spx_map.copy()
+        spx_out[spx_eroded] = False
+        outcoords = numpy.where(spx_out)
         num_pix = outcoords[0].size
         if out_format == 'coords':
             pix_shapes[idx] = numpy.concatenate((
@@ -1108,9 +1109,21 @@ def superpixel_outlines(
         elif out_format == 'image':
             pix_shapes[miny:(miny+spsy), minx:(minx+spsx)] = numpy.maximum(
                 pix_shapes[miny:(miny+spsy), minx:(minx+spsx)], numpy.uint8(
-                255) * spx_map[2:-2, 2:-2].astype(numpy.uint8))
+                255) * spx_out[2:-2, 2:-2].astype(numpy.uint8))
+        elif out_format == 'osvg':
+            spx_path = superpixel_path(
+                num_pix, outcoords[0][0], outcoords[1][0], spx_map)
+            svg_dirs = [
+                'h' + str(spx_path[idx,1]) if spx_path[idx,1] != 0 else
+                'v' + str(spx_path[idx,0]) for idx in range(1,spx_path.shape[0])]
+            svg = """<svg id="superpixel_{0:d}" width="{1:d}" height="{2:d}" xmlns="{3:s}">
+                <path id="superpixelp_{4:d}" d="M{5:.1f},{6:.1f}{7:s}z" /></svg>""".format(
+                idx, rowlen, image_shape[0], 'http://www.w3.org/2000/svg', idx,
+                float(outcoords[1][0] + minx)-2.5, float(outcoords[0][0] + miny)-2.5,
+                ''.join(svg_dirs))
+            pix_shapes[idx] = svg
         else:
-            (ycoord, xcoord, out_moves) = superpixel_outline_dir(num_pix, spx_map)
+            (ycoord, xcoord, out_moves) = superpixel_outline_dir(num_pix, spx_out)
             svg_dirs = [ddict[move] for move in out_moves]
             svg = """<svg id="superpixel_{0:d}" width="{1:d}" height="{2:d}" xmlns="{3:s}">
                 <path id="superpixelp_{4:d}" d="M{5:d} {6:d}{7:s}z" /></svg>""".format(
