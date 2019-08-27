@@ -28,6 +28,8 @@ gzip_load_var
     Loads a .json.gz file into a variable
 gzip_save_var
     Saves a variable into a .json.gz file
+image_mix
+    Mix two (RGB or gray) image, with either max or blending
 isic_auth_token
     Makes a login attempt and extracts the Girder-Token from the Headers
 make_url
@@ -36,16 +38,24 @@ object_pretty
     Pretty-prints an objects representation from fields
 print_progress
     Text-based progress bar
+selected
+    Helper function to select from a list (select_from)
 select_from
     Complex field-based criteria selection of list or dict elements
+superpixel_colors
+    Create a list of colors for superpixel (SVG) path attribs
 superpixel_decode (using @numba.jit)
     Converts an RGB superpixel image to a 2D superpixel index array
 superpixel_map (using @numba.jit)
     Decodes a superpixel (index) array into a 2D mapping array
 superpixel_map_rgb (using @numba.jit)
     Chain superpixel_map(superpixel_decode(image))
+superpixel_outlines
+    Extract superpixel (outline) shapes from superpixel map
 uri_encode
     Encodes non-letter/number characters into %02x sequences
+write_image
+    Write an image to file or buffer (bytes)
 """
 
 __version__ = '0.4.8'
@@ -197,6 +207,24 @@ def display_image(
     ipython_as_object:bool = False,
     mpl_axes:object = None,
     ) -> Optional[object]:
+    """
+    Display image in a Jupyter notebook; supports filenames, bytes, arrays
+
+    Parameters
+    ----------
+    image_data : bytes, str, ndarray/imageio Array
+        Image specification (file data, filename, or image array)
+    image_shape : tuple
+        Image shape (necessary if flattened array!)
+    max_size : int
+        Desired maximum output size on screen
+    library : str
+        Either 'matplotlib' (default) or 'ipython'
+    mpl_axes : object
+        Optional existing matplotlib axes object
+    
+    No returns
+    """
     if image_data is None:
         return
     if not isinstance(library, str):
@@ -590,6 +618,27 @@ def image_mix(
     image_2:numpy.ndarray,
     alpha_2:Union[float, numpy.ndarray, None] = 0.5,
     ) -> numpy.ndarray:
+    """
+    Mix two (RGB and/or grayscale) image with either max or blending
+
+    Parameters
+    ----------
+    image_1 : ndarray
+        First image (2D: gray, 3D: color)
+    image_2 : ndarray
+        Second image
+    alpha_2 : alpha value(s), either float, ndarray, or None
+        Blending selection - for a single value, this is the opacity
+        of the second image (default = 0.5, i.e. equal mixing); for
+        an array, it must match the size, and be a single plane; if
+        None, each image component is set to the maximum across the
+        two arrays
+    
+    Returns
+    -------
+    out_image : ndarray
+        Mixed image
+    """
     # get original shapes and perform necessary checks and reshaping
     im1shape = image_1.shape
     im2shape = image_2.shape
@@ -979,6 +1028,58 @@ def select_from(items:Union[list, dict], criteria:list) -> Union[list, dict]:
     else:
         raise ValueError('Invalid collection.')
 
+# superpixel default colors
+def superpixel_colors(
+    num_pix:int = 1536,
+    schema:Union[List,str] = 'rgb',
+    interleave:int = 1,
+    stroke:str = '',
+    ) -> List:
+    """
+    Generate color (attribute) list for superpixel SVG paths
+
+    Parameters
+    ----------
+    num_pix : int
+        Number of super pixels to account for (default = 1536)
+    schema : str
+        Either of 'rgb' or 'random'
+    interleave : int
+        RGB interleave value (default = 1)
+    stroke : str
+        String that is inserted into ever attribute at the end, e.g.
+        to account for a stroke, such as 'stroke="#808080"'. Please
+        note that the entire tag=value (pairs) must be given!
+    
+    Returns
+    -------
+    colors : list
+        List of attributes suitable for superpixel_outlines (SVG)
+    """
+    colors = [''] * num_pix
+    if not schema in ['random', 'rgb']:
+        raise ValueError('invalid schema requested.')
+    if schema == 'rgb':
+        if stroke:
+            for idx in range(num_pix):
+                val = interleave * idx
+                colors[idx] = 'fill="#{0:02x}{1:02x}{2:02x}" {3:s}'.format(
+                    val % 256, (val // 256) % 256, (val // 65536) % 256, stroke)
+        else:
+            for idx in range(num_pix):
+                val = interleave * idx
+                colors[idx] = 'fill="#{0:02x}{1:02x}{2:02x}"'.format(
+                    val % 256, (val // 256) % 256, (val // 65536) % 256)
+    else:
+        randcols = numpy.random.randint(0, 16777126, num_pix)
+        if stroke:
+            for idx in range(num_pix):
+                colors[idx] = 'fill="#{0:06x} {1:s}"'.format(randcols[idx], stroke)
+        else:
+            for idx in range(num_pix):
+                colors[idx] = 'fill="#{0:06x}"'.format(randcols[idx])
+    return colors
+
 # decode image superpixel
 @jit('i4[:,:](u1[:,:,:])', nopython=True)
 def superpixel_decode(rgb_array:numpy.ndarray) -> numpy.ndarray:
@@ -1010,34 +1111,6 @@ def superpixel_decode(rgb_array:numpy.ndarray) -> numpy.ndarray:
                 (numpy.int32(rgb_array[x,y,1]) << s1) + 
                 (numpy.int32(rgb_array[x,y,2]) << s2))
     return idx
-
-# superpixel default colors
-def superpixel_colors(
-    num_pix:int = 1536,
-    schema:Union[List,str] = 'rgb',
-    stroke:str = '',
-    ) -> List:
-    colors = [''] * num_pix
-    if not schema in ['random', 'rgb']:
-        raise ValueError('invalid schema requested.')
-    if schema == 'rgb':
-        if stroke:
-            for idx in range(num_pix):
-                colors[idx] = 'fill="#{0:02x}{1:02x}{2:02x}" {3:s}'.format(
-                    idx % 256, (idx // 256) % 256, (idx // 65536) % 256, stroke)
-        else:
-            for idx in range(num_pix):
-                colors[idx] = 'fill="#{0:02x}{1:02x}{2:02x}"'.format(
-                    idx % 256, (idx // 256) % 256, (idx // 65536) % 256)
-    else:
-        randcols = numpy.random.randint(0, 16777126, num_pix)
-        if stroke:
-            for idx in range(num_pix):
-                colors[idx] = 'fill="#{0:06x} {1:s}"'.format(randcols[idx], stroke)
-        else:
-            for idx in range(num_pix):
-                colors[idx] = 'fill="#{0:06x}"'.format(randcols[idx])
-    return colors
 
 # create superpixel -> pixel index array
 @jit('i4[:,:](i4[:,:])', nopython=True)
@@ -1086,14 +1159,47 @@ def superpixel_map_rgb(pixel_img:numpy.ndarray) -> numpy.ndarray:
 # superpixel outlines (coordinates, image, or SVG/paths)
 def superpixel_outlines(
     pixel_map:numpy.ndarray,
-    image_shape:Tuple,
+    image_shape:Tuple = None,
     out_format:str = 'coords',
     pix_selection:List = None,
     path_attribs:Union[List,str] = None,
     ) -> dict:
     """
     Extract superpixel outlines (shape paths) from superpixel map
+
+    Parameters
+    ----------
+    pixel_map : ndarray
+        Either an RGB, index, or map of a superpixel image
+    image_shape : tuple
+        If a map is given, the size of the original image is needed
+        to correctly compute the 2D coordinates from the map
+    out_format : str
+        Format selection:
+        'coords' - return a dict with 2D coordinates for each superpixel
+        'image'  - return a grayscale image with boundaries set to 255
+        'osvg'   - outline SVG (along the outer pixel borders) string
+        'osvgp'  - return a dict with the osvg paths
+        'osvgs'  - return a dict with the osvg paths inside an SVG
+        'svg', 'svgp', 'svgs' - same for painting a path along the pixels
+    pix_selection : list
+        Optional selection of superpixel ids to process
+    path_attribs : list
+        Optional list with per-superpixel path attributes (for ALL ids!)
+    
+    Returns
+    -------
+    outlines : Any
+        Superpixel outlines in the selected format
     """
+    if len(pixel_map.shape) > 2:
+        pixel_map = superpixel_decode(pixel_map)
+    pix_test = pixel_map[-1,-2]
+    if pix_test > 0 and pix_test < 4096:
+        image_shape = pixel_map.shape
+        pixel_map = superpixel_map(pixel_map)
+    elif not isinstance(image_shape, tuple):
+        raise ValueError('pixel_map in map format requires image_shape')
     if not isinstance(out_format, str) or (not out_format in
         ['coords', 'image', 'osvg', 'osvgp', 'osvgs', 'svg', 'svgp', 'svgs']):
         raise ValueError('Invalid out_format.')
