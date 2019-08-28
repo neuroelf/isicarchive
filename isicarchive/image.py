@@ -20,7 +20,7 @@ import datetime
 import glob
 import json
 import os
-from typing import List
+from typing import Any, List, Union
 import warnings
 
 import imageio
@@ -140,6 +140,7 @@ class Image(object):
             'map': None,
             'max': 0,
             'shp': (0, 0),
+            'spd': None,
         }
         self.updated = self.created
 
@@ -224,6 +225,7 @@ class Image(object):
                 'map': None,
                 'max': 0,
                 'shp': (0, 0),
+                'spd': None,
             }
 
     # load image data
@@ -397,3 +399,27 @@ class Image(object):
                 ipython_as_object=(not call_display), library=library)
         except Exception as e:
             warnings.warn('show_in_notebook(...) failed: ' + str(e))
+
+    # superpixel outlines
+    def superpixel_outlines(self,
+        out_format:str = 'osvgp',
+        pix_selection:List = None,
+        path_attribs:Union[List,str] = None,
+        ) -> Any:
+        if self.superpixels['map'] is None:
+            self.map_superpixels()
+            if self.superpixels['map'] is None:
+                warnings.warn('Could not load or process superpixel data.')
+                return None
+        if self.superpixels['idx'] is None:
+            self.load_superpixels()
+            if self.superpixels['idx'] is None:
+                warnings.warn('Could not load or process superpixel data.')
+                return None
+        outlines = func.superpixel_outlines(
+            self.superpixels['map'], self.superpixels['idx'].shape,
+            out_format=out_format, pix_selection=pix_selection,
+            path_attribs=path_attribs)
+        if out_format == 'osvgp':
+            self.superpixels['spd'] = outlines
+        return outlines
