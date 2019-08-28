@@ -7,17 +7,21 @@ offers several functions (called endpoints) for interacting with the data
 programmatically.
 
 The present python package is an attempt at bundling the more frequently used
-functionality into a single module, thus reducing the need to re-write certain
+functionality into a set of modules, thus reducing the need to re-write certain
 code for a diverse set of projects.
 
 ## First steps
-To start with, please import the ```IsicApi``` class from the ```isicarchive```
-module and create an instance of the class:
+To start with, import the ```IsicApi``` class from the ```isicarchive``` module
+and create an instance of the class:
 
 ~~~~
 from isicarchive import IsicApi
 api = IsicApi()
 ~~~~
+
+The return object variable, ```api```, then allows you to interact with the
+web-based API through method calls, which will typically create further
+object variables (such as study or image objects).
 
 ### Data availability
 All general features are available without logging into the API. However,
@@ -125,6 +129,26 @@ study.load_annotations()
 
 The resulting file will be stored in ```stann_[objectId].json.gz```, and not
 for each annotation object separately, so that loading will be much faster.
+
+### Debugging of API calls
+Since it is sometimes helpful to understand which calls to the web-based API
+are made, you can provide another argument to the ```IsicApi(...)``` call:
+
+~~~~
+api = IsicApi(debug=True)
+# or
+api = IsicApi(username, password, cache_folder=cache_folder, debug=True)
+~~~~
+
+If debug is set to true (which can also be enabled later in the session,
+by setting ```api._debug = True```), every HTTP GET request made to the
+ISIC Archive will be printed out to the console, like this:
+
+~~~~
+Requesting (auth) https://isic-archive.com/api/v1/image/histogram
+Requesting (auth) https://isic-archive.com/api/v1/dataset with params: {'limit': 0, 'detail': 'true'}
+Requesting (auth) https://isic-archive.com/api/v1/study with params: {'limit': 0, 'detail': 'true'}
+~~~~
 
 ## Some more details on the web-based API
 Any interaction with the web-based API is performed by the ```IsicApi```
@@ -248,6 +272,7 @@ image_data.shape = image_shape
 
 # show image
 import matplotlib.pyplot as plt
+%matplotlib inline
 plt.imshow(image_data)
 plt.show()
 ~~~~
@@ -334,6 +359,24 @@ The selection will both be returned, and also stored in the
 result to a variable if it is the last statement in a cell and you wish not
 to print the output!
 
+## Memory requirements
+At this time, by default all objects that are being created are **also** stored
+in the ```api``` object's internal attributes, such that an image or study that
+has been made into an object no longer requires a second API call later on.
+This also means that data that is loaded into an object (especially image
+data into an image or segmentation) will remain in memory, unless it is
+expressly removed (cleared). This can be done by calling the
+```object.clear_data()``` method. Depending on the object type, additional flags
+can be provided. The default is to clear all binary (large) data, but keep
+object references (e.g. between images and datasets) intact.
+
+Most data will be clear by calling this method without any further parameters
+on the ```api``` object itself:
+
+~~~~
+api.clear_data()
+~~~~
+
 ## Housekeeping
 This section contains information about the package.
 
@@ -342,9 +385,19 @@ This section contains information about the package.
 Sloan Kettering Cancer Center in New York City. He is supported by Nick
 Kurtansky and Dr. Konstantinos Liopyris (both MSKCC as well) and collaborates
 closely with Brian Helba and Dan LaManna (both with
-[Kitware](https://www.kitware.com)), who work on the web-based API.
+[Kitware](https://www.kitware.com)), who work on the web-based API. Additional
+support and code is being provided by
+[Prof. David Gutman, MD, PhD](https://winshipcancer.emory.edu/bios/faculty/gutman-david.html).
 
 ### History
+- 8/28/2019
+  - preparing for version 0.4.8 to be released
+  - implemented the ```clear_data(...)``` methods for all objects
+  - added David's superpixel contour JSON output format
+  - implemented a "superpixel in segmentation mask" method
+  - fixed a bug that would not use the ```auth_token``` when accessing segmentations
+- 8/27/2019
+  - first working version of superpixel outline SVG paths
 - 8/26/2019
   - removed func import in ```__init__.py```
   - moved two functions from ```func.py``` to ```jitfunc.py``` (smaller modules)
