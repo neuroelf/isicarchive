@@ -1426,6 +1426,7 @@ def superpixel_outlines(
             raise ValueError('path_attribs must be given for all superpixels.')
     else:
         pa = ''
+    minustwo = numpy.int32(-2)
     for idx in pix_selection:
         num_pix = pixel_map[idx,-1]
         pixidx = pixel_map[idx, 0:num_pix]
@@ -1449,7 +1450,8 @@ def superpixel_outlines(
         if out_format == 'cjson':
             contour = jitfunc.svg_coord_list(jitfunc.superpixel_contour(
                 num_pix, out_y, out_x, spx_map) +
-                [minx + out_x - 2, miny + out_y - 2]).tostring().decode('utf-8')
+                [minx + out_x + minustwo, miny + out_y + minustwo]
+                ).tostring().decode('utf-8')
             pix_shapes.append({
                 'geometry': {'type': 'polygon', 'coordinates': contour},
                 'properties': {'labelindex': str(idx)}})
