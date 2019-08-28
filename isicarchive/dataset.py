@@ -244,6 +244,25 @@ class Dataset(object):
                 json.dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
 
+    # clear data
+    def clear_data(self,
+        deref_images:bool = True,
+        image_clear_raw_data:bool = False,
+        image_clear_data:bool = False,
+        image_clear_superpixels:bool = False,
+        image_deref_in_api:bool = True,
+        ):
+        for image_obj in self._obj_images.values():
+            image_obj.clear_data(
+                clear_raw_data=image_clear_raw_data,
+                clear_data=image_clear_data,
+                clear_superpixels=image_clear_superpixels,
+                deref_dataset=deref_images)
+            if image_deref_in_api and image_obj.id in self._api._image_objs:
+                self._api._image_objs.pop(image_obj.id, None)
+        if deref_images:
+            self._obj_images = dict()
+
     # load images
     def load_images(self, load_imagedata:bool = False):
         if not self._api or not self._api._cache_folder:

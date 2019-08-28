@@ -269,8 +269,9 @@ class Study(object):
             raise ValueError('Invalid or missing object_id in call')
         try:
             annotation_obj = Annotation(from_json = object_id, api=self._api)
-            self._obj_annotations[object_id['_id']] = annotation_obj
-            self._api._annotation_objs[object_id['_id']] = annotation_obj
+            if self._api._store_objs:
+                self._obj_annotations[object_id['_id']] = annotation_obj
+                self._api._annotation_objs[object_id['_id']] = annotation_obj
         except:
             raise
         for key, value in annotation_obj.features.items():
@@ -348,6 +349,41 @@ class Study(object):
                 image_obj.superpixels = image_superpixels
         if did_progress:
             func.print_progress(total, total, 'Caching image data:')
+
+    # clear data
+    def clear_data(self,
+        clear_annotations:bool = True,
+        deref_annotations:bool = True,
+        deref_images:bool = True,
+        annotation_clear_features:bool = False,
+        annotation_clear_masks:bool = False,
+        annotation_deref_image:bool = False,
+        annotation_deref_in_api:bool = True,
+        image_clear_raw_data:bool = False,
+        image_clear_data:bool = False,
+        image_clear_superpixels:bool = False,
+        image_deref_in_api:bool = True,
+        ):
+        if clear_annotations:
+            self._annotations = dict()
+        for anno_obj in self._obj_annotations.values():
+            anno_obj.clear_data(
+                clear_features=annotation_clear_features,
+                clear_masks=annotation_clear_masks,
+                deref_image=annotation_deref_image)
+            if annotation_deref_in_api and anno_obj.id in self._api._annotation_objs:
+                self._api._annotation_objs.pop(anno_obj.id, None)
+        if deref_annotations:
+            self._obj_annotations = dict()
+        for image_obj in self._obj_images.values():
+            image_obj.clear_data(
+                clear_raw_data=image_clear_raw_data,
+                clear_data=image_clear_data,
+                clear_superpixels=image_clear_superpixels)
+            if image_deref_in_api and image_obj.id in self._api._image_objs:
+                self._api._image_objs.pop(image_obj.id, None)
+        if deref_images:
+            self._obj_images = dict()
 
     # image names
     def image_names(self):

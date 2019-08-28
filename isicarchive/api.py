@@ -166,6 +166,7 @@ class IsicApi(object):
         hostname:Optional[str] = None,
         api_uri:Optional[str] = None,
         cache_folder:Optional[str] = None,
+        store_objs:bool = True,
         debug:bool = False,
         ):
 
@@ -207,6 +208,7 @@ class IsicApi(object):
         self._image_cache_timeout = 0.0
         self._image_objs = dict()
         self._segmentation_objs = dict()
+        self._store_objs = store_objs
         self._studies = dict()
         self._study_objs = dict()
         self._temp_file = None
@@ -287,7 +289,7 @@ class IsicApi(object):
     def __str__(self) -> str:
         if self._auth_token:
             return 'IsicApi logged into {0:s} with user {1:s}.'.format(
-                self.username, self._hostname)
+                self._hostname, self.username)
         return 'IsicApi accessing %s.' % self._hostname
     def _repr_pretty_(self, p:object, cycle:bool = False):
         func.object_pretty(self, p, cycle, _repr_pretty_list)
@@ -338,7 +340,8 @@ class IsicApi(object):
         if not '_id' in annotation:
             raise KeyError('Annotation with id %s not found.' % (object_id))
         annotation_obj = Annotation(annotation, api=self)
-        self._annotation_objs[annotation['_id']] = annotation_obj
+        if self._store_objs:
+            self._annotation_objs[annotation['_id']] = annotation_obj
         self._current_annotation = annotation_obj
         return annotation_obj
 
@@ -586,6 +589,64 @@ class IsicApi(object):
             warnings.warn('Error writing segmentation cache file.')
             return
         self.parse_segmentations()
+    
+    # clear data
+    def clear_data(self,
+        deref_annotations:bool = True,
+        deref_datasets:bool = True,
+        deref_images:bool = True,
+        deref_segmentations:bool = True,
+        deref_studies:bool = True,
+        annotation_clear_features:bool = True,
+        annotation_clear_masks:bool = True,
+        image_clear_raw_data:bool = True,
+        image_clear_data:bool = True,
+        image_clear_superpixels:bool = True,
+        segmentation_clear_raw_data:bool = True,
+        segmentation_clear_mask:bool = True,
+        segmentation_clear_superpixels_info:bool = True,
+        ):
+        if deref_annotations:
+            for study_obj in self._study_objs.values():
+                study_obj._annotations = dict()
+                study_obj._obj_annotations = dict()
+        if deref_images:
+            for dataset_obj in self._dataset_objs.values():
+                dataset_obj.clear_data(image_deref_in_api=False)
+                dataset_obj._obj_images = dict()
+            for study_obj in self._study_objs.values():
+                study_obj._obj_images = dict()
+        if annotation_clear_features or annotation_clear_masks:
+            for anno_obj in self._annotation_objs.values():
+                anno_obj.clear_data(
+                    clear_features=annotation_clear_features,
+                    clear_masks=annotation_clear_masks,
+                    deref_image=deref_images)
+        if image_clear_raw_data or image_clear_data or image_clear_superpixels:
+            for image_obj in self._image_objs.values():
+                image_obj.clear_data(
+                    clear_raw_data=image_clear_raw_data,
+                    clear_data=image_clear_data,
+                    clear_superpixels=image_clear_superpixels,
+                    deref_dataset=deref_datasets)
+        if (segmentation_clear_raw_data or segmentation_clear_mask or
+            segmentation_clear_superpixels_info):
+            for seg_obj in self._segmentation_objs.values():
+                seg_obj.clear_data(
+                    clear_raw_data=segmentation_clear_raw_data,
+                    clear_mask=segmentation_clear_mask,
+                    clear_superpixels_info=segmentation_clear_superpixels_info,
+                    deref_image=deref_images)
+        if deref_annotations:
+            self._annotation_objs = dict()
+        if deref_datasets:
+            self._dataset_objs = dict()
+        if deref_images:
+            self._image_objs = dict()
+        if deref_segmentations:
+            self._segmentation_objs = dict()
+        if deref_studies:
+            self._study_objs = dict()
 
     # Generic /dataset endpoint
     def dataset(self,
@@ -642,7 +703,8 @@ class IsicApi(object):
         if not dataset['name'] in self.datasets:
             self.datasets[dataset['name']] = dataset['_id']
         dataset_obj = Dataset(dataset, api=self)
-        self._dataset_objs[dataset['_id']] = dataset_obj
+        if self._store_objs:
+            self._dataset_objs[dataset['_id']] = dataset_obj
         self._current_dataset = dataset_obj
         return dataset_obj
 
@@ -893,7 +955,8 @@ class IsicApi(object):
             self.images[image['name']] = image['_id']
         image_obj = Image(image, api=self,
             load_imagedata=load_imagedata, load_superpixels=load_superpixels)
-        self._image_objs[image['_id']] = image_obj
+        if self._store_objs:
+            self._image_objs[image['_id']] = image_obj
         self._current_image = image_obj
         return image_obj
 
@@ -1086,7 +1149,8 @@ class IsicApi(object):
             raise KeyError('segmentation with id %s not found.' % (object_id))
         segmentation_obj = Segmentation(segmentation, api=self,
             load_maskdata=load_maskdata)
-        self._segmentation_objs[segmentation['_id']] = segmentation_obj
+        if self._store_objs:
+            self._segmentation_objs[segmentation['_id']] = segmentation_obj
         self._current_segmentation = segmentation_obj
         return segmentation_obj
 
@@ -1226,7 +1290,8 @@ class IsicApi(object):
         if not study['name'] in self.studies:
             self.studies[study['name']] = study['_id']
         study_obj = Study(study, api=self)
-        self._study_objs[study['_id']] = study_obj
+        if self._store_objs:
+            self._study_objs[study['_id']] = study_obj
         return study_obj
     
     # study list (generator)

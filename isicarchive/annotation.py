@@ -341,7 +341,8 @@ class Annotation(object):
                     image_info = self._api._image_cache[image_id]
                     self._image_obj = Image(image_info, api=self._api,
                         load_imagedata=True, load_superpixels=True)
-                    self._api._image_objs[image_id] = self._image_obj
+                    if self._api._store_objs:
+                        self._api._image_objs[image_id] = self._image_obj
                     image_odata = self._image_obj.data
                     image_osp = self._image_obj.superpixels
                 else:
