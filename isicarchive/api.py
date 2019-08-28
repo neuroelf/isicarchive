@@ -246,8 +246,7 @@ class IsicApi(object):
 
             # if login succeeded, collect meta information histogram
             if self._auth_token:
-                self.meta_hist = func.get(self._base_url, 'image/histogram',
-                    self._auth_token).json()
+                self.meta_hist = self.get('image/histogram')
 
         # pre-populate information about datasets and studies
         items = self.dataset(params={'limit': 0, 'detail': 'true'})
@@ -327,15 +326,13 @@ class IsicApi(object):
             if not 'studyId' in params:
                 raise ValueError(
                     'Annotation list requires field study_id in params.')
-            return func.get(self._base_url,
-                'annotation', self._auth_token, params).json()
+            return self.get('annotation', params)
         if not func.could_be_mongo_object_id(object_id):
             raise ValueError('Invalid objectId format of object_id parameter.')
         if object_id in self._annotation_objs:
             self._current_annotation = self._annotation_objs[object_id]
             return self._current_annotation
-        annotation = func.get(self._base_url,
-            'annotation/' + object_id, self._auth_token, params).json()
+        annotation = self.get('annotation/' + object_id)
         if not '_id' in annotation:
             raise KeyError('Annotation with id %s not found.' % (object_id))
         annotation_obj = Annotation(annotation, api=self)
@@ -548,8 +545,7 @@ class IsicApi(object):
         for idx in range(to_load):
             func.print_progress(idx, to_load, 'Caching segmentations: ')
             params['imageId'] = sub_list[idx]
-            seg_infos = func.get(self._base_url,
-                'segmentation', self._auth_token, params).json()
+            seg_infos = self.get('segmentation', params)
             if len(seg_infos) == 0:
                 randid = 'ffffff{0:06x}{1:06x}{2:06x}'.format(
                     numpy.random.randint(0, 16777216),
@@ -566,8 +562,11 @@ class IsicApi(object):
                     'skill': 'None',
                 }
             for seg_info in seg_infos:
-                seg_detail = func.get(self._base_url,
-                    'segmentation/' + seg_info['_id']).json()
+                seg_detail = self.get('segmentation/' + seg_info['_id'])
+                if 'message' in seg_detail:
+                    print('Message (image: {0:s}, seg: {1:s}): {2:s}'.format(
+                        sub_list[idx], seg_info['_id'], seg_detail['message']))
+                    continue
                 seg_detail['skill'] = seg_info['skill']
                 self.segmentation_cache[seg_info['_id']] = seg_detail
             if (idx % vars.ISIC_SEG_SAVE_EVERY) == 0:
@@ -584,6 +583,7 @@ class IsicApi(object):
         except:
             warnings.warn('Error writing segmentation cache file.')
             return
+        self.parse_segmentations()
 
     # Generic /dataset endpoint
     def dataset(self,
@@ -615,8 +615,7 @@ class IsicApi(object):
         (object_id, name) = _mangle_id_name(object_id, name)
         if object_id is None:
             if name is None:
-                return func.get(self._base_url,
-                    'dataset', self._auth_token, params).json()
+                return self.get('dataset', params)
             try:
                 if name in self.datasets:
                     object_id = self.datasets[name]
@@ -633,8 +632,7 @@ class IsicApi(object):
             dataset = self._datasets[object_id]
         else:
             try:
-                dataset = func.get(self._base_url,
-                    'dataset/' + object_id, self._auth_token, params).json()
+                dataset = self.get('dataset/' + object_id, params)
             except:
                 raise
         if not '_id' in dataset:
@@ -730,8 +728,8 @@ class IsicApi(object):
             target_folder = None
         for (image_id, item) in from_selection:
             try:
-                image_req = func.get(self._base_url,
-                    'image/' + image_id + '/download', self._auth_token)
+                image_req = self.get('image/' + image_id + '/download',
+                    parse_json=False)
                 image_ext = func.guess_file_extension(image_req.headers)
             except Exception as e:
                 warnings.warn('Error downloading {0:s}: {1:s}'.format(
@@ -774,6 +772,23 @@ class IsicApi(object):
         self.cache_images()
         pass
 
+    # pass through to func.get(self._base_url + auth_token)
+    def get(self,
+        endpoint:str = '/user/me',
+        params:dict = None,
+        parse_json:bool = True,
+        ) -> Any:
+        try:
+            if parse_json:
+                return func.get(self._base_url, endpoint,
+                    self._auth_token, params).json()
+            else:
+                return func.get(self._base_url, endpoint,
+                    self._auth_token, params)
+        except:
+            warnings.warn('Error retrieving information from ' + endpoint)
+        return None
+
     # Generic /image endpoint
     def image(self,
         object_id:str = None,
@@ -814,14 +829,12 @@ class IsicApi(object):
         (object_id, name) = _mangle_id_name(object_id, name)
         if object_id is None:
             if name is None:
-                return func.get(self._base_url,
-                    'image', self._auth_token, params).json()
+                return self.get('image', params)
             try:
                 if name in self.images:
                     object_id = self.images[name]
                 else:
-                    object_id = func.get(self._base_url,
-                        'image', self._auth_token, params={'name': name}).json()
+                    object_id = self.get('image', params={'name': name})
                     if isinstance(object_id, list):
                         object_id = object_id[0]
                     if '_id' in object_id:
@@ -852,8 +865,7 @@ class IsicApi(object):
             image = self.image_cache[object_id]
         else:
             try:
-                image = func.get(self._base_url,
-                    'image/' + object_id, self._auth_token, params).json()
+                image = self.get('image/' + object_id, params)
             except:
                 raise
         if not '_id' in image:
@@ -933,34 +945,48 @@ class IsicApi(object):
 
     # parse segmentations
     def parse_segmentations(self):
+        rmitems = []
         for (seg_id, item) in self.segmentation_cache.items():
-            if item['failed']:
-                continue
-            max_skill = -1
-            for r in item['reviews']:
-                if r['approved']:
-                    max_skill = max(max_skill, _skill_precedence[r['skill']])
-            image_id = item['imageId']
-            if image_id in self.image_segmentations:
-                o_seg_id = self.image_segmentations[image_id]
-                try:
-                    o_seg = self.segmentation_cache[o_seg_id]
-                except:
+            try:
+                if item['failed']:
+                    rmitems.append(seg_id)
                     continue
-                o_max_skill = -1
-                if not o_seg['failed']:
-                    for r in o_seg['reviews']:
-                        if r['approved']:
-                            o_max_skill = max(o_max_skill,
-                                _skill_precedence[r['skill']])
-                if o_max_skill < max_skill:
-                    self.image_segmentations[image_id] = seg_id
+                max_skill = -1
+                for r in item['reviews']:
+                    if r['approved']:
+                        max_skill = max(max_skill, _skill_precedence[r['skill']])
+                image_id = item['imageId']
+                if image_id in self.image_segmentations:
+                    o_seg_id = self.image_segmentations[image_id]
+                    try:
+                        o_seg = self.segmentation_cache[o_seg_id]
+                    except:
+                        continue
+                    o_max_skill = -1
+                    if not o_seg['failed']:
+                        for r in o_seg['reviews']:
+                            if r['approved']:
+                                o_max_skill = max(o_max_skill,
+                                    _skill_precedence[r['skill']])
+                    if o_max_skill < max_skill:
+                        self.image_segmentations[image_id] = seg_id
+                    else:
+                        continue
                 else:
-                    continue
-            else:
-                self.image_segmentations[image_id] = seg_id
-            if image_id in self.image_cache:
-                self.image_segmentations[self.image_cache[image_id]['name']] = seg_id
+                    self.image_segmentations[image_id] = seg_id
+                if image_id in self.image_cache:
+                    self.image_segmentations[self.image_cache[image_id]['name']] = seg_id
+            except:
+                rmitems.append(seg_id)
+        if len(rmitems) > 0:
+            for seg_id in rmitems:
+                self.segmentation_cache.pop(seg_id, None)
+            cache_filename = self.cache_filename('0' * 24, 'sgcache', '.json.gz')
+            if os.path.exists(cache_filename):
+                try:
+                    func.gzip_save_var(cache_filename, self.segmentation_cache)
+                except:
+                    pass
 
     # Generic /segmentation endpoint
     def segmentation(self,
@@ -1012,15 +1038,13 @@ class IsicApi(object):
             if not 'imageId' in params:
                 raise ValueError(
                     'Annotation list requires field image_id in params.')
-            return func.get(self._base_url,
-                'segmentation', self._auth_token, params).json()
+            return self.get('segmentation', params)
         if not func.could_be_mongo_object_id(object_id):
             raise ValueError('Invalid objectId format of object_id parameter.')
         if object_id in self._segmentation_objs:
             self._current_segmentation = self._segmentation_objs[object_id]
             return self._current_segmentation
-        segmentation = func.get(self._base_url,
-            'segmentation/' + object_id, self._auth_token, params).json()
+        segmentation = self.get('segmentation/' + object_id, params)
         if not '_id' in segmentation:
             try:
                 segmentations = self.segmentation(params={
@@ -1099,8 +1123,7 @@ class IsicApi(object):
                     'offset': '0',
                 }
                 try:
-                    all_images = func.get(self._base_url,
-                        'image', self._auth_token, params).json()
+                    all_images = self.get('image', params)
                 except Exception as e:
                     warnings.warn('Error retrieving images information: ' + str(e))
                     return
@@ -1159,8 +1182,7 @@ class IsicApi(object):
         (object_id, name) = _mangle_id_name(object_id, name)
         if object_id is None:
             if name is None:
-                return func.get(self._base_url,
-                'study', self._auth_token, params=params).json()
+                return self.get('study', params)
             try:
                 if name in self.studies:
                     object_id = self.studies[name]
@@ -1176,8 +1198,7 @@ class IsicApi(object):
             study = self._studies[object_id]
         else:
             try:
-                study = func.get(self._base_url,
-                    'study/' + object_id, self._auth_token, params).json()
+                study = self.get('study/' + object_id, params)
             except:
                 raise
         if not '_id' in study:
