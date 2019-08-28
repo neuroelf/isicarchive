@@ -114,6 +114,104 @@ def image_mix_jit(
                         a * numpy.float32(i2[p,2]))
     return oi
 
+# superpixel contour (results match CV2.findContours coords)
+@jit('i4[:,:](i4,i4,i4,b1[:,::1])', nopython=True)
+def superpixel_contour(
+    num_pix:numba_int32,
+    ypos:numba_int32,
+    xpos:numba_int32,
+    spx_map:numpy.ndarray,
+    ) -> numpy.ndarray:
+    if not spx_map[ypos, xpos]:
+        return numpy.zeros(0, dtype=numpy.int32).reshape((0,2,))
+    num_pix = 4 * num_pix
+    out = numpy.zeros(2 * num_pix, dtype=numpy.int32).reshape((num_pix,2,))
+    yval = 1
+    xval = 0
+    idx = 1
+    out[idx,1] = yval
+    side = 1
+    while idx < num_pix and ((yval != 0) or (xval != 0)):
+        if side == 1:
+            if spx_map[ypos+1,xpos-1]:
+                xval -= 1
+                ypos += 1
+                xpos -= 1
+                side = 4
+                idx += 1
+                out[idx,0] = xval
+                out[idx,1] = yval
+            elif spx_map[ypos+1,xpos]:
+                yval += 1
+                ypos += 1
+                out[idx,1] = yval
+            else:
+                xval += 1
+                side = 2
+                idx += 1
+                out[idx,0] = xval
+                out[idx,1] = yval
+        elif side == 2:
+            if spx_map[ypos+1,xpos+1]:
+                yval += 1
+                ypos += 1
+                xpos += 1
+                side = 1
+                idx += 1
+                out[idx,0] = xval
+                out[idx,1] = yval
+            elif spx_map[ypos,xpos+1]:
+                xval += 1
+                xpos += 1
+                out[idx,0] = xval
+            else:
+                yval -= 1
+                side = 3
+                idx += 1
+                out[idx,0] = xval
+                out[idx,1] = yval
+        elif side == 3:
+            if spx_map[ypos-1,xpos+1]:
+                xval += 1
+                ypos -= 1
+                xpos += 1
+                side = 2
+                idx += 1
+                out[idx,0] = xval
+                out[idx,1] = yval
+            elif spx_map[ypos-1,xpos]:
+                yval -= 1
+                ypos -= 1
+                out[idx,1] = yval
+            else:
+                xval -= 1
+                side = 4
+                idx += 1
+                out[idx,0] = xval
+                out[idx,1] = yval
+        else:
+            if spx_map[ypos-1,xpos-1]:
+                yval -= 1
+                ypos -= 1
+                xpos -= 1
+                side = 3
+                idx += 1
+                out[idx,0] = xval
+                out[idx,1] = yval
+            elif spx_map[ypos,xpos-1]:
+                xval -= 1
+                xpos -= 1
+                out[idx,0] = xval
+            else:
+                yval += 1
+                side = 1
+                idx += 1
+                out[idx,0] = xval
+                out[idx,1] = yval
+    if idx < num_pix:
+        out = out[0:idx,:]
+    return out
+
 # superpixel outlines
 @jit('Tuple((i4,i4,i4[:]))(i4,b1[:,::1])', nopython=True)
 def superpixel_outline_dir(
@@ -556,6 +654,51 @@ def superpixel_path(
     if idx < num_pix:
         out = out[0:idx,:]
     return out
+
+# SVG path from v/h list
+@jit('i1[:](i4[:,:])', nopython=True)
+def svg_coord_list(crd_list:numpy.ndarray) -> numpy.ndarray:
+    llen = crd_list.shape[0]
+    omax = 9 * llen
+    olen = omax + 12
+    vbuff = numpy.zeros(8, dtype=numpy.int8).reshape((8,))
+    out = numpy.zeros(olen, dtype=numpy.int8).reshape((olen,))
+    idx = 0
+    for elem in range(llen):
+        if idx > omax:
+            break
+        v = crd_list[elem,0]
+        if v < 0:
+            out[idx] = 45 # '-'
+            idx +=1
+            v = -v
+        vbc = 0
+        while v >= 10:
+            vbuff[vbc] = 48 + (v % 10) # '0' - '9'
+            v //= 10
+            vbc += 1
+        vbuff[vbc] = 48 + v
+        out[idx:idx+vbc+1] = vbuff[vbc::-1]
+        idx += vbc+1
+        out[idx] = 44 # ','
+        idx += 1
+        v = crd_list[elem,1]
+        if v < 0:
+            out[idx] = 45 # '-'
+            idx +=1
+            v = -v
+        vbc = 0
+        while v >= 10:
+            vbuff[vbc] = 48 + (v % 10) # '0' - '9'
+            v //= 10
+            vbc += 1
+        vbuff[vbc] = 48 + v
+        out[idx:idx+vbc+1] = vbuff[vbc::-1]
+        idx += vbc+1
+        out[idx] = 32 # ' '
+        idx += 1
+    idx -= 1
+    return out[0:idx]
 
 # SVG path from v/h list
 @jit('i1[:](i4[:,:])', nopython=True)

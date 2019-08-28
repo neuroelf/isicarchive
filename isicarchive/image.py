@@ -420,6 +420,16 @@ class Image(object):
             self.superpixels['map'], self.superpixels['idx'].shape,
             out_format=out_format, pix_selection=pix_selection,
             path_attribs=path_attribs)
-        if out_format == 'osvgp':
+        if out_format == 'osvgp' and pix_selection is None:
             self.superpixels['spd'] = outlines
         return outlines
+
+    # shortcut to save a superpixel JSON file
+    def superpixel_savejson(self, filename:str):
+        contours = self.superpixel_outlines('cjson')
+        json_str = json.dumps(contours) + "\n"
+        try:
+            with open(filename, 'w') as json_file:
+                json_file.write(json_str)
+        except:
+            raise

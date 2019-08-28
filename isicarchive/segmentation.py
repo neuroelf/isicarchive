@@ -20,7 +20,7 @@ import datetime
 import glob
 import json
 import os
-from typing import Tuple
+from typing import List, Tuple
 import warnings
 
 import imageio
@@ -120,6 +120,7 @@ class Segmentation(object):
         self._in_archive = False
         self._model_type = 'segmentation'
         self._raw_data = None
+        self._sp_in_mask = None
         # still needs timezone information!!
         self.created = datetime.datetime.now().strftime(
             '%Y-%m-%dT%H:%M:%S.%f+00:00')
@@ -205,6 +206,7 @@ class Segmentation(object):
     def clear_data(self,
         clear_raw_data:bool = True,
         clear_mask:bool = True,
+        clear_superpixels_info:bool = True,
         deref_image:bool = False):
         if deref_image:
             self._image = None
@@ -213,6 +215,8 @@ class Segmentation(object):
             self._raw_data = None
         if clear_mask:
             self.mask = None
+        if clear_superpixels_info:
+            self._sp_in_mask = None
 
     # load mask data
     def load_maskdata(self, keep_rawdata:bool = False):
@@ -296,3 +300,26 @@ class Segmentation(object):
                 ipython_as_object=(not call_display), library=library)
         except Exception as e:
             warnings.warn('show_in_notebook(...) failed: ' + str(e))
+
+    # superpixels in mask
+    def superpixels_in_mask(self) -> List:
+        if not self._sp_in_mask is None:
+            return self._sp_in_mask
+        if self.mask is None:
+            self.load_maskdata()
+        mask = self.mask.reshape((self.mask.size,))
+        if self._image_obj is None:
+            try:
+                self._image_obj = self._api.image(self.image_id)
+            except:
+                warnings.warn('Unable to retrieve image object')
+                return
+        if self._image_obj.superpixels['map'] is None:
+            self._image_obj.map_superpixels()
+        sp_map = self._image_obj.superpixels['map']
+        sp_list = [0.0] * sp_map.shape[0]
+        for sp in range(len(sp_list)):
+            mask_val = (mask[sp_map[sp,0:sp_map[sp,-1]]] > 0)
+            sp_list[sp] = float(numpy.sum(mask_val)) / float(mask_val.size)
+        self._sp_in_mask = sp_list
+        return sp_list

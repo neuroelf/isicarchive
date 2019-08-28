@@ -61,6 +61,7 @@ write_image
 __version__ = '0.4.8'
 
 
+import copy
 import gzip
 import io
 import json
@@ -749,6 +750,123 @@ def isic_auth_token(base_url:str, username:str, password:str) -> str:
         return None
     return auth_response.json()['authToken']['token']
 
+# color LUT operation
+def lut_lookup(
+    values:numpy.ndarray,
+    pos_lut:numpy.ndarray,
+    neg_lut:numpy.ndarray = None,
+    default:List = None,
+    format:str='ndarray',
+    trans_fac:float = 1.0,
+    trans_off:float = 0.0,
+    above_pos_col:List = None,
+    below_neg_col:List = None,
+    ):
+    if pos_lut.ndim != 2:
+        raise ValueError('Invalid LUT')
+    elif pos_lut.shape[1] != 3:
+        raise ValueError('Invalid LUT')
+    num_vals = values.size
+    num_cols = pos_lut.shape[0]
+    if not neg_lut is None:
+        if neg_lut.ndim != 2:
+            raise ValueError('Invalid LUT')
+        elif neg_lut.shape[1] != 3:
+            raise ValueError('Invalid LUT')
+        elif neg_lut.shape[0] != num_cols:
+            raise ValueError('Negative LUT must match in number of colors')
+    if not isinstance(default, list):
+        default = [0, 0, 0]
+    elif len(default) != 3:
+        default = [0, 0, 0]
+    else:
+        default = copy.copy(default)
+        if not isinstance(default[0], int) or default[0] < 0:
+            default[0] = 0
+        elif default[0] > 255:
+            default[0] = 255
+        if not isinstance(default[1], int) or default[1] < 0:
+            default[1] = 0
+        elif default[1] > 255:
+            default[1] = 255
+        if not isinstance(default[2], int) or default[2] < 0:
+            default[2] = 0
+        elif default[2] > 255:
+            default[2] = 255
+    if not above_pos_col is None:
+        if not isinstance(above_pos_col, list) or len(above_pos_col) != 3:
+            raise ValueError('Invalid above_pos_col parameter')
+        if (not isinstance(above_pos_col[0], int) or
+            not isinstance(above_pos_col[1], int) or
+            not isinstance(above_pos_col[2], int) or
+            above_pos_col[0] < 0 or above_pos_col[0] > 255 or
+            above_pos_col[1] < 0 or above_pos_col[1] > 255 or
+            above_pos_col[2] < 0 or above_pos_col[2] > 255):
+            raise ValueError('Invalid above_pos_col parameter')
+    if not below_neg_col is None:
+        if not isinstance(below_neg_col, list) or len(below_neg_col) != 3:
+            raise ValueError('Invalid below_neg_col parameter')
+        if (not isinstance(below_neg_col[0], int) or
+            not isinstance(below_neg_col[1], int) or
+            not isinstance(below_neg_col[2], int) or
+            below_neg_col[0] < 0 or below_neg_col[0] > 255 or
+            below_neg_col[1] < 0 or below_neg_col[1] > 255 or
+            below_neg_col[2] < 0 or below_neg_col[2] > 255):
+            raise ValueError('Invalid below_neg_col parameter')
+    zero = numpy.zeros(1, dtype=values.dtype)
+    if trans_fac != 1.0:
+        values = trans_fac * values
+    else:
+        values = values.copy()
+    if not neg_lut is None and trans_off > 0:
+        vs = numpy.sign(values)
+        values = vs * numpy.maximum(zero, numpy.abs(values) - trans_off)
+    elif trans_off != 0:
+        values = values - trans_off
+    if above_pos_col is None:
+        values *= float(num_cols - 1)
+    else:
+        values *= float(num_cols)
+    ispos = (values > 0.0)
+    if not neg_lut is None:
+        isneg = (values < 0.0)
+    values = numpy.trunc(values, dtype=numpy.int32)
+    colors = numpy.zeros((num_vals, 3), dtype=numpy.uint8, order='C')
+    colors[:,0] = default[0]
+    colors[:,1] = default[1]
+    colors[:,2] = default[2]
+    if above_pos_col is None:
+        values[values >= num_cols] = num_cols - 1
+        colors[ispos, 0] = pos_lut[values[ispos], 0]
+        colors[ispos, 1] = pos_lut[values[ispos], 1]
+        colors[ispos, 2] = pos_lut[values[ispos], 2]
+    else:
+        above = (values >= num_cols)
+        below = ispos and (not above)
+        colors[below, 0] = pos_lut[values[below], 0]
+        colors[below, 1] = pos_lut[values[below], 1]
+        colors[below, 2] = pos_lut[values[below], 2]
+        colors[above, 0] = above_pos_col[0]
+        colors[above, 1] = above_pos_col[1]
+        colors[above, 2] = above_pos_col[2]
+    if neg_lut is None:
+        values = -values
+        if below_neg_col is None:
+            values[values >= num_cols] = num_cols - 1
+            colors[isneg, 0] = neg_lut[values[isneg], 0]
+            colors[isneg, 1] = neg_lut[values[isneg], 1]
+            colors[isneg, 2] = neg_lut[values[isneg], 2]
+        else:
+            above = (values >= num_cols)
+            below = isneg and (not above)
+            colors[below, 0] = pos_lut[values[below], 0]
+            colors[below, 1] = pos_lut[values[below], 1]
+            colors[below, 2] = pos_lut[values[below], 2]
+            colors[above, 0] = below_neg_col[0]
+            colors[above, 1] = below_neg_col[1]
+            colors[above, 2] = below_neg_col[2]
+    return colors
+
 # URL generation
 def make_url(base_url:str, endpoint:str) -> str:
     """
@@ -1249,6 +1367,9 @@ def superpixel_outlines(
         to correctly compute the 2D coordinates from the map
     out_format : str
         Format selection:
+        'cjson'  - return a contour JSON (list-of-dicts) with item fields
+                   "geometry": {"type": "polygon", "coordinates": LIST},
+                   "properties": {"labelindex": "INDEX"}
         'coords' - return a dict with 2D coordinates for each superpixel
         'image'  - return a grayscale image with boundaries set to 255
         'osvg'   - outline SVG (along the outer pixel borders) string
@@ -1274,12 +1395,14 @@ def superpixel_outlines(
     elif not isinstance(image_shape, tuple):
         raise ValueError('pixel_map in map format requires image_shape')
     if not isinstance(out_format, str) or (not out_format in
-        ['coords', 'image', 'osvg', 'osvgp', 'osvgs', 'svg', 'svgp', 'svgs']):
+        ['cjson', 'coords', 'image', 'osvg', 'osvgp', 'osvgs', 'svg', 'svgp', 'svgs']):
         raise ValueError('Invalid out_format.')
     rowlen = image_shape[1]
     map_shape = pixel_map.shape
     num_idx = map_shape[0]
-    if out_format == 'image':
+    if out_format == 'cjson':
+        pix_shapes = []
+    elif out_format == 'image':
         pix_shapes = numpy.zeros(image_shape, dtype=numpy.uint8, order='C')
     else:
         pix_shapes = dict()
@@ -1320,29 +1443,39 @@ def superpixel_outlines(
         spx_out = spx_map.copy()
         spx_out[spx_eroded] = False
         outcoords = numpy.where(spx_out)
+        out_x = outcoords[1][0].astype(numpy.int32)
+        out_y = outcoords[0][0].astype(numpy.int32)
         num_pix = outcoords[0].size
-        if out_format == 'coords':
+        if out_format == 'cjson':
+            contour = jitfunc.svg_coord_list(jitfunc.superpixel_contour(
+                num_pix, out_y, out_x, spx_map) +
+                [minx + out_x - 2, miny + out_y - 2]).tostring().decode('utf-8')
+            pix_shapes.append({
+                'geometry': {'type': 'polygon', 'coordinates': contour},
+                'properties': {'labelindex': str(idx)}})
+        elif out_format == 'coords':
             pix_shapes[idx] = numpy.concatenate((
                 outcoords[0].reshape((num_pix, 1)) + (miny-2),
-                outcoords[1].reshape((num_pix, 1)) + (minx-2)), axis=1)
+                outcoords[1].reshape((num_pix, 1)) + (minx-2)),
+                axis=1).astype(numpy.int32)
         elif out_format == 'image':
             pix_shapes[miny:(miny+spsy), minx:(minx+spsx)] = numpy.maximum(
                 pix_shapes[miny:(miny+spsy), minx:(minx+spsx)], numpy.uint8(
                 255) * spx_out[2:-2, 2:-2].astype(numpy.uint8))
         elif out_format[0] == 'o':
             svg_path = jitfunc.svg_path_from_list(jitfunc.superpixel_path(
-                num_pix, outcoords[0][0], outcoords[1][0], spx_map)).tostring().decode('utf-8')
+                num_pix, out_y, out_x, spx_map)).tostring().decode('utf-8')
             if isinstance(path_attribs, list):
                 pa = path_attribs[idx]
             if out_format[-1] == 's':
                 svg = ('<svg id="superpixel_{0:d}" width="{1:d}" height="{2:d}" xmlns="{3:s}">' +
                     '<path id="superpixelp_{4:d}" d="M{5:.1f} {6:.1f}{7:s}z" {8:s} /></svg>').format(
                     idx, rowlen, image_shape[0], 'http://www.w3.org/2000/svg', idx,
-                    float(outcoords[1][0] + minx)-2.5, float(outcoords[0][0] + miny)-2.5,
+                    float(out_x + minx)-2.5, float(out_y + miny)-2.5,
                     svg_path, pa)
             else:
                 svg = '<path id="superpixel_{0:d}" d="M{1:.1f} {2:.1f}{3:s}z" {4:s} />'.format(
-                    idx, float(outcoords[1][0] + minx)-2.5, float(outcoords[0][0] + miny)-2.5,
+                    idx, float(out_x + minx)-2.5, float(out_y + miny)-2.5,
                     svg_path, pa)
             pix_shapes[idx] = svg
         else:

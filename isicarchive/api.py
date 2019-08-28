@@ -166,6 +166,7 @@ class IsicApi(object):
         hostname:Optional[str] = None,
         api_uri:Optional[str] = None,
         cache_folder:Optional[str] = None,
+        debug:bool = False,
         ):
 
         """IsicApi.__init__: please refer to IsicApi docstring!"""
@@ -199,6 +200,7 @@ class IsicApi(object):
         self._current_study = None
         self._datasets = dict()
         self._dataset_objs = dict()
+        self._debug = debug
         self._feature_colors = dict()
         self._hostname = hostname
         self._image_cache_last = '0' * 24
@@ -263,6 +265,8 @@ class IsicApi(object):
                 try:
                     self.image_cache = func.gzip_load_var(cache_filename)
                     self._image_cache_last = sorted(self.image_cache.keys())[-1]
+                    for (image_id, item) in self.image_cache.items():
+                        self.images[item['name']] = image_id
                 except:
                     os.remove(cache_filename)
                     warnings.warn('Invalid image cache file.')
@@ -312,9 +316,7 @@ class IsicApi(object):
         annotations : list
             For multiple annotations, a list of JSON dicts
         """
-        object_id = _mangle_id_name(object_id, 'null')
-        if isinstance(object_id, tuple):
-            object_id = object_id[0]
+        object_id = _mangle_id_name(object_id, 'null')[0]
         if object_id is None:
             if not isinstance(params, dict):
                 raise ValueError(
@@ -777,14 +779,32 @@ class IsicApi(object):
         endpoint:str = '/user/me',
         params:dict = None,
         parse_json:bool = True,
+        save_as:str = None,
         ) -> Any:
+        if save_as:
+            parse_json = False
+        if self._debug:
+            if self._auth_token:
+                astr = '(auth) '
+            else:
+                astr = ''
+            if params is None:
+                pstr = ''
+            else:
+                pstr = ' with params: ' + str(params)
+            if save_as:
+                print('Requesting ' + astr + self._base_url + '/' + 
+                    endpoint + pstr + ' -> ' + save_as)
+            else:
+                print('Requesting ' + astr + self._base_url + '/' +
+                    endpoint + pstr)
         try:
             if parse_json:
                 return func.get(self._base_url, endpoint,
                     self._auth_token, params).json()
             else:
                 return func.get(self._base_url, endpoint,
-                    self._auth_token, params)
+                    self._auth_token, params, save_as)
         except:
             warnings.warn('Error retrieving information from ' + endpoint)
         return None
@@ -848,9 +868,8 @@ class IsicApi(object):
             raise ValueError('Invalid object_id format.')
         if not save_as is None:
             try:
-                func.get(self._base_url,
-                    'image/' + object_id + '/download',
-                    self._auth_token, params, save_as)
+                self.get('image/' + object_id + '/download', params,
+                    save_as=save_as)
             except:
                 raise
             return
@@ -1018,15 +1037,13 @@ class IsicApi(object):
         list
             for multiple segmentations, a list of JSON objects
         """
-        if not name is None:
-            if name in self.image_segmentations:
-                object_id = self.image_segmentations[name]
-                name = None
-            elif name in self.images:
-                name = self.images[name]
-        object_id = _mangle_id_name(object_id, name)
-        if isinstance(object_id, tuple):
-            object_id = object_id[0]
+        (object_id, name) = _mangle_id_name(object_id, name)
+        if not name is None and name in self.images and object_id is None:
+            object_id = self.images[name]
+        elif not name is None and name in self.image_segmentations:
+            object_id = self.image_segmentations[name]
+        if not object_id is None and object_id in self.image_segmentations:
+            object_id = self.image_segmentations[object_id]
         if object_id is None:
             if not isinstance(params, dict):
                 raise ValueError(
@@ -1044,7 +1061,10 @@ class IsicApi(object):
         if object_id in self._segmentation_objs:
             self._current_segmentation = self._segmentation_objs[object_id]
             return self._current_segmentation
-        segmentation = self.get('segmentation/' + object_id, params)
+        if object_id in self.segmentation_cache:
+            segmentation = self.segmentation_cache[object_id]
+        else:
+            segmentation = self.get('segmentation/' + object_id, params)
         if not '_id' in segmentation:
             try:
                 segmentations = self.segmentation(params={
