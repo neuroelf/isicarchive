@@ -1,5 +1,5 @@
 """
-isicarchive.IsicApi
+isicarchive.api (IsicApi)
 
 This module provides the IsicApi class/object to access the ISIC
 archive programmatically.
@@ -7,11 +7,12 @@ archive programmatically.
 To instantiate a connection object without credentials (public use),
 simply create the object without parameters:
 
-   >>> from isicarchive import IsicApi
+   >>> from isicarchive.api import IsicApi
    >>> api = IsicApi()
 
 If your code has only access to the username, the password will
-requested using the getpass.getpass(...) call internally:
+requested using the getpass.getpass(...) call internally, or if you
+have stored it in your .netrc file, it will be loaded from there.
 
    >>> api = IsicApi(username)
 
@@ -19,6 +20,11 @@ If on the other hand your code already has stored the password
 internally, you can also pass it to the IsicApi call:
 
    >>> api = IsicApi(username, password)
+
+To avoid loading large amounts of data again and again (images, etc.)
+you can specify a cache folder into which that data is downloaded:
+
+   >>> api = IsicApi(username, cache_folder='/local/folder')
 
 By default, the class uses ``https://isic-archive.com`` as hostname
 (including the https protocol!), and ``/api/v1`` as the API URI.
@@ -45,14 +51,44 @@ annotation
     Create an annotation object or retrieve a list of annotations
 annotation_list
     Yields a generator for annotation JSON dicts
+cache_filename
+    Returns the name of a locally cache object's data (image, etc.)
+cache_images
+    Attempt to cache information about all available images
+cache_segmentations
+    Attempt to cache information about all available segmentations
+clear_data
+    Removes all (binary and other large) data from referenced objects
 dataset
     Create a dataset object or retrieve a list of datasets
 dataset_list
     Yields a generator for dataset JSON dicts
+download_selected
+    Downloads all selected images into a folder
+feature_color
+    Retrieve a feature-name-specific color
+feature_set_color
+    Set a feature-name-specific color
+get
+    Perform a GET request to the web-based API
 image
     Create an image object or retrieve a list of images
 image_list
     Yields a generator for image JSON dicts
+list_datasets
+    Print out a list of available datasets
+list_studies
+    Print out a list of available studies
+parse_segmentations
+    (Internally called after loading segmentations)
+post
+    Perform a POST request to the web-based API
+segmentation
+    Create a segmentation object or retrieve information
+segmentation_list
+    Yield a generator for segmentation JSON dicts
+select_images
+    (Sub-) Select images from the archive using criteria
 study
     Create a study object or retrieve a list of studies
 study_list
@@ -62,17 +98,12 @@ study_list
 __version__ = '0.4.8'
 
 
-import copy
-import netrc
+# imports (needed for majority of functions)
 import os
-import re
 import tempfile
 import time
-from typing import Any, Optional, Tuple, Union
+from typing import Any, Tuple, Union
 import warnings
-
-import getpass
-import numpy
 
 from . import func
 from . import vars
@@ -95,6 +126,98 @@ _repr_pretty_list = {
     'obj_images': '_image_objs',
     'obj_studies': '_study_objs',
 }
+
+# check requests version here
+def _check_dep_versions():
+    import requests
+    r_version = requests.__version__.split('.')
+    r_major = int(r_version[0])
+    r_minor = int(r_version[1])
+    if r_major < 2 or (r_major < 3 and r_minor < 22):
+        warnings.warn("requests doesn't meet the minimum version requirement.")
+
+# copy dict shortcut
+def _copy_dict(d:dict) -> dict:
+    return {k:v for (k,v) in d.items()}
+
+# Generic endpoint API GET, allowing arbitrary commands
+def _get(
+    base_url:str,
+    endpoint:str,
+    auth_token:str = None,
+    params:dict = None,
+    save_as:str = None,
+    ) -> Any:
+    """
+    Performs a GET request to the given endpoint, with the provided
+    parameters. If the `save_as` parameter is given, will attempt to
+    store the returned output into a local file instead of returning
+    the content as a string.
+
+    Parameters
+    ----------
+    base_url : str
+        Base URL from which to build the full URL
+    endpoint : str
+        Endpoint (URI) to which the request is made, WITHOUT leading /
+    auth_token : str
+        Girder-Token, which is sent as a header (or None)
+    params : dict
+        Optional parameters that will be added to the query string
+    save_as : str
+        Optional string containing a local target filename
+    
+    Returns
+    -------
+    content : Any
+        If the request is successful, the returned content
+    """
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    import requests
+
+    url = base_url + '/' + endpoint
+    headers = {'Girder-Token': auth_token} if auth_token else None
+    if save_as is None:
+        return requests.get(url,
+        headers=headers,
+        params=params,
+        allow_redirects=True)
+    req = requests.get(url,
+        headers=headers,
+        params=params,
+        allow_redirects=True)
+    open(save_as, 'wb').write(req.content)
+
+# authentication
+def _get_auth_token(base_url:str, username:str, password:str) -> str:
+    """
+    Makes a login requests and returns the Girder-Token header.
+    
+    Parameters
+    ----------
+    base_url : str
+        Fully qualified hostname + API URI, e.g. https://host/api/v0
+    username : str
+        Username to log into API (elem[0] in auth=() tuple in .get(...))
+    password : str
+        Password to pass into API (elem[1] in auth=() tuple in .get(...))
+    
+    Returns
+    -------
+    auth_token : str
+        Authentication (Girder-) Token (if successful, otherwise None)
+    """
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    import requests
+    
+    auth_response = requests.get(base_url + '/user/authentication',
+        auth=(username, password))
+    if not auth_response.ok:
+        warnings.warn('Login error: ' + auth_response.json()['message'])
+        return None
+    return auth_response.json()['authToken']['token']
 
 def _mangle_id_name(object_id:str, name:str) -> Tuple[str, str]:
     """
@@ -129,6 +252,48 @@ def _mangle_id_name(object_id:str, name:str) -> Tuple[str, str]:
             object_id = None
     return object_id, name
 
+# Generic endpoint API POST, allowing arbitrary commands
+def _post(
+    base_url:str,
+    endpoint:str,
+    auth_token:str = None,
+    params:dict = None,
+    data:bytes = None,
+    ) -> Any:
+    """
+    Performs a POST request to the given endpoint, with the provided
+    parameters and data (if given). Returns the server response.
+
+    Parameters
+    ----------
+    base_url : str
+        Base URL from which to build the full URL
+    endpoint : str
+        Endpoint (URI) to which the request is made, WITHOUT leading /
+    auth_token : str
+        Girder-Token, which is sent as a header (or None)
+    params : dict
+        Optional parameters that will be added to the query string
+    data : bytes
+        Optional data (file) content (e.g. for upload)
+    
+    Returns
+    -------
+    content : Any
+        If the request is successful, the returned content
+    """
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    import requests
+
+    url = base_url + '/' + endpoint
+    headers = {'Girder-Token': auth_token} if auth_token else None
+    return requests.post(url,
+        data=data,
+        headers=headers,
+        params=params,
+        allow_redirects=True)
+
 
 class IsicApi(object):
     """
@@ -156,23 +321,31 @@ class IsicApi(object):
         Retrieve one dataset (object) or datasets (list)
     image(object_id=None, name=None, params=None)
         Retrieve one image (object) or images (list)
+    segmentation(object_id=None, image_name=Name, params=None)
+        Retrieve on segmentation (object) or segmentations (list)
     study(object_id=None, name=None, params=None)
         Retrieve one study (object) or studies (list)
     """
 
 
     def __init__(self,
-        username:Optional[str] = None,
-        password:Optional[str] = None,
-        hostname:Optional[str] = None,
-        api_uri:Optional[str] = None,
-        cache_folder:Optional[str] = None,
+        username:str = None,
+        password:str = None,
+        hostname:str = None,
+        api_uri:str = None,
+        cache_folder:str = None,
         store_objs:bool = True,
+        load_cache:bool = True,
+        load_datasets:bool = True,
+        load_studies:bool = True,
         debug:bool = False,
         ):
 
         """IsicApi.__init__: please refer to IsicApi docstring!"""
         
+        # check required versions, etc.
+        _check_dep_versions()
+
         # Check input parameters
         if hostname is None or hostname == '':
             hostname = vars.ISIC_BASE_URL
@@ -244,32 +417,57 @@ class IsicApi(object):
 
             # And get the password using getpass
             if password is None:
-                netrc_o = netrc.netrc()
-                hostname_only = hostname[8:]
-                netrc_tokens = netrc_o.authenticators(hostname_only)
-                if not netrc_tokens is None and netrc_tokens[0] == username:
-                    password = netrc_tokens[2]
-                else:
+                try:
+                    
+                    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+                    import netrc
+
+                    netrc_o = netrc.netrc()
+                    hostname_only = hostname[8:]
+                    netrc_tokens = netrc_o.authenticators(hostname_only)
+                    if not netrc_tokens is None and netrc_tokens[0] == username:
+                        password = netrc_tokens[2]
+                except:
+                    pass
+                
+                if password is None:
+                    
+                    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+                    import getpass
+
                     password = getpass.getpass('Password for "%s":' % (username))
 
             # Login
-            self._auth_token = func.isic_auth_token(
-                self._base_url, username, password)
+            self._auth_token = _get_auth_token(self._base_url, username, password)
 
             # if login succeeded, collect meta information histogram
             if self._auth_token:
                 self.meta_hist = self.get('image/histogram')
 
         # pre-populate information about datasets and studies
-        items = self.dataset(params={'limit': 0, 'detail': 'true'})
-        for item in items:
-            self._datasets[item['_id']] = item
-            self.datasets[item['name']] = item['_id']
-        items = self.study(params={'limit': 0, 'detail': 'true'})
-        for item in items:
-            self._studies[item['_id']] = item
-            self.studies[item['name']] = item['_id']
+        if load_datasets:
+            items = self.dataset(params={'limit': 0, 'detail': 'true'})
+            for item in items:
+                self._datasets[item['_id']] = item
+                self.datasets[item['name']] = item['_id']
+        if load_studies:
+            items = self.study(params={'limit': 0, 'detail': 'true'})
+            for item in items:
+                self._studies[item['_id']] = item
+                self.studies[item['name']] = item['_id']
         if self._cache_folder:
+            cache_filename = self.cache_filename('0' * 24, 'fccache', '.json.gz')
+            if os.path.exists(cache_filename):
+                try:
+                    self._feature_colors = func.gzip_load_var(cache_filename)
+                except:
+                    os.remove(cache_filename)
+                    warnings.warn('Invalid feature colors cache file.')
+            
+            # return early if no further loading
+            if not load_cache:
+                return
+            
             cache_filename = self.cache_filename('0' * 24, 'imcache', '.json.gz')
             if os.path.exists(cache_filename):
                 try:
@@ -332,7 +530,7 @@ class IsicApi(object):
                 raise ValueError(
                     'Annotation list requires a params dict with a study_id.')
             if 'study_id' in params:
-                params = copy.copy(params)
+                params = _copy_dict(params)
                 params['studyId'] = params['study_id']
                 del params['study_id']
             if not 'studyId' in params:
@@ -373,7 +571,7 @@ class IsicApi(object):
         if isinstance(params, str):
             params = {'study': params}
         elif isinstance(params, dict):
-            params = copy.copy(params)
+            params = _copy_dict(params)
         else:
             raise ValueError('Invalid or missing params.')
         if 'studyId' in params:
@@ -459,14 +657,14 @@ class IsicApi(object):
             return
         if self._image_cache_timeout >= time.time():
             return
-        image_cache_filename = self.cache_filename('0' * 24,
+        cache_filename = self.cache_filename('0' * 24,
             'imcache', '.json.gz')
-        if os.path.exists(image_cache_filename):
+        if os.path.exists(cache_filename):
             try:
-                self.image_cache = func.gzip_load_var(image_cache_filename)
+                self.image_cache = func.gzip_load_var(cache_filename)
                 self._image_cache_last = sorted(self.image_cache.keys())[-1]
             except:
-                os.remove(image_cache_filename)
+                os.remove(cache_filename)
                 warnings.warn('Invalid image cache file.')
         initial_offset = 0
         limit = vars.ISIC_IMAGES_PER_CACHING
@@ -502,7 +700,7 @@ class IsicApi(object):
             self._cache_images(partial_list)
         try:
             if num_loaded < len(self.image_cache):
-                func.gzip_save_var(image_cache_filename, self.image_cache)
+                func.gzip_save_var(cache_filename, self.image_cache)
                 self._image_cache_last = sorted(self.image_cache.keys())[-1]
         except:
             warnings.warn('Error writing cache file.')
@@ -520,16 +718,14 @@ class IsicApi(object):
         """
         if not self._cache_folder or (not os.path.isdir(self._cache_folder)):
             return
-        segmentation_cache_filename = self.cache_filename('0' * 24,
-            'sgcache', '.json.gz')
-        if os.path.exists(segmentation_cache_filename):
+        cache_filename = self.cache_filename('0' * 24, 'sgcache', '.json.gz')
+        if os.path.exists(cache_filename):
             try:
-                self.segmentation_cache = func.gzip_load_var(
-                    segmentation_cache_filename)
+                self.segmentation_cache = func.gzip_load_var(cache_filename)
                 if not self.image_segmentations:
                     self.parse_segmentations()
             except:
-                os.remove(segmentation_cache_filename)
+                os.remove(cache_filename)
                 warnings.warn('Invalid segmentation cache file.')
         if image_list is None:
             if not self.image_cache:
@@ -560,10 +756,7 @@ class IsicApi(object):
             params['imageId'] = sub_list[idx]
             seg_infos = self.get('segmentation', params)
             if len(seg_infos) == 0:
-                randid = 'ffffff{0:06x}{1:06x}{2:06x}'.format(
-                    numpy.random.randint(0, 16777216),
-                    numpy.random.randint(0, 16777216),
-                    numpy.random.randint(0, 16777216))
+                randid = 'ffffff' + func.rand_hex_str(18)
                 self.segmentation_cache[randid] = {
                     '_id': randid,
                     'created': None,
@@ -584,15 +777,13 @@ class IsicApi(object):
                 self.segmentation_cache[seg_info['_id']] = seg_detail
             if (idx % vars.ISIC_SEG_SAVE_EVERY) == 0:
                 try:
-                    func.gzip_save_var(segmentation_cache_filename,
-                        self.segmentation_cache)
+                    func.gzip_save_var(cache_filename, self.segmentation_cache)
                 except:
                     warnings.warn('Error writing segmentation cache file.')
                     return
         func.print_progress(to_load, to_load, 'Caching segmentations: ')
         try:
-            func.gzip_save_var(segmentation_cache_filename,
-                self.segmentation_cache)
+            func.gzip_save_var(cache_filename, self.segmentation_cache)
         except:
             warnings.warn('Error writing segmentation cache file.')
             return
@@ -735,7 +926,7 @@ class IsicApi(object):
         """
         if as_object:
             if isinstance(params, dict):
-                params = copy.copy(params)
+                params = _copy_dict(params)
             else:
                 params = dict()
             params['detail'] = 'true'
@@ -769,6 +960,11 @@ class IsicApi(object):
         cache folder (if set, otherwise an error is raised). If only the
         `target_folder` is set, the pattern will be set to '$name'.
         """
+
+        # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
+        import re
+        from .func import getxattr
+
         if target_folder is None and (not filename_pattern is None):
             raise ValueError('Setting a filename pattern requires a target folder.')
         elif target_folder is None and not self._cache_folder:
@@ -811,7 +1007,7 @@ class IsicApi(object):
                     image_ext, extra=item['name'])
             else:
                 image_filename = target_folder + os.sep + repl.sub(lambda x:
-                    func.getxattr(item, x.group(1)[1:]),
+                    getxattr(item, x.group(1)[1:]),
                     filename_pattern) + image_ext
             with open(image_filename, 'wb') as image_file:
                 image_file.write(image_req.content)
@@ -832,19 +1028,38 @@ class IsicApi(object):
             3-element list with [R,G,B] values, random if name not found.
         """
         if feature is None:
-            return numpy.random.randint(0, 255, 3).tolist()
+            return func.rand_color()
         elif feature not in self._feature_colors:
             self._feature_colors[feature] = self.feature_color()
+            if self._cache_folder:
+                try:
+                    cache_filename = self.cache_filename(
+                        '0' * 24, 'fccache', '.json.gz')
+                    func.gzip_save_var(cache_filename, self._feature_colors)
+                except:
+                    pass
         return self._feature_colors[feature]
+    
+    # set feature color
+    def feature_set_color(self, name:str, color:list):
+        if not isinstance(name, str) or not name:
+            return
+        if not isinstance(color, list) or len(color) != 3:
+            return
+        if (not isinstance(color[0], int) or color[0] < 0 or color[0] > 255 or
+            not isinstance(color[1], int) or color[1] < 0 or color[1] > 255 or
+            not isinstance(color[2], int) or color[2] < 0 or color[2] > 255):
+            return
+        self._feature_colors[name] = color
+        if self._cache_folder:
+            try:
+                cache_filename = self.cache_filename(
+                    '0' * 24, 'fccache', '.json.gz')
+                func.gzip_save_var(cache_filename, self._feature_colors)
+            except:
+                pass
 
-    # find images
-    def find_images(self, filter_spec:dict) -> Any:
-        if not self._cache_folder:
-            raise ValueError('Requires cache folder to be set.')
-        self.cache_images()
-        pass
-
-    # pass through to func.get(self._base_url + auth_token)
+    # pass through to _get(self._base_url + auth_token + params)
     def get(self,
         endpoint:str = '/user/me',
         params:dict = None,
@@ -870,10 +1085,10 @@ class IsicApi(object):
                     endpoint + pstr)
         try:
             if parse_json:
-                return func.get(self._base_url, endpoint,
+                return _get(self._base_url, endpoint,
                     self._auth_token, params).json()
             else:
-                return func.get(self._base_url, endpoint,
+                return _get(self._base_url, endpoint,
                     self._auth_token, params, save_as)
         except:
             warnings.warn('Error retrieving information from ' + endpoint)
@@ -987,7 +1202,7 @@ class IsicApi(object):
         """
         if as_object:
             if isinstance(params, dict):
-                params = copy.copy(params)
+                params = _copy_dict(params)
             else:
                 params = dict()
             params['detail'] = 'true'
@@ -1078,6 +1293,41 @@ class IsicApi(object):
                 except:
                     pass
 
+    # pass through to _post(self._base_url + auth_token + params + data)
+    def post(self,
+        endpoint:str = None,
+        params:dict = None,
+        data:bytes = None,
+        parse_json:bool = True,
+        ) -> Any:
+        if endpoint is None or endpoint == '':
+            return
+        if self._debug:
+            if self._auth_token:
+                astr = '(auth) '
+            else:
+                astr = ''
+            if params is None:
+                pstr = ''
+            else:
+                pstr = ' with params: ' + str(params)
+            if data is None:
+                dstr = ''
+            else:
+                dstr = ' {0:d} bytes of data'.format(len(data))
+            print('Posting to ' + astr + self._base_url + '/' +
+                endpoint + dstr + pstr)
+        try:
+            if parse_json:
+                return _post(self._base_url, endpoint,
+                    self._auth_token, params, data).json()
+            else:
+                return _post(self._base_url, endpoint,
+                    self._auth_token, params, data)
+        except:
+            warnings.warn('Error retrieving information from ' + endpoint)
+        return None
+
     # Generic /segmentation endpoint
     def segmentation(self,
         object_id:str = None,
@@ -1120,7 +1370,7 @@ class IsicApi(object):
                 raise ValueError(
                     'Segmentation list requires a params dict with a image_id.')
             if 'image_id' in params:
-                params = copy.copy(params)
+                params = _copy_dict(params)
                 params['imageId'] = params['image_id']
                 del params['image_id']
             if not 'imageId' in params:
@@ -1321,7 +1571,7 @@ class IsicApi(object):
         """
         if as_object:
             if isinstance(params, dict):
-                params = copy.copy(params)
+                params = _copy_dict(params)
             else:
                 params = dict()
             params['detail'] = 'true'
@@ -1329,7 +1579,7 @@ class IsicApi(object):
             if not isinstance(params, dict):
                 params = {'detail': 'false'}
             elif not 'detail' in params:
-                params = copy.copy(params)
+                params = _copy_dict(params)
                 params['detail'] = 'false'
         studies = self.study(params=params)
         for study in studies:

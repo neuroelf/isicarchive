@@ -8,6 +8,10 @@ Functions
 ---------
 image_mix
     Mix two images (RGB and/or gray scale, alpha parameter supported)
+superpixel_decode
+    Converts an RGB superpixel image to a 2D superpixel index array
+superpixel_map
+    Decodes a superpixel (index) array into a 2D mapping array
 superpixel_outline_dir
     Extract SVG path directions from binary mask of outline
 """
@@ -25,7 +29,7 @@ from .vars import ISIC_FUNC_PPI, ISIC_IMAGE_DISPLAY_SIZE_MAX
 
 # image mixing
 @jit('u1[:,:](u1[:,:],u1[:,:],optional(f4[:]))', nopython=True)
-def image_mix_jit(
+def image_mix(
     i1:numpy.ndarray,
     i2:numpy.ndarray,
     a2:numpy.ndarray = None,
@@ -211,6 +215,72 @@ def superpixel_contour(
     if idx < num_pix:
         out = out[0:idx,:]
     return out
+
+# decode image superpixel
+@jit('i4[:,:](u1[:,:,:])', nopython=True)
+def superpixel_decode(rgb_array:numpy.ndarray) -> numpy.ndarray:
+    """
+    Decode RGB version of a superpixel image into an index array.
+
+    Parameters
+    ----------
+    rgb_array : 3d numpy.ndarray (or imageio.core.util.Array)
+        Image content of a ISIC superpixel PNG (RGB-encoded values)
+    as_uint16 : bool
+        By default, this function will only consider the first 2 planes!
+    
+    Returns
+    -------
+    superpixel_index : 2d numpy.ndarray
+        2D Image (uint16) with superpixel indices
+    """
+    ishape = rgb_array.shape
+    num_pixx = ishape[0]
+    num_pixy = ishape[1]
+    num_pix = num_pixx * num_pixy
+    idx = numpy.zeros(num_pix, dtype=numpy.int32).reshape((num_pixx, num_pixy))
+    s1 = numpy.int32(8)
+    s2 = numpy.int32(16)
+    for x in prange(num_pixx): #pylint: disable=not-an-iterable
+        for y in range(num_pixy):
+            idx[x,y] = (numpy.int32(rgb_array[x,y,0]) + 
+                (numpy.int32(rgb_array[x,y,1]) << s1) + 
+                (numpy.int32(rgb_array[x,y,2]) << s2))
+    return idx
+
+# create superpixel -> pixel index array
+@jit('i4[:,:](i4[:,:])', nopython=True)
+def superpixel_map(pixel_img:numpy.ndarray) -> numpy.ndarray:
+    """
+    Map a superpixel (patch) image to a dictionary with (1D) coordinates.
+
+    Parameters
+    ----------
+    idx_array : 2d numpy.ndarray (order='C' !)
+        Image with superpixel index in each pixel
+    
+    Returns
+    -------
+    superpixel_map : 2d numpy.ndarray
+        Array which maps from superpixel index (0-based) to 1D coordinates
+        in the original (flattened) image space, such that
+        superpixel_map[superpixel_idx, 0:superpixel_map[superpixel_idx,-1]]
+        is the list of (flattened) pixels in the image space belonging to
+        superpixel_idx.
+    """
+    pixel_flat = pixel_img.flatten()
+    spcounts = numpy.bincount(pixel_flat)
+    spcountmax = numpy.amax(spcounts).item() + 1
+    sp_to_p = numpy.zeros(len(spcounts) * spcountmax,
+        dtype=numpy.int32).reshape(len(spcounts), spcountmax)
+    spcounts = numpy.zeros(len(spcounts), dtype=numpy.int32)
+    for idx in range(pixel_flat.size):
+        pixel_val = pixel_flat[idx]
+        sp_to_p[pixel_val, spcounts[pixel_val]] = idx
+        spcounts[pixel_val] += 1
+    for idx in range(len(spcounts)):
+        sp_to_p[idx, -1] = spcounts[idx]
+    return sp_to_p
 
 # superpixel outlines
 @jit('Tuple((i4,i4,i4[:]))(i4,b1[:,::1])', nopython=True)

@@ -20,17 +20,17 @@ api = IsicApi()
 ~~~~
 
 The return object variable, ```api```, then allows you to interact with the
-web-based API through method calls, which will typically create further
-object variables (such as study or image objects).
+web-based API through method calls, which will typically create further object
+variables (such as study or image objects).
 
 ### Data availability
-All general features are available without logging into the API. However,
-since many datasets (and with them their images) as well as studies are not
-marked as being "publicly available", the number of items returned by
-many functions (endpoints) differ based on whether you have successfully
-authenticated with the API. If you do not plan to register a username, you
-can skip the next section, and either set the ```username``` parameter to
-```None``` or skip it altogether in the call to ```IsicApi```.
+All general features are available without logging into the API. However, since
+many datasets (and with them their images) as well as studies are not marked as
+being "publicly available", the number of items returned by many functions
+(endpoints) differ based on whether you have successfully authenticated with
+the API. If you do not plan to register a username, you can skip the next
+section, and either set the ```username``` parameter to ```None``` or skip it
+altogether in the call to ```IsicApi```.
 
 ### Logging into the ISIC Archive
 For instance, some annotations created by study participants, or retrieving
@@ -52,7 +52,9 @@ api = IsicApi(username, password)
 **Please do *not* enter the password in clear text into your source code**. If
 you provide only the username, the password will be requested from either the
 console or, if used in a Jupyter notebook, below the active cell using the
-```getpass``` library.
+```getpass``` library. You can also store the password in the ```.netrc``` file
+([see the GNU page](https://www.gnu.org/software/inetutils/manual/html_node/The-_002enetrc-file.html)
+on the .netrc file format) in your user's home folder.
 
 ### Local cache folder
 Since a lot of the data that can be retrieved from the archive (API) is

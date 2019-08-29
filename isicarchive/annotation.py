@@ -1,36 +1,31 @@
 """
-isicarchive.annotation
+isicarchive.annotation (Annotation)
 
 This module provides the Annotation object for the IsicApi to utilize.
 
 Annotation objects are either returned from calls to
 
+   >>> from isicarchive.api import IsicApi
    >>> api = IsicApi()
    >>> study = api.study(study_name)
    >>> annotation = study.load_annotation(annotation_id)
 
 or can be generated
 
+   >>> from isicarchive.annotation import Annotation
    >>> annotation = Annotation(...)
 """
 
 __version__ = '0.4.8'
 
 
-import copy
+# imports (needed for majority of functions)
 import datetime
-import glob
-import io
-import json
 from typing import Any
 import warnings
 
-import imageio
-import numpy
-import requests
-
-from .image import Image
 from . import func
+from .image import Image
 from .vars import ISIC_IMAGE_DISPLAY_SIZE_MAX
 
 _json_full_fields = [
@@ -156,10 +151,10 @@ class Annotation(object):
                 self._from_json(from_json, load_data)
             except:
                 raise
-        elif func.could_be_mongo_object_id(annotation_id) and self._api and self._api._base_url:
+        elif func.could_be_mongo_object_id(annotation_id) and self._api:
             try:
-                self._from_json(func.get(self._api._base_url,
-                'annotation/' + annotation_id, self._api._auth_token).json(), load_data)
+                self._from_json(self._api.get(
+                'annotation/' + annotation_id).json(), load_data)
             except:
                 raise
 
@@ -169,6 +164,11 @@ class Annotation(object):
         load_data:bool = True,
         load_masks:bool = False,
         ):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE IMPORT
+        if load_masks:
+            import imageio
+        
         self.id = from_json['_id']
         self.state = from_json['state']
         self.study_id = from_json['studyId']
@@ -201,12 +201,8 @@ class Annotation(object):
             self._study = self._api._studies[self.study_id]
         if (not load_data) and (self.state != 'complete'):
             return
-        if self._api and self._api._base_url:
+        if self._api:
             try:
-                if self._api._auth_token:
-                    headers = {'Girder-Token': self._api._auth_token}
-                else:
-                    headers = None
                 if ('features' in from_json and 
                     isinstance(from_json['features'], dict)):
                     self.features = from_json['features']
@@ -218,13 +214,13 @@ class Annotation(object):
                         ('idx' in self.features[key]) and
                         (len(self.features[key]['idx']) > 0)):
                         feat_uri = func.uri_encode(key)
-                        feat_lst = func.get(self._api._base_url,
-                            'annotation/' + self.id + '/' + feat_uri,
-                            self._api._auth_token)
+                        feat_lst = self._api.get(
+                            'annotation/' + self.id + '/' + feat_uri)
                         if not feat_lst.ok:
                             raise ValueError('Error loading feature ' + key)
                         feat_lst = feat_lst.json()
-                        feat_idx = numpy.flatnonzero(feat_lst).tolist()
+                        feat_idx = [fidx for fidx in range(len(feat_lst))
+                            if feat_lst[fidx] > 0]
                         self.features[key] = dict()
                         self.features[key]['lst'] = [v for v in filter(
                             lambda v: v > 0, feat_lst)]
@@ -232,10 +228,8 @@ class Annotation(object):
                         self.features[key]['num'] = len(feat_idx)
                     if not load_masks:
                         continue
-                    feat_req = requests.get(
-                        self._api._base_url + '/annotation/' + self.id +
-                            '/' + feat_uri + '/mask', headers=headers,
-                        allow_redirects=True)
+                    feat_req = self._api.get('/annotation/' + self.id +
+                            '/' + feat_uri + '/mask', parse_json=False)
                     if not feat_req.ok:
                         raise ValueError('Error loading feature mask ' + key)
                     self.features[key]['msk'] = feat_req.content
@@ -258,6 +252,10 @@ class Annotation(object):
 
     # JSON representation (without constructor):
     def as_json(self):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from json import dumps as json_dumps
+
         json_list = []
         for field in _json_full_fields:
             if field in _mangling:
@@ -265,7 +263,7 @@ class Annotation(object):
             else:
                 json_field = field
             json_list.append('"%s": %s' % (json_field,
-                json.dumps(getattr(self, field))))
+                json_dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
 
     # clear data
@@ -289,6 +287,11 @@ class Annotation(object):
         max_size:int = None,
         call_display:bool = True,
         ) -> object:
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        import numpy
+        from .imfunc import color_superpixels, write_image
+
         try:
             from ipywidgets import Image as ImageWidget
             from IPython.display import display
@@ -307,7 +310,7 @@ class Annotation(object):
                 raise KeyError('Feature "' + features + '" not found.')
             features = {features: [color_code, alpha]}
         elif isinstance(features, list):
-            features_list = copy.copy(features)
+            features_list = features
             features = dict()
             for feature in features_list:
                 if not feature in self.features:
@@ -389,7 +392,7 @@ class Annotation(object):
         for (feature, color_spec) in features.items():
             splist = numpy.asarray(self.features[feature]['idx'])
             spvals = numpy.asarray(self.features[feature]['lst'])
-            func.color_superpixels(image_data,
+            color_superpixels(image_data,
                 splist, image_spmap, color_spec[0], color_spec[1], spvals)
         image_data.shape = (image_height, image_width, planes)
         if not self._image_obj is None:
@@ -399,7 +402,7 @@ class Annotation(object):
             imformat = 'jpg'
         else:
             imformat = 'png'
-        buffer_data = func.write_image(image_data, 'buffer', imformat)
+        buffer_data = write_image(image_data, 'buffer', imformat)
         image_max_xy = max(image_width, image_height)
         shrink_factor = max(1.0, image_max_xy / max_size)
         image_width = int(image_width / shrink_factor)

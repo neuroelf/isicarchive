@@ -1,26 +1,26 @@
 """
-isicarchive.dataset
+isicarchive.dataset (Dataset)
 
 This module provides the Dataset object for the IsicApi to utilize.
 
 Dataset objects are either returned from calls to
 
+   >>> from isicarchive.api import IsicApi
    >>> api = IsicApi()
    >>> dataset = api.dataset(dataset_id)
 
 or can be generated
 
+   >>> from isicarchive.dataset import Dataset
    >>> dataset = Dataset(...)
 """
 
 __version__ = '0.4.8'
 
 
+# imports (needed for majority of functions)
 import datetime
-import json
 import warnings
-
-import requests
 
 from . import func
 from .image import Image
@@ -153,22 +153,18 @@ class Dataset(object):
                 self._from_json(from_json)
             except:
                 raise
-        elif func.could_be_mongo_object_id(self.name) and self._api and self._api._base_url:
+        elif func.could_be_mongo_object_id(self.name) and self._api:
             try:
-                self._from_json(func.get(self._api._base_url,
-                'dataset/' + self.name, self._api._auth_token).json())
+                self._from_json(self._api.get('dataset/' + self.name))
             except:
                 raise
-        elif self.name and self._api and self._api._base_url:
+        elif self.name and self._api:
             try:
-                dataset_lookup = func.get(self._api._base_url,
-                    'dataset', self._api._auth_token,
-                    params={'limit': 0, 'detail': 'false'}).json()
+                dataset_lookup = self._api.get('dataset',
+                    params={'limit': 0, 'detail': 'false'})
                 for dataset in dataset_lookup:
                     if dataset['name'] == dataset.name:
-                        self._from_json(func.get(self._api._base_url,
-                            'dataset/' + dataset['_id'],
-                            self._api._auth_token).json())
+                        self._from_json(self._api.get('dataset/' + dataset['_id']))
                         break
                 if not self.id:
                     warnings.warn('Dataset {0:s} not found.'.format(self.name))
@@ -196,23 +192,18 @@ class Dataset(object):
                 self.owner = from_json['owner']
             self._detail = True
         self._in_archive = True
-        if self._api and self._api._base_url and self._api._auth_token:
+        if self._api:
             try:
-                self.access_list = func.get(self._api._base_url,
-                    'dataset/' + self.id + '/access',
-                    self._api._auth_token).json()
+                self.access_list = self._api.get('dataset/' + self.id + '/access')
             except:
                 warnings.warn('Error retrieving dataset access list.')
             try:
-                self.metadata = func.get(self._api._base_url,
-                    'dataset/' + self.id + '/metadata',
-                    self._api._auth_token).json()
+                self.metadata = self._api.get('dataset/' + self.id + '/metadata')
             except:
                 warnings.warn('Error retrieving dataset metadata.')
             try:
-                self.images_for_review = func.get(self._api._base_url,
-                    'dataset/' + self.id + '/review',
-                    self._api._auth_token, params={'limit': 0}).json()
+                self.images_for_review = self._api.get('dataset/' + self.id + '/review',
+                    params={'limit': 0})
                 if not isinstance(self.images_for_review, list):
                     self.images_for_review = []
             except:
@@ -233,6 +224,10 @@ class Dataset(object):
 
     # JSON representation (without constructor):
     def as_json(self):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from json import dumps as json_dumps
+
         json_list = []
         fields = _json_full_fields if self._detail else _json_partial_fields
         for field in fields:
@@ -241,7 +236,7 @@ class Dataset(object):
             else:
                 json_field = field
             json_list.append('"%s": %s' % (json_field,
-                json.dumps(getattr(self, field))))
+                json_dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
 
     # clear data
@@ -307,16 +302,9 @@ class Dataset(object):
             imageio.imread(file_content)
         except:
             raise ValueError('Error imread-ing image: ' + local_filename)
-        url = func.make_url(self._api._base_url,
-            'dataset/' + self.id + '/image')
-        if self._api._auth_token:
-            headers = {'Girder-Token': self._api._auth_token}
-        else:
-            headers = None
-        req = requests.post(url,
-            data=file_content,
-            params={},
-            headers=headers)
+        endpoint = 'dataset/' + self.id + '/image'
+        req = self._api.post(endpoint, params={},
+            data=file_content, parse_json=False)
         if not req.ok:
             warnings.warn("Image upload failed: " + req.text)
             return ''

@@ -1,31 +1,29 @@
 """
-isicarchive.segmentation
+isicarchive.segmentation (Segmentation)
 
 This module provides the Segmentation object for the IsicApi to utilize.
 
 Segmentation objects are either returned from calls to
 
+   >>> from isicarchive.api import IsicApi
    >>> api = IsicApi()
    >>> segmentation = api.segmentation(segmentation_id)
 
 or can be generated
 
+   >>> from isicarchive.segmentation import Segmentation
    >>> segmentation = Segmentation(...)
 """
 
 __version__ = '0.4.8'
 
 
+# imports (needed for majority of functions)
 import datetime
 import glob
-import json
 import os
 from typing import List, Tuple
 import warnings
-
-import imageio
-import numpy
-import requests
 
 from . import func
 from .vars import ISIC_IMAGE_DISPLAY_SIZE_MAX
@@ -191,6 +189,10 @@ class Segmentation(object):
     
     # JSON representation (without constructor):
     def as_json(self):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from json import dumps as json_dumps
+
         json_list = []
         fields = _json_full_fields if self._detail else _json_partial_fields
         for field in fields:
@@ -199,7 +201,7 @@ class Segmentation(object):
             else:
                 json_field = field
             json_list.append('"%s": %s' % (json_field,
-                json.dumps(getattr(self, field))))
+                json_dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
 
     # clear data
@@ -220,6 +222,10 @@ class Segmentation(object):
 
     # load mask data
     def load_maskdata(self, keep_rawdata:bool = False):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        import imageio
+
         if not self._api:
             raise ValueError('Invalid segmentation object to load mask data for.')
         if self._api._cache_folder:
@@ -237,15 +243,10 @@ class Segmentation(object):
                 except Exception as e:
                     warnings.warn('Error loading segmentation mask: ' + str(e))
                     os.remove(smask_list[0])
-        if self._in_archive and self._api._base_url:
+        if self._in_archive and self._api:
             try:
-                if self._api._auth_token:
-                    headers = {'Girder-Token': self._api._auth_token}
-                else:
-                    headers = None
-                req = requests.get(func.make_url(self._api._base_url,
-                    'segmentation/' + self.id + '/mask'),
-                    headers=headers, allow_redirects=True)
+                req = self._api.get('/segmentation/' + self.id + '/mask',
+                    parse_json=False)
                 if req.ok:
                     mask_raw = req.content
                     if keep_rawdata:
@@ -274,6 +275,10 @@ class Segmentation(object):
         library:str = 'matplotlib',
         call_display:bool = True,
         ) -> object:
+
+        # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
+        import numpy
+        from imfunc import display_image, image_mix
         try:
             if self.mask is None:
                 self.load_maskdata()
@@ -295,14 +300,18 @@ class Segmentation(object):
                 self._image_obj.load_imagedata()
                 alpha = numpy.zeros(image_data.shape, dtype=numpy.float32, order='C')
                 alpha[image_data == 0] = 0.5
-                image_data = func.image_mix(self._image_obj.data, image_data, alpha)
-            return func.display_image(image_data, max_size=max_size,
+                image_data = image_mix(self._image_obj.data, image_data, alpha)
+            return display_image(image_data, max_size=max_size,
                 ipython_as_object=(not call_display), library=library)
         except Exception as e:
             warnings.warn('show_in_notebook(...) failed: ' + str(e))
 
     # superpixels in mask
     def superpixels_in_mask(self) -> List:
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        import numpy
+
         if not self._sp_in_mask is None:
             return self._sp_in_mask
         if self.mask is None:

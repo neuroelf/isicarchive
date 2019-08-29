@@ -1,31 +1,29 @@
 """
-isicarchive.image
+isicarchive.image (Image)
 
 This module provides the Image object for the IsicApi to utilize.
 
 Image objects are either returned from calls to
 
+   >>> from isicarchive.api import IsicApi
    >>> api = IsicApi()
    >>> image = api.image(image_id)
 
 or can be generated
 
+   >>> from isicarchive.image import Image
    >>> image = Image(...)
 """
 
 __version__ = '0.4.8'
 
 
+# imports (needed for majority of functions)
 import datetime
 import glob
-import json
 import os
-from typing import Any, List, Union
+from typing import Any, Union
 import warnings
-
-import imageio
-import numpy
-import requests
 
 from . import func
 from .vars import ISIC_IMAGE_DISPLAY_SIZE_MAX
@@ -196,6 +194,10 @@ class Image(object):
     
     # JSON representation (without constructor):
     def as_json(self):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from json import dumps as json_dumps
+
         json_list = []
         fields = _json_full_fields if self._detail else _json_partial_fields
         for field in fields:
@@ -204,7 +206,7 @@ class Image(object):
             else:
                 json_field = field
             json_list.append('"%s": %s' % (json_field,
-                json.dumps(getattr(self, field))))
+                json_dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
 
     # clear data
@@ -230,6 +232,10 @@ class Image(object):
 
     # load image data
     def load_imagedata(self, keep_raw_data:bool = False):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        import imageio
+
         if not self._api:
             raise ValueError('Invalid image object to load image data for.')
         if self._api._cache_folder:
@@ -247,15 +253,10 @@ class Image(object):
                 except Exception as e:
                     warnings.warn('Error loading image: ' + str(e))
                     os.remove(image_list[0])
-        if self._in_archive and self._api._base_url:
+        if self._in_archive and self._api:
             try:
-                if self._api._auth_token:
-                    headers = {'Girder-Token': self._api._auth_token}
-                else:
-                    headers = None
-                req = requests.get(func.make_url(self._api._base_url,
-                    'image/' + self.id + '/download'),
-                    headers=headers, allow_redirects=True)
+                req = self._api.get('/image/' + self.id + '/download',
+                    parse_json=False)
                 if req.ok:
                     image_raw = req.content
                     if keep_raw_data:
@@ -276,6 +277,12 @@ class Image(object):
 
     # load image superpixels
     def load_superpixels(self, map_superpixels:bool = False):
+
+        # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
+        import imageio
+        import numpy
+        from .jitfunc import superpixel_decode
+
         if not self._api:
             raise ValueError('Invalid image object to load superpixels for.')
         spimg_filename = self._api.cache_filename(self.id, 'spimg', '.png')
@@ -299,7 +306,7 @@ class Image(object):
                         with open(spimg_filename, 'rb') as image_file:
                             image_raw = image_file.read()
                         image_png = imageio.imread(image_raw)
-                        self.superpixels['idx'] = func.superpixel_decode(image_png)
+                        self.superpixels['idx'] = superpixel_decode(image_png)
                         self.superpixels['max'] = numpy.amax(
                             self.superpixels['idx']).item()
                         self.superpixels['shp'] = self.superpixels['idx'].shape
@@ -307,24 +314,19 @@ class Image(object):
                     except Exception as e:
                         os.remove(spimg_filename)
                         warnings.warn('Error loading image: ' + str(e))
-        if self._in_archive and self._api._base_url and (
+        if self._in_archive and self._api and (
             (not self._api._cache_folder) or
             (not os.path.exists(spidx_filename))):
             try:
-                if self._api._auth_token:
-                    headers = {'Girder-Token': self._api._auth_token}
-                else:
-                    headers = None
-                req = requests.get(func.make_url(self._api._base_url,
-                    'image/' + self.id + '/superpixels'),
-                    headers=headers, allow_redirects=True)
+                req = self._api.get('/image/' + self.id + '/superpixels',
+                    parse_json=False)
                 if req.ok:
                     image_raw = req.content
                     image_png = imageio.imread(image_raw)
                     if self._api._cache_folder:
                         with open(spimg_filename, 'wb') as image_file:
                             image_file.write(image_raw)
-                    self.superpixels['idx'] = func.superpixel_decode(image_png)
+                    self.superpixels['idx'] = superpixel_decode(image_png)
                     self.superpixels['max'] = numpy.amax(
                         self.superpixels['idx']).item()
                     self.superpixels['shp'] = self.superpixels['idx'].shape
@@ -344,6 +346,10 @@ class Image(object):
 
     # map superpixels
     def map_superpixels(self):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from .jitfunc import superpixel_map
+
         if not self.superpixels['map'] is None:
             return
         try:
@@ -356,7 +362,7 @@ class Image(object):
             return
         pixel_img = self.superpixels['idx']
         try:
-            self.superpixels['map'] = func.superpixel_map(pixel_img)
+            self.superpixels['map'] = superpixel_map(pixel_img)
         except Exception as e:
             warnings.warn('Error mapping superpixels: ' + str(e))
 
@@ -371,10 +377,8 @@ class Image(object):
             raise ValueError('Invalid image object to post metadata with.')
         if not func.could_be_mongo_object_id(self.id):
             raise ValueError('Invalid image object_id format.')
-        url = func.make_url(self._api._base_url, 'image/' + self.id + '/metadata')
-        req = requests.post(url,
-            params={'metadata': metadata, 'save': 'true'},
-            headers={'Girder-Token': self._api._auth_token})
+        req = self._api.post('/image/' + self.id + '/metadata',
+            params={'metadata': metadata, 'save': 'true'}, parse_json=False)
         if not req.ok:
             warnings.warn("Image metadata posting failed: " + req.text)
             return ''
@@ -383,7 +387,7 @@ class Image(object):
     # retrieve associated segmentations
     def segmentations(self,
         as_objects:bool = True,
-        ) -> List:
+        ) -> list:
         pass
 
     # show image in notebook
@@ -392,10 +396,13 @@ class Image(object):
         library:str = 'matplotlib',
         call_display:bool = True,
         ) -> object:
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from imfunc import display_image
         try:
             if self.data is None:
                 self.load_imagedata()
-            return func.display_image(self.data, max_size=max_size,
+            return display_image(self.data, max_size=max_size,
                 ipython_as_object=(not call_display), library=library)
         except Exception as e:
             warnings.warn('show_in_notebook(...) failed: ' + str(e))
@@ -403,9 +410,13 @@ class Image(object):
     # superpixel outlines
     def superpixel_outlines(self,
         out_format:str = 'osvgp',
-        pix_selection:List = None,
-        path_attribs:Union[List,str] = None,
+        pix_selection:list = None,
+        path_attribs:Union[list,str] = None,
         ) -> Any:
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE IMPORT
+        from .imfunc import superpixel_outlines
+
         if self.superpixels['map'] is None:
             self.map_superpixels()
             if self.superpixels['map'] is None:
@@ -416,7 +427,7 @@ class Image(object):
             if self.superpixels['idx'] is None:
                 warnings.warn('Could not load or process superpixel data.')
                 return None
-        outlines = func.superpixel_outlines(
+        outlines = superpixel_outlines(
             self.superpixels['map'], self.superpixels['idx'].shape,
             out_format=out_format, pix_selection=pix_selection,
             path_attribs=path_attribs)
@@ -426,8 +437,13 @@ class Image(object):
 
     # shortcut to save a superpixel JSON file
     def superpixel_savejson(self, filename:str):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE IMPORT
+        from json import dumps as json_dumps
+        from .imfunc import superpixel_outlines
+
         contours = self.superpixel_outlines('cjson')
-        json_str = json.dumps(contours) + "\n"
+        json_str = json_dumps(contours) + "\n"
         try:
             with open(filename, 'w') as json_file:
                 json_file.write(json_str)

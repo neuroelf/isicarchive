@@ -1,33 +1,35 @@
 """
-isicarchive.study
+isicarchive.study (Study)
 
 This module provides the Study object for the IsicApi to utilize.
 
 Study objects are either returned from calls to
 
+   >>> from isicarchive.api import IsicApi
    >>> api = IsicApi()
    >>> study = api.study(study_id)
 
 or can be generated
 
+   >>> from isicarchive.study import Study
    >>> study = Study(...)
 """
 
 __version__ = '0.4.8'
 
+
+# imports (needed for majority of functions)
 import copy
 import datetime
 import glob
-import json
-import numbers
 import os
 from typing import Any
 import warnings
 
+from . import func
 from .annotation import Annotation
 from .image import Image
 from .vars import ISIC_IMAGE_DETAILS_PER_REQUEST, ISIC_IMAGE_DISPLAY_SIZE_MAX
-from . import func
 
 _json_full_fields = [
     'created',
@@ -159,20 +161,17 @@ class Study(object):
                 raise
         elif func.could_be_mongo_object_id(self.name) and self._api:
             try:
-                self._from_json(func.get(self._api._base_url,
-                    'study/' + self.name, self._api._auth_token).json(),
+                self._from_json(self._api.get('study/' + self.name),
                     image_details)
             except:
                 raise
         elif self.name and self._api:
             try:
-                study_lookup = func.get(self._api._base_url,
-                    'study', self._api._auth_token,
-                    params={'limit': 0, 'detail': 'false'}).json()
+                study_lookup = self._api.get('study',
+                    params={'limit': 0, 'detail': 'false'})
                 for study in study_lookup:
                     if study['name'] == self.name:
-                        self._from_json(func.get(self._api._base_url,
-                            'study/' + study['_id'], self._api._auth_token).json(),
+                        self._from_json(self._api.get('study/' + study['_id']),
                             image_details)
                         break
                 if not self.id:
@@ -210,9 +209,8 @@ class Study(object):
             except:
                 warnings.warn('Error retrieving image information.')
             try:
-                annotations = func.get(self._api._base_url,
-                    'annotation', self._api._auth_token,
-                    params={'studyId': self.id, 'detail': 'true'}).json()
+                annotations = self._api.get('annotation',
+                    params={'studyId': self.id, 'detail': 'true'})
                 self.annotations = annotations
                 for count in range(len(annotations)):
                     self._annotations[annotations[count]['_id']] = count
@@ -234,6 +232,10 @@ class Study(object):
     
     # JSON representation (without constructor):
     def as_json(self):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from json import dumps as json_dumps
+
         json_list = []
         fields = _json_full_fields if self._detail else _json_partial_fields
         for field in fields:
@@ -242,14 +244,14 @@ class Study(object):
             else:
                 json_field = field
             json_list.append('"%s": %s' % (json_field,
-                json.dumps(getattr(self, field))))
+                json_dumps(getattr(self, field))))
         return '{' + ', '.join(json_list) + '}'
 
     # get annotation
     def annotation(self, object_id:str):
         if not self._api:
             raise ValueError('Requires IsicApi object to be set.')
-        if isinstance(object_id, numbers.Number) and (
+        if isinstance(object_id, int) and (
             object_id >= 0 and object_id < len(self.annotations)):
                 object_id = self.annotations[object_id]['_id']
         if isinstance(object_id, str) and func.could_be_mongo_object_id(object_id):
@@ -463,8 +465,7 @@ class Study(object):
                 rep_idx[image_id] = count
             if len(to_load) == ISIC_IMAGE_DETAILS_PER_REQUEST:
                 params['imageIds'] = '["' + '","'.join(to_load) + '"]'
-                image_info = func.get(self._api._base_url,
-                    'image', self._api._auth_token, params=params).json()
+                image_info = self._api.get('image', params=params)
                 if len(image_info) != len(to_load):
                     warnings.warn('{0:d} images could not be loaded.'.format(
                         len(to_load) - len(image_info)))
@@ -488,8 +489,7 @@ class Study(object):
                 rep_idx = dict()
         if len(to_load) > 0:
             params['imageIds'] = '["' + '","'.join(to_load) + '"]'
-            image_info = func.get(self._api._base_url,
-                'image', self._api._auth_token, params=params).json()
+            image_info = self._api.get('image', params=params)
             if len(image_info) != len(to_load):
                 warnings.warn('{0:d} images could not be loaded.'.format(
                     len(to_load) - len(image_info)))

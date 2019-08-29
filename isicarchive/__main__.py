@@ -10,7 +10,18 @@ Supports the following flags:
  -d, --debug
  -e, --endpoint      ENDPOINT_URI
  -i, --image         IMAGE_ID_FOR_DOWNLOAD
+ -j, --json          JSON_OUTPUT_FILENAME
+ -p, --params        KEY_EQUALS_VALUE_PAIRS
+ -s, --study         STUDY_ID
+ -u, --username      USERNAME
+ -x, --extract       EXTRACT_EXPRESSION
+ --load-cache
+ --load-datasets
+ --load-studies
+ --study-images
+ --version
 """
+
 # command line component
 def main():
 
@@ -50,6 +61,12 @@ def main():
         help='download an image to local file')
     parser.add_argument('-j', '--json',
         help='JSON output filename (for endpoint syntax)')
+    parser.add_argument('--load-cache', action='store_const', const=True,
+        help='load image data already in the data')
+    parser.add_argument('--load-datasets', action='store_const', const=True,
+        help='retrieve information about available datasets')
+    parser.add_argument('--load-studies', action='store_const', const=True,
+        help='retrieve information about available studies')
     parser.add_argument('-p', '--params',
         help='endpoint parameters as key1=value1+key2=value2')
     parser.add_argument('-s', '--study',
@@ -69,6 +86,14 @@ def main():
     hostname = options.base_url.lower() if options.base_url else ISIC_BASE_URL
     cache_folder = options.cache_folder if options.cache_folder else None
     debug = True if options.debug else False
+    if not options.endpoint:
+        load_cache = True
+        load_datasets = True
+        load_studies = True
+    else:
+        load_cache = options.load_cache if options.load_cache else False
+        load_datasets = options.load_datasets if options.load_datasets else False
+        load_studies = options.load_studies if options.load_studies else False
 
     # check hostname, and access netrc
     if len(hostname) < 8 or hostname[0:4] != 'http':
@@ -76,14 +101,16 @@ def main():
     if hostname[0:8] != 'https://':
         raise ValueError('Requires HTTPS protocol.')
     hostname_only = hostname[8:]
-    netrc_o = netrc.netrc()
-    netrc_tokens = netrc_o.authenticators(hostname_only)
-    if netrc_tokens is None:
-        username = None
-        password = None
-    else:
-        username = netrc_tokens[0]
-        password = netrc_tokens[2]
+    username = None
+    password = None
+    try:
+        netrc_o = netrc.netrc()
+        netrc_tokens = netrc_o.authenticators(hostname_only)
+        if not netrc_tokens is None:
+            username = netrc_tokens[0]
+            password = netrc_tokens[2]
+    except:
+        pass
     if options.username:
         if username and username != options.username:
             username = options.username
@@ -96,6 +123,9 @@ def main():
         hostname=hostname,
         api_uri=api_uri,
         cache_folder=cache_folder,
+        load_cache=load_cache,
+        load_datasets=load_datasets,
+        load_studies=load_studies,
         debug=debug)
 
     # process GET params
@@ -154,8 +184,8 @@ def main():
         print(api)
     
     # some additional endpoints supported outside of --endpoint
-    if options.study_info:
-        study = api.study(options.study_info)
+    if options.study:
+        study = api.study(options.study)
         if rp:
             print(pretty(study))
         else:
