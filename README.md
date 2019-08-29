@@ -393,6 +393,12 @@ support and code is being provided by
 [Prof. David Gutman, MD, PhD](https://winshipcancer.emory.edu/bios/faculty/gutman-david.html).
 
 ### History
+- 8/29/2019
+  - added features.py (list of known features) for later selection (and colors)
+  - added status codes and other features to ```__main__``` (```python -m ...```)
+  - refactored all ```.get``` calls to ```api.get``` (other than authentication)
+  - refactored all image-related function into ```imfunc.py``` module (faster import of ```func```)
+  - refactored major external package imports (imageio, numba, numpy) to be processed late
 - 8/28/2019
   - added ```.netrc``` support (storing a password for ```python -m ...``` mode)
   - added minimal command line (```__main__.py``` for ```python -m ...```) syntax
