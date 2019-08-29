@@ -1109,7 +1109,7 @@ class IsicApi(object):
                     try:
                         req = req.json()
                     except:
-                        req = []
+                        req = {'status': req.status_code, 'message': req.text}
                 else:
                     req = req.json()
                 if self._debug and req_ok:
