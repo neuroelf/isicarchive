@@ -109,6 +109,7 @@ from . import func
 from . import vars
 from .annotation import Annotation
 from .dataset import Dataset
+from .features import master_features
 from .image import Image
 from .segmentation import Segmentation, _skill_precedence
 from .study import Study
@@ -445,6 +446,17 @@ class IsicApi(object):
             if self._auth_token and load_meta_hist:
                 self.meta_hist = self.get('image/histogram')
 
+        # pre-populate feature colors
+        for item in master_features:
+            if 'color' in item:
+                self._feature_colors[item['id']] = item['color']
+        for item in master_features:
+            if 'color' in item:
+                icol = item['color']
+                for isyn in item['synonyms']:
+                    if not isyn in self._feature_colors:
+                        self._feature_colors[isyn] = icol
+        
         # pre-populate information about datasets and studies
         if load_datasets:
             items = self.dataset(params={'limit': 0, 'detail': 'true'})
@@ -456,6 +468,8 @@ class IsicApi(object):
             for item in items:
                 self._studies[item['_id']] = item
                 self.studies[item['name']] = item['_id']
+        
+        # process cache
         if self._cache_folder:
             cache_filename = self.cache_filename('0' * 24, 'fccache', '.json.gz')
             if os.path.exists(cache_filename):
