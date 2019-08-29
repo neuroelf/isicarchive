@@ -11,11 +11,11 @@ functionality into a set of modules, thus reducing the need to re-write certain
 code for a diverse set of projects.
 
 ## First steps
-To start with, import the ```IsicApi``` class from the ```isicarchive``` module
-and create an instance of the class:
+To start with, import the ```IsicApi``` class from the ```isicarchive.api```
+module and create an instance of the class:
 
 ~~~~
-from isicarchive import IsicApi
+from isicarchive.api import IsicApi
 api = IsicApi()
 ~~~~
 
@@ -238,7 +238,7 @@ The ```IsicApi.image.Image``` class contains functions to decode and map this
 image first into an index array, and then into a mapping array:
 
 ~~~~
-from isicarchive import IsicApi
+from isicarchive.api import IsicApi
 
 # load superpixel image for first image
 api = IsicApi()
@@ -282,8 +282,8 @@ The syntax below will make a call to the web-based API, and retrieve the
 information about the study named in ```study_name```. If the study is not
 found, an exception is raised! Other than the web-based API (which does
 not support names), you do not have to look up the object ID manually first.
-The returned value, ```study``` is an object of type ```isicarchive.Study```,
-which provides some additional methods.
+The returned value, ```study``` is an object of type
+```isicarchive.study.Study```, which provides some additional methods.
 
 ~~~~
 # Retrieve study object
@@ -307,7 +307,8 @@ dataset = api.dataset(dataset_name)
 ~~~~
 
 Similarly to a study, this will create an object of type
-```isicarchive.Dataset```, which allows additional methods to be called.
+```isicarchive.dataset.Dataset```, which allows additional methods to be
+called.
 
 In addition to the information regularly provided by the ISIC Archive API,
 the IsicApi object's implementation will also attempt to already download
@@ -391,6 +392,8 @@ support and code is being provided by
 
 ### History
 - 8/28/2019
+  - added ```.netrc``` support (storing a password for ```python -m ...``` mode)
+  - added minimal command line (```__main__.py``` for ```python -m ...```) syntax
   - preparing for version 0.4.8 to be released
   - implemented the ```clear_data(...)``` methods for all objects
   - added David's superpixel contour JSON output format

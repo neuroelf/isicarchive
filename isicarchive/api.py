@@ -63,6 +63,7 @@ __version__ = '0.4.8'
 
 
 import copy
+import netrc
 import os
 import re
 import tempfile
@@ -178,8 +179,9 @@ class IsicApi(object):
         elif (len(hostname)) < 8 or (hostname[0:8].lower() != 'https://'):
             if hostname[0:7].lower() == 'http://':
                 raise ValueError('IsicApi must use https:// as protocol!')
-            hostname = 'https://' + hostname
-
+            hostname = 'https://' + hostname.lower()
+        else:
+            hostname = hostname.lower()
         if api_uri is None:
             api_uri = vars.ISIC_API_URI
         elif api_uri == '' or api_uri[0] != '/':
@@ -242,7 +244,13 @@ class IsicApi(object):
 
             # And get the password using getpass
             if password is None:
-                password = getpass.getpass('Password for "%s":' % (username))
+                netrc_o = netrc.netrc()
+                hostname_only = hostname[8:]
+                netrc_tokens = netrc_o.authenticators(hostname_only)
+                if not netrc_tokens is None and netrc_tokens[0] == username:
+                    password = netrc_tokens[2]
+                else:
+                    password = getpass.getpass('Password for "%s":' % (username))
 
             # Login
             self._auth_token = func.isic_auth_token(

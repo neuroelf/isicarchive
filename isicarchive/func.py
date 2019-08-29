@@ -58,9 +58,12 @@ write_image
     Write an image to file or buffer (bytes)
 """
 
+# specific version for file
 __version__ = '0.4.8'
 
 
+# imports
+from collections.abc import ValuesView
 import copy
 import gzip
 import io
@@ -82,6 +85,7 @@ import scipy.ndimage as ndimage
 
 from . import jitfunc
 from .vars import ISIC_FUNC_PPI, ISIC_IMAGE_DISPLAY_SIZE_MAX
+
 
 # color superpixels in an image
 def color_superpixels(
@@ -117,6 +121,8 @@ def color_superpixels(
     image : numpy.ndarray
         Image with superpixels painted
     """
+
+    # check inputs
     if isinstance(image, tuple):
         if len(image) == 2 and (isinstance(image[0], int) and
             isinstance(image[1], int)):
@@ -162,7 +168,11 @@ def color_superpixels(
             raise
     if len(color) == 3 and isinstance(color[0], int):
         color = [color] * numsp
+    
+    # for each superpixel (index)
     for idx in range(numsp):
+
+        # get pixel indices, compute inverse alpha, and then set pixel values
         spidx = splst[idx]
         spnum = spmap[spidx, -1]
         sppidx = spmap[spidx, 0:spnum]
@@ -226,6 +236,8 @@ def display_image(
     
     No returns
     """
+
+    # check inputs
     if image_data is None:
         return
     if not isinstance(library, str):
@@ -268,6 +280,8 @@ def display_image(
     shrink_factor = max(1.0, image_max_xy / max_size)
     image_width = int(image_width / shrink_factor)
     image_height = int(image_height / shrink_factor)
+
+    # depending on library call appropriate function
     if library == 'ipython':
         try:
             image_out = ipy_Image(value=image_data,
@@ -427,24 +441,34 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
     - '[].author.name'
       returns a list with elements: getxattr(obj[IDX], 'author.name')
     """
+
+    # if anything happens, the value is the default
     val = default
     if obj is None:
         return val
     if name is None or (name == ''):
         return obj
+    
+    # for simple expressions (without . separator)
     if not '.' in name:
         try:
+
+            # depending on type of object
             if isinstance(obj, dict):
                 if name == '#':
                     val = len(obj)
+                elif name == '$':
+                    val = obj.values()
                 else:
                     val = obj.get(name)
-            elif not isinstance(obj, list):
+            elif not isinstance(obj, list) and not isinstance(obj, ValuesView):
                 val = getattr(obj, name)
             elif name.isdigit() or (name[0] == '-' and name[1:].isdigit()):
                 val = obj[int(name)]
             elif name == '#':
                 val = len(obj)
+
+            # item/value-based obj[key]==name-part lookup
             elif '=' in name:
                 name_parts = name.split('=')
                 name = '.'.join(name_parts[0].split('>'))
@@ -456,6 +480,7 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
                         getxattr(subobj, name) == cont):
                         val = subobj
                         break
+            # item/value-based obj[key]-regexp-name-part lookup
             elif '~' in name:
                 name_parts = name.split('~')
                 name = '.'.join(name_parts[0].split('>'))
@@ -471,19 +496,27 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
         except:
             pass
         return val
+    
+    # special case: pass on name to each list item, return list
     if isinstance(obj, list) and (len(name) > 3) and (name[0:3] == '[].'):
         val = [None] * len(obj)
         name = name[3:]
         for idx in range(len(obj)):
             val[idx] = getxattr(obj[idx], name, default)
         return val
+    
+    # from here: complex (.-separator-containing) expression
     name_lst = name.split('.')
     name_lst.reverse()
     try:
+
+        # process each expression repeatedly on resulting object
         while len(name_lst) > 1:
             obj = getxattr(obj, name_lst.pop())
             if obj is None:
                 return val
+        
+        # special cases for last item in the name expression
         if isinstance(obj, list) and (name_lst[0] == '[]'):
             val = '[' + ', '.join([repr(x) for x in obj]) + ']'
         elif isinstance(obj, dict) and (name_lst[0] == '{keys}'):
@@ -491,8 +524,12 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
         elif isinstance(obj, dict) and (name_lst[0] == '{}'):
             val = '{' + ', '.join(
                 [repr(k) + ': ' + repr(v) for k,v in obj.items()]) + '}'
+
+        # otherwise, one last time
         else:
             val = getxattr(obj, name_lst[0])
+    
+    # ignore all errors
     except:
         pass
     return val
@@ -640,6 +677,7 @@ def image_mix(
     out_image : ndarray
         Mixed image
     """
+
     # get original shapes and perform necessary checks and reshaping
     im1shape = image_1.shape
     im2shape = image_2.shape
@@ -709,8 +747,12 @@ def image_mix(
                         image_1.shape = im1shape
                         image_2.shape = im2shape
                         raise ValueError('Unable to format alpha_2.')
+    
+    # attempt to use JIT function
     try:
         immix = jitfunc.image_mix_jit(image_1, image_2, alpha_2)
+    
+    # and return original inputs to their previous state in any case!
     except:
         image_1.shape = im1shape
         image_2.shape = im2shape

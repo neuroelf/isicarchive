@@ -6,7 +6,7 @@ Provides a python interface to https://isic-archive.com/api/v1
 
 To instantiate the API object and retrieve some study information use
 
-   >>> from isicarchive import IsicApi
+   >>> from isicarchive.api import IsicApi
    >>> api = IsicApi(username)
    >>> study_info = api.study(study_name)
 
@@ -26,15 +26,6 @@ def check_dep_versions():
 
 check_dep_versions()
 
-from .vars import __version__, ISIC_API_URI, ISIC_BASE_URL
-
-# allow shortcuts here
-from .api import IsicApi
-from .annotation import Annotation
-from .dataset import Dataset
-from .image import Image
-from .segmentation import Segmentation
-from .statsimage import StatsImage, StatsLayer
-from .study import Study
+from .version import __version__
 
 name = 'isicarchive'
