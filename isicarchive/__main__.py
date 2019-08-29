@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 isicarchive.__main__
 
@@ -39,10 +40,10 @@ def main():
         import pprint
         pp = pprint.PrettyPrinter(indent=2)
     
-    from . import func
-    from .api import IsicApi
-    from .vars import ISIC_API_URI, ISIC_BASE_URL
-    from .version import __version__
+    from isicarchive import func
+    from isicarchive.api import IsicApi
+    from isicarchive.vars import ISIC_API_URI, ISIC_BASE_URL
+    from isicarchive.version import __version__
 
     # prepare arg parser
     prog = 'python -m isicarchive'
@@ -82,7 +83,11 @@ def main():
         help='print version information')
     parser.add_argument('-x', '--extract',
         help='extract expression from endpoint response')
-    options = parser.parse_args()
+    try:
+        options = parser.parse_args()
+    except Exception as e:
+        print('Error parsing input arguments: ' + str(e))
+        return 1
 
     # parse basic options
     api_uri = options.api_uri if options.api_uri else ISIC_API_URI
@@ -104,7 +109,8 @@ def main():
     if len(hostname) < 8 or hostname[0:4] != 'http':
         hostname = 'https://' + hostname
     if hostname[0:8] != 'https://':
-        raise ValueError('Requires HTTPS protocol.')
+        print('ISIC API requires HTTPS protocol.')
+        return 4
     hostname_only = hostname[8:]
     username = None
     password = None
@@ -122,17 +128,21 @@ def main():
             password = None
     
     # create API object
-    api = IsicApi(
-        username=username,
-        password=password,
-        hostname=hostname,
-        api_uri=api_uri,
-        cache_folder=cache_folder,
-        load_cache=load_cache,
-        load_datasets=load_datasets,
-        load_meta_hist=load_meta_hist,
-        load_studies=load_studies,
-        debug=debug)
+    try:
+        api = IsicApi(
+            username=username,
+            password=password,
+            hostname=hostname,
+            api_uri=api_uri,
+            cache_folder=cache_folder,
+            load_cache=load_cache,
+            load_datasets=load_datasets,
+            load_meta_hist=load_meta_hist,
+            load_studies=load_studies,
+            debug=debug)
+    except Exception as e:
+        print('Error connecting to API: ' + str(e))
+        return 2
 
     # process GET params
     if options.params is None:
@@ -147,26 +157,32 @@ def main():
 
     # if a specific endpoint is requested, make request
     if not options.endpoint is None:
-        jsonout = api.get(options.endpoint, params)
+        try:
+            jsonout = api.get(options.endpoint, params)
+        except Exception as e:
+            print('Error retrieving data from API: ' + str(e))
+            return 3
 
         # extract from endpoint
         if not options.extract is None:
             jsonout = func.getxattr(jsonout, options.extract)
             if jsonout is None:
-                raise('Invalid extraction expression: '+ options.extract)
+                print('Invalid extraction expression: '+ options.extract)
+                return 3
 
         # store as json
         if not options.json is None:
             jstr = json.dumps(jsonout)
             if options.json == 'stdout':
                 print(jstr)
-                return
+                return 0
             try:
                 with open(options.json, 'w') as json_file:
                     json_file.write(jstr)
-                return
-            except:
-                raise
+                return 0
+            except Exception as e:
+                print('Error writing to output file: ' + str(e))
+                return 6
         else:
             if isinstance(jsonout, str):
                 print(jsonout)
@@ -174,14 +190,16 @@ def main():
                 print(pretty(jsonout))
             else:
                 pp.pprint(jsonout)
-            return
+            return 0
 
     # image download
     elif not options.image is None:
         try:
             api.image(options.image[0], save_as=options.image[1])
-        except:
-            raise
+            return 0
+        except Exception as e:
+            print('Error downloading image: ' + str(e))
+            return 7
 
     # no explicit endpoint requested, print basic info
     if rp:
@@ -204,7 +222,11 @@ def main():
                     str(image['meta']['acquisition']['pixelsX']) + ' by ' +
                     str(image['meta']['acquisition']['pixelsY']))
 
+    # return without error
+    return 0
+
 
 # only call if main
 if __name__ == '__main__':
-    main()
+    import sys
+    sys.exit(main())
