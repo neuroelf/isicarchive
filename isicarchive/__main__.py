@@ -17,6 +17,7 @@ Supports the following flags:
  -x, --extract       EXTRACT_EXPRESSION
  --load-cache
  --load-datasets
+ --load-meta-hist
  --load-studies
  --study-images
  --version
@@ -65,6 +66,8 @@ def main():
         help='load image data already in the data')
     parser.add_argument('--load-datasets', action='store_const', const=True,
         help='retrieve information about available datasets')
+    parser.add_argument('--load-meta-hist', action='store_const', const=True,
+        help='retrieve information about metadata (image/histogram)')
     parser.add_argument('--load-studies', action='store_const', const=True,
         help='retrieve information about available studies')
     parser.add_argument('-p', '--params',
@@ -89,10 +92,12 @@ def main():
     if not options.endpoint:
         load_cache = True
         load_datasets = True
+        load_meta_hist = True
         load_studies = True
     else:
         load_cache = options.load_cache if options.load_cache else False
         load_datasets = options.load_datasets if options.load_datasets else False
+        load_meta_hist = options.load_meta_hist if options.load_meta_hist else False
         load_studies = options.load_studies if options.load_studies else False
 
     # check hostname, and access netrc
@@ -125,6 +130,7 @@ def main():
         cache_folder=cache_folder,
         load_cache=load_cache,
         load_datasets=load_datasets,
+        load_meta_hist=load_meta_hist,
         load_studies=load_studies,
         debug=debug)
 

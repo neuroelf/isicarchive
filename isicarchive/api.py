@@ -337,6 +337,7 @@ class IsicApi(object):
         store_objs:bool = True,
         load_cache:bool = True,
         load_datasets:bool = True,
+        load_meta_hist:bool = True,
         load_studies:bool = True,
         debug:bool = False,
         ):
@@ -441,7 +442,7 @@ class IsicApi(object):
             self._auth_token = _get_auth_token(self._base_url, username, password)
 
             # if login succeeded, collect meta information histogram
-            if self._auth_token:
+            if self._auth_token and load_meta_hist:
                 self.meta_hist = self.get('image/histogram')
 
         # pre-populate information about datasets and studies
