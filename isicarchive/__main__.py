@@ -31,6 +31,7 @@ def main():
     import argparse
     import json
     import netrc
+    import re
 
     try:
         rp = True
@@ -159,6 +160,23 @@ def main():
     if not options.endpoint is None:
         try:
             jsonout = api.get(options.endpoint, params)
+            if 'status' in jsonout and isinstance(jsonout['status'], int):
+                req_status = jsonout['status']
+                if req_status >= 400 and req_status < 600:
+                    if 'message' in jsonout:
+                        message = re.sub('<[^>]+>', '', jsonout['message'])
+                        raise ValueError('\n' + message.strip())
+                    else:
+                        raise ValueError('Server responded with HTTP error code ' + str(req_status))
+            elif 'type' in jsonout and jsonout['type'] == 'validation':
+                if 'message' in jsonout:
+                    message = jsonout['message']
+                else:
+                    message = 'Validation failed'
+                if 'field' in jsonout:
+                    message += ' (field: ' + jsonout['field'] + ')'
+                raise ValueError(message)
+
         except Exception as e:
             print('Error retrieving data from API: ' + str(e))
             return 3
