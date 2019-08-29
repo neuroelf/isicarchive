@@ -1085,11 +1085,35 @@ class IsicApi(object):
                     endpoint + pstr)
         try:
             if parse_json:
-                return _get(self._base_url, endpoint,
-                    self._auth_token, params).json()
+                req = _get(self._base_url, endpoint,
+                    self._auth_token, params)
+                req_ok = req.ok
+                if not req_ok:
+                    if self._debug:
+                        print('Error occurred: ' + str(req.status_code))
+                    try:
+                        req = req.json()
+                    except:
+                        req = []
+                else:
+                    req = req.json()
+                if self._debug and req_ok:
+                    if isinstance(req, list):
+                        print('Retrieved list with ' + str(len(req)) + ' items.')
+                    elif isinstance(req, dict):
+                        print('Retrieved dict with ' + str(len(req.keys())) + ' keys.')
+                    else:
+                        print('Retrieved value: ' + str(req))
+                return req
             else:
-                return _get(self._base_url, endpoint,
+                req = _get(self._base_url, endpoint,
                     self._auth_token, params, save_as)
+                if self._debug:
+                    if req.ok:
+                        print('Retrieved ' + str(len(req.content)) + ' bytes of content.')
+                    else:
+                        print('Error occurred: ' + str(req.status_code))
+                return req
         except:
             warnings.warn('Error retrieving information from ' + endpoint)
         return None
