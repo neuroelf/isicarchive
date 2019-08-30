@@ -7,18 +7,14 @@ This module provides the StatsImage class and associated methods.
 __version__ = '0.4.8'
 
 
-from typing import Any, Tuple
+from typing import Any, Tuple, Union
 import warnings
 
 from numba import jit
 import numpy
 
-from .func import image_mix
-
-
-LUTs = {
-    'hot': None,
-}
+from . import colorlut
+from .imfunc import image_mix, lut_lookup
 
 
 class StatsLayer(object):
@@ -28,36 +24,70 @@ class StatsLayer(object):
 
 
     def __init__(self,
-        stats_data:numpy.ndarray = None,
-        lut:Any = None,
+        data:Union[tuple, numpy.ndarray],
+        alpha:Union[numpy.ndarray, float, None] = None,
+        lut_name:Union[str, list] = None,
+        min_thresh:float = 0.1,
+        max_thresh:float = 1.0,
+        min_alpha:float = 0.25,
+        max_alpha:float = 1.0,
+        show_neg:bool = False,
         ):
-        self._data = stats_data
-        if not self._data is None:
-            shape = self._data.shape
-            if len(shape) != 2:
-                raise ValueError('Invalid data shape')
+        if data is None:
+            raise ValueError('Requires data argument.')
+        if isinstance(data, tuple):
+            try:
+                data = numpy.zeros(data[0] * data[1],
+                    dtype=numpy.float32).reshape(data)
+            except:
+                raise ValueError('Invalid data shape.')
+        shape = data.shape
+        if len(shape) != 2:
+            raise ValueError('Invalid data shape')
+        if not alpha is None:
+            if isinstance(alpha, float):
+                alpha = numpy.float32(alpha) * numpy.ones(shape[0] * shape[1],
+                    dtype=numpy.float32).reshape(shape)
+            elif alpha.shape != shape:
+                raise ValueError('Alpha layer shape must match.')
         else:
-            shape = None
+            alpha = numpy.zeros(shape[0] * shape[1],
+                dtype=numpy.float32).reshape(shape)
         self._rendered = None
         self._rendered_a = None
         self._shape = shape
-        if isinstance(lut, str) and (lut in LUTs):
-            self.lut = lut
+        self.alpha = alpha
+        self.data = data
+        if isinstance(lut_name, str) and (lut_name in colorlut.LUTs):
+            self.lut = colorlut.LUTs[lut_name]
         else:
-            self.lut = 'hot'
-        self.thresh_amax = 1
-        self.thresh_amin = 0
-        self.thresh_cmax = 1
-        self.thresh_cmin = 0
+            self.lut = colorlut.LUTs['standard']
+        for (idx, l) in enumerate(self.lut):
+            self.lut[idx] = numpy.asarray(l, dtype=numpy.uint8)
+        if len(self.lut) < 2:
+            self.lut.append(None)
+        self.max_alpha = max_alpha
+        self.max_thresh = max_thresh
+        self.min_alpha = min_alpha
+        self.min_thresh = min_thresh
     
-    def render(self):
-        self._rendered = numpy.zeros((self._shape[0], self._shape[1], 3),
-            dtype=numpy.uint8, order='C')
-        self._rendered_a = numpy.zeros(self._shape,
-            dtype=numpy.float32, order='C')
+    def _render(self):
+        if self.min_thresh <= 0.0:
+            self.min_thresh = 0.000000001
+        if self.max_thresh <= self.min_thresh:
+            self.max_thresh = self.min_thresh + 0.000001
+        abs_data = (numpy.abs(self.data) - self.min_thresh) / (
+            self.max_thresh - self.min_thresh)
+        show_data = (abs_data >= self.min_thresh)
+        self._rendered = lut_lookup(self.data, self.lut[0], self.lut[1],
+            self.max_thresh - self.min_thresh, self.min_thresh)
+        self._rendered_a = numpy.zeros(self._shape[0] * self._shape[1],
+            dtype=numpy.float32).reshape(self._shape)
+        self._rendered_a[show_data] = numpy.minimum(1.0, self.min_alpha + 
+            (self.max_alpha - self.min_alpha) * abs_data[show_data])
     def rendered(self):
         if self._rendered is None:
-            self.render()
+            self._render()
         return (self._rendered, self._rendered_a)
 
 

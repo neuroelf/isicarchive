@@ -27,7 +27,6 @@ __version__ = '0.4.8'
 
 
 # imports (needed for majority of functions)
-from collections.abc import ValuesView
 from typing import Any, List, Optional, Tuple, Union
 import warnings
 
@@ -42,9 +41,9 @@ def color_superpixels(
     splst:Union[list, numpy.ndarray],
     spmap:numpy.ndarray,
     color:Union[list, numpy.ndarray],
-    alpha:Union[float, numpy.float, list, numpy.ndarray, None] = None,
+    alpha:Union[float, numpy.float, list, numpy.ndarray] = 1.0,
     almap:numpy.ndarray = None,
-    spval:numpy.ndarray = None,
+    spval:Union[float, numpy.float, list, numpy.ndarray, None] = None,
     copy_image:bool = False) -> numpy.ndarray:
     """
     Paint the pixels belong to a superpixel list in a specific color.
@@ -117,16 +116,10 @@ def color_superpixels(
     numsp = len(splst)
     if spval is None:
         spval = numpy.ones(numsp, dtype=numpy.float32)
-    elif isinstance(spval, list) and (len(spval) == numsp):
-        try:
-            spval = numpy.asarray(spval, dtype=numpy.float32)
-        except:
-            raise
-    elif not (isinstance(spval, numpy.ndarray) and (len(spval) == numsp)):
-        try:
-            spval = spval * numpy.ones(numsp, dtype=numpy.float32)
-        except:
-            raise
+    elif isinstance(spval, float) or isinstance(spval, numpy.float):
+        spval = spval * numpy.ones(numsp, dtype=numpy.float32)
+    elif len(spval) != numsp:
+        spval = numpy.ones(numsp, dtype=numpy.float32)
     if len(color) == 3 and isinstance(color[0], int):
         color = [color] * numsp
     if alpha is None:
@@ -163,7 +156,7 @@ def color_superpixels(
         spnum = spmap[spidx, -1]
         sppidx = spmap[spidx, 0:spnum]
         if singlecol:
-            spalpha = alpha * numpy.float(spval[idx])
+            spalpha = spalpha * spval[idx]
             spinv_alpha = 1.0 - spalpha
             for p in range(planes):
                 if spalpha == 1.0:
@@ -178,16 +171,21 @@ def color_superpixels(
             elif has_almap:
                 almap[sppidx] = 1.0 - (1.0 - almap[sppidx]) * spinv_alpha
         else:
+            sppval = spval[idx]
+            if not (isinstance(sppval, list) or isinstance(sppval, numpy.ndarray)):
+                sppval = [sppval] * num_colors
+            elif len(sppval) < num_colors:
+                sppval = [sppval[0]] * num_colors
             sppidxx = sppidx % num_cols
             sppidxy = sppidx // num_cols
-            spcidx = numpy.trunc((sppidxx.astype(numpy.float) + 
-                sppidxy.astype(numpy.float)) * (float(num_colors) / 12.0)
-                ).astype(numpy.int32) % num_colors
+            float_num = float(num_colors)
+            spcidx = numpy.trunc(0.5 + (sppidxx + sppidxy).astype(numpy.float) *
+                (float_num / 24.0)).astype(numpy.int32) % num_colors
             for cc in range(num_colors):
                 spcsel = spcidx == cc
                 spcidxxy = sppidxx[spcsel] + sppidxy[spcsel] * num_cols
                 spccol = spcol[cc]
-                spcalpha = spalpha[cc]
+                spcalpha = spalpha[cc] * sppval[cc]
                 spinv_alpha = 1.0 - spcalpha
                 for p in range(planes):
                     if spcalpha == 1.0:

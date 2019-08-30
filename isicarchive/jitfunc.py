@@ -25,6 +25,19 @@ from typing import Tuple
 from numba import int32 as numba_int32, jit, prange
 import numpy
 
+# sqrt(X) kernels
+_kern_seed = 0.0450953565482
+_kern_sq05 = numpy.asarray([_kern_seed, 1.0 - 2.0 * _kern_seed, _kern_seed],
+    dtype=numpy.float)
+_kern_1 = numpy.convolve(_kern_sq05,_kern_sq05)
+_kern_sq2 = numpy.convolve(_kern_1, _kern_1)
+_kern_sq3 = numpy.convolve(_kern_1, _kern_sq2)
+_kern_sq4 = numpy.convolve(_kern_sq2, _kern_sq2)
+_kern_sq5 = numpy.convolve(_kern_sq3, _kern_sq2)
+_kern_sq6 = numpy.convolve(_kern_sq3, _kern_sq3)
+_kern_sq7 = numpy.convolve(_kern_sq4, _kern_sq3)
+_kern_sq8 = numpy.convolve(_kern_sq4, _kern_sq4)
+
 # image mixing
 @jit('u1[:,:](u1[:,:],u1[:,:],optional(f4[:]))', nopython=True)
 def image_mix(
@@ -115,6 +128,55 @@ def image_mix(
                         ia * numpy.float32(i1[p,2]) + 
                         a * numpy.float32(i2[p,2]))
     return oi
+
+# image convolution (cheap!)
+@jit('f4[:,:](f4[:,:],f4[:])', nopython=True)
+def image_conv_float(
+    data:numpy.ndarray,
+    kernel:numpy.ndarray,
+    ) -> numpy.ndarray:
+    if (kernel.size % 2) != 1:
+        raise ValueError('Parameter kernel must have odd length of elements.')
+    s = 0.0
+    for idx in range(kernel.size):
+        s += kernel[idx]
+    if s <= 0.0:
+        raise ValueError('Parameter kernel must have a positive sum.')
+    if s < 0.999999 or s > 1.000001:
+        kernel = numpy.copy(kernel)
+        for idx in range(kernel.size):
+            kernel[idx] /= s
+    ds0 = data.shape[0]
+    ds1 = data.shape[1]
+    kh = kernel.size // 2
+    temp = numpy.zeros(data.size, dtype=numpy.float32).reshape(data.shape)
+    tempv = numpy.zeros(ds0, dtype=numpy.float32).reshape((ds0, 1,))
+    for c in prange(ds0): #pylint: disable=not-an-iterable
+        col = temp[c,:]
+        colv = 0.0
+        for k in range(kernel.size):
+            dc = c + k - kh
+            if dc < 0 or dc >= ds0:
+                continue
+            colv += kernel[k]
+            col += kernel[k] * data[dc,:]
+        temp[c,:] = col
+        tempv[c] = colv
+    temp = numpy.true_divide(temp, tempv)
+    out = numpy.zeros(data.size, dtype=numpy.float32).reshape(data.shape)
+    tempv = numpy.zeros(ds1, dtype=numpy.float32).reshape((1, ds1,))
+    for c in prange(ds1): #pylint: disable=not-an-iterable
+        col = out[c,:]
+        colv = 0.0
+        for k in range(kernel.size):
+            dc = c + k - kh
+            if dc < 0 or dc >= ds1:
+                continue
+            colv += kernel[k]
+            col += kernel[k] * temp[:,dc]
+        out[:,c] = col
+        tempv[c] = colv
+    return numpy.true_divide(out, tempv)
 
 # superpixel contour (results match CV2.findContours coords)
 @jit('i4[:,:](i4,i4,i4,b1[:,::1])', nopython=True)

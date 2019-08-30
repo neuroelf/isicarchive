@@ -1398,8 +1398,19 @@ class IsicApi(object):
             for multiple segmentations, a list of JSON objects
         """
         (object_id, name) = _mangle_id_name(object_id, name)
-        if not name is None and name in self.images and object_id is None:
-            object_id = self.images[name]
+        if not name is None and object_id is None:
+            if name in self.images:
+                object_id = self.images[name]
+            else:
+                try:
+                    image_info = self.get('image', params={'name': name})
+                    if not isinstance(image_info, list) or not image_info:
+                        raise ValueError('Returned object: ' + str(image_info))
+                    if not '_id' in image_info[0]:
+                        raise ValueError('Returned object: ' + str(image_info))
+                    object_id = image_info[0]['_id']
+                except:
+                    raise ValueError('Image with name ' + name + ' not found.')
         elif not name is None and name in self.image_segmentations:
             object_id = self.image_segmentations[name]
         if not object_id is None and object_id in self.image_segmentations:

@@ -307,28 +307,29 @@ class Segmentation(object):
             warnings.warn('show_in_notebook(...) failed: ' + str(e))
 
     # superpixels in mask
-    def superpixels_in_mask(self) -> List:
+    def superpixels_in_mask(self, thresh:float=None) -> List:
 
         # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
         import numpy
 
-        if not self._sp_in_mask is None:
-            return self._sp_in_mask
-        if self.mask is None:
-            self.load_maskdata()
-        mask = self.mask.reshape((self.mask.size,))
-        if self._image_obj is None:
-            try:
-                self._image_obj = self._api.image(self.image_id)
-            except:
-                warnings.warn('Unable to retrieve image object')
-                return
-        if self._image_obj.superpixels['map'] is None:
-            self._image_obj.map_superpixels()
-        sp_map = self._image_obj.superpixels['map']
-        sp_list = [0.0] * sp_map.shape[0]
-        for sp in range(len(sp_list)):
-            mask_val = (mask[sp_map[sp,0:sp_map[sp,-1]]] > 0)
-            sp_list[sp] = float(numpy.sum(mask_val)) / float(mask_val.size)
-        self._sp_in_mask = sp_list
-        return sp_list
+        if self._sp_in_mask is None:
+            if self.mask is None:
+                self.load_maskdata()
+            mask = self.mask.reshape((self.mask.size,))
+            if self._image_obj is None:
+                try:
+                    self._image_obj = self._api.image(self.image_id)
+                except:
+                    warnings.warn('Unable to retrieve image object')
+                    return
+            if self._image_obj.superpixels['map'] is None:
+                self._image_obj.map_superpixels()
+            sp_map = self._image_obj.superpixels['map']
+            sp_list = [0.0] * sp_map.shape[0]
+            for sp in range(len(sp_list)):
+                mask_val = (mask[sp_map[sp,0:sp_map[sp,-1]]] > 0)
+                sp_list[sp] = float(numpy.sum(mask_val)) / float(mask_val.size)
+            self._sp_in_mask = sp_list
+        if thresh is None:
+            return self._sp_in_mask[:]
+        return [idx for (idx, val) in enumerate(self._sp_in_mask) if val >= thresh]
