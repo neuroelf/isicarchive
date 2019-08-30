@@ -25,8 +25,6 @@ from typing import Tuple
 from numba import int32 as numba_int32, jit, prange
 import numpy
 
-from .vars import ISIC_FUNC_PPI, ISIC_IMAGE_DISPLAY_SIZE_MAX
-
 # image mixing
 @jit('u1[:,:](u1[:,:],u1[:,:],optional(f4[:]))', nopython=True)
 def image_mix(

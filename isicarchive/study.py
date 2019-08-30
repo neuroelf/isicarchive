@@ -292,7 +292,7 @@ class Study(object):
         return annotation_obj
 
     # cache image data
-    def cache_imagedata(self):
+    def cache_image_data(self):
         if not self._api._cache_folder:
             warnings.warn('No cache folder set.')
             return
@@ -304,7 +304,7 @@ class Study(object):
             image_filename = self._api.cache_filename(
                 image_id, 'image', '.*', '*')
             image_list = glob.glob(image_filename)
-            load_imagedata = not image_list
+            load_image_data = not image_list
             spimg_filename = self._api.cache_filename(
                 image_id, 'spimg', '.png')
             spidx_filename = self._api.cache_filename(
@@ -312,7 +312,7 @@ class Study(object):
             load_superpixels = not (
                 os.path.exists(spimg_filename) and
                 os.path.exists(spidx_filename))
-            if not (load_imagedata or load_superpixels):
+            if not (load_image_data or load_superpixels):
                 continue
             func.print_progress(count, total, 'Caching image data:')
             did_progress = True
@@ -336,15 +336,15 @@ class Study(object):
                 }
                 if not image_id in self._api.image_cache:
                     image_obj = self._api.image(image_id,
-                        load_imagedata=False, load_superpixels=False)
+                        load_image_data=False, load_superpixels=False)
                     self._obj_images[image_id] = image_obj
                 else:
                     image_obj = Image(self._api.image_cache[image_id],
-                        load_imagedata=False, load_superpixels=False)
+                        load_image_data=False, load_superpixels=False)
                     self._obj_images[image_id] = image_obj
                     self._api._obj_images[image_id] = image_obj
-            if load_imagedata:
-                image_obj.load_imagedata()
+            if load_image_data:
+                image_obj.load_image_data()
                 image_obj.data = image_data
             if load_superpixels:
                 image_obj.load_superpixels()
@@ -437,7 +437,7 @@ class Study(object):
 
     # load images
     def load_images(self,
-        load_imagedata:bool = False,
+        load_image_data:bool = False,
         load_superpixels:bool = False):
         if (not self._api) or (len(self.images) == 0):
             return
@@ -456,7 +456,7 @@ class Study(object):
                     continue
                 image_detail = self._api.image_cache[image_id]
                 image_obj = Image(from_json=image_detail,
-                    api=self._api, load_imagedata=load_imagedata)
+                    api=self._api, load_image_data=load_image_data)
                 self._obj_images[image_id] = image_obj
                 self._api._image_objs[image_id] = image_obj
                 continue
@@ -477,13 +477,13 @@ class Study(object):
                     if image_id in self._api._image_objs:
                         self._obj_images[image_id] = self._api._image_objs[image_id]
                         continue
-                    if load_imagedata or load_superpixels:
+                    if load_image_data or load_superpixels:
                         func.print_progress(repcount, total, 'Loading images:')
                     image_obj = Image(from_json=image_detail, api=self._api,
-                        load_imagedata=load_imagedata, load_superpixels=load_superpixels)
+                        load_image_data=load_image_data, load_superpixels=load_superpixels)
                     self._obj_images[image_id] = image_obj
                     self._api._image_objs[image_id] = image_obj
-                if load_imagedata or load_superpixels:
+                if load_image_data or load_superpixels:
                     func.print_progress(total, total, 'Loading images:')
                 to_load = []
                 rep_idx = dict()
@@ -501,13 +501,13 @@ class Study(object):
                 if image_id in self._api._image_objs:
                     self._obj_images[image_id] = self._api._image_objs[image_id]
                     continue
-                if load_imagedata or load_superpixels:
+                if load_image_data or load_superpixels:
                     func.print_progress(repcount, total, 'Loading images:')
                 image_obj = Image(from_json=image_detail, api=self._api,
-                    load_imagedata=load_imagedata, load_superpixels=load_superpixels)
+                    load_image_data=load_image_data, load_superpixels=load_superpixels)
                 self._obj_images[image_id] = image_obj
                 self._api._image_objs[image_id] = image_obj
-            if total > 0 and (load_imagedata or load_superpixels):
+            if total > 0 and (load_image_data or load_superpixels):
                 func.print_progress(total, total, 'Loading images:')
 
     # show annotations (grid)

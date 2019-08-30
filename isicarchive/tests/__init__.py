@@ -1,11 +1,12 @@
 #!/usr/bin/env python
 
-__version__ = '0.4.6'
+__version__ = '0.4.8'
 
 
 import unittest
 
-from isicarchive import IsicApi, func
+from isicarchive import func
+from isicarchive.api import IsicApi
 
 
 class TestIsicApi(unittest.TestCase):
@@ -60,7 +61,7 @@ if __name__ == '__main__':
     # Load and print info about a study
     study = api.study('ISIC Annotation Study - All Features')
     study.load_annotations()
-    study.cache_imagedata()
+    study.cache_image_data()
     
     # get annotation
     annotation = api.annotation(study.annotations[0])
@@ -69,7 +70,7 @@ if __name__ == '__main__':
     image = api.image(study.images[0])
     
     # Load the image data (from cache or online)
-    image.load_imagedata()
+    image.load_image_data()
     
     # And load the superpixels, and parse into coordinates map
     image.load_superpixels()

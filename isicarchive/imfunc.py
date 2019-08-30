@@ -42,7 +42,8 @@ def color_superpixels(
     splst:Union[list, numpy.ndarray],
     spmap:numpy.ndarray,
     color:Union[list, numpy.ndarray],
-    alpha:Union[float, numpy.float, None],
+    alpha:Union[float, numpy.float, list, numpy.ndarray, None] = None,
+    almap:numpy.ndarray = None,
     spval:numpy.ndarray = None,
     copy_image:bool = False) -> numpy.ndarray:
     """
@@ -88,6 +89,17 @@ def color_superpixels(
         copy_image = False
     else:
         im_shape = image.shape
+    num_cols = im_shape[1]
+    has_almap = False
+    if not almap is None:
+        if almap.size != (im_shape[0] * im_shape[1]):
+            raise ValueError('Invalid alpha map.')
+        has_almap = True
+        am_shape = almap.shape
+        try:
+            almap.shape = (almap.size,)
+        except:
+            raise
     if copy_image:
         image = numpy.copy(image)
     if len(im_shape) == 3 or im_shape[1] > 3:
@@ -117,26 +129,81 @@ def color_superpixels(
             raise
     if len(color) == 3 and isinstance(color[0], int):
         color = [color] * numsp
+    if alpha is None:
+        alpha = 1.0
+    if isinstance(alpha, float):
+        alpha = [alpha] * numsp
+    if isinstance(alpha, list):
+        if len(alpha) != numsp:
+            raise ValueError('alpha list must match number of superpixels')
     
     # for each superpixel (index)
     for idx in range(numsp):
 
         # get pixel indices, compute inverse alpha, and then set pixel values
+        spcol = color[idx]
+        singlecol = False
+        num_colors = 1
+        if isinstance(spcol, list):
+            if isinstance(spcol[0], int):
+                singlecol = True
+            else:
+                num_colors = len(spcol)
+        elif isinstance(spcol, numpy.ndarray):
+            if spcol.size == 3:
+                singlecol = True
+            else:
+                num_colors = spcol.shape[0]
+        if num_colors > 6:
+            num_colors = 6
+        spalpha = alpha[idx]
+        if isinstance(spalpha, float) and not singlecol:
+            spalpha = [spalpha] * num_colors
         spidx = splst[idx]
         spnum = spmap[spidx, -1]
         sppidx = spmap[spidx, 0:spnum]
-        spalpha = alpha * numpy.float(spval[idx])
-        spinv_alpha = 1.0 - spalpha
-        for p in range(planes):
-            if spalpha == 1.0:
-                image[sppidx, p] = color[idx][p]
-            else:
-                image[sppidx, p] = numpy.round(
-                    spalpha * color[idx][p] + spinv_alpha * image[sppidx, p])
-        if has_alpha:
-            image[sppidx, 3] = numpy.maximum(image[sppidx, 3], numpy.round(
-                255.0 * spalpha).astype(numpy.uint8))
+        if singlecol:
+            spalpha = alpha * numpy.float(spval[idx])
+            spinv_alpha = 1.0 - spalpha
+            for p in range(planes):
+                if spalpha == 1.0:
+                    image[sppidx, p] = spcol[p]
+                else:
+                    image[sppidx, p] = numpy.round(
+                        spalpha * spcol[p] + spinv_alpha * image[sppidx, p])
+            if has_alpha:
+                image[sppidx, 3] = numpy.round(255.0 * 1.0 -
+                    (1.0 - 255.0 * image[sppidx, 3]) *
+                    (1.0 - 255.0 * spalpha))
+            elif has_almap:
+                almap[sppidx] = 1.0 - (1.0 - almap[sppidx]) * spinv_alpha
+        else:
+            sppidxx = sppidx % num_cols
+            sppidxy = sppidx // num_cols
+            spcidx = numpy.trunc((sppidxx.astype(numpy.float) + 
+                sppidxy.astype(numpy.float)) * (float(num_colors) / 12.0)
+                ).astype(numpy.int32) % num_colors
+            for cc in range(num_colors):
+                spcsel = spcidx == cc
+                spcidxxy = sppidxx[spcsel] + sppidxy[spcsel] * num_cols
+                spccol = spcol[cc]
+                spcalpha = spalpha[cc]
+                spinv_alpha = 1.0 - spcalpha
+                for p in range(planes):
+                    if spcalpha == 1.0:
+                        image[spcidxxy, p] = spccol[p]
+                    else:
+                        image[spcidxxy, p] = numpy.round(
+                            spcalpha * spccol[p] + spinv_alpha * image[spcidxxy, p])
+                if has_alpha:
+                    image[spcidxxy, 3] = numpy.round(255.0 * 1.0 -
+                        (1.0 - 255.0 * image[spcidxxy, 3]) *
+                        (1.0 - 255.0 * spcalpha))
+                elif has_almap:
+                    almap[spcidxxy] = 1.0 - (1.0 - almap[spcidxxy]) * spinv_alpha
     image.shape = im_shape
+    if has_almap:
+        almap.shape = am_shape
     return image
 
 # display image

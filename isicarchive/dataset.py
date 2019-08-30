@@ -259,7 +259,7 @@ class Dataset(object):
             self._obj_images = dict()
 
     # load images
-    def load_images(self, load_imagedata:bool = False):
+    def load_images(self, load_image_data:bool = False):
         if not self._api or not self._api._cache_folder:
             raise ValueError('Requires IsicApi object with cache folder set.')
         self._api.cache_images()
@@ -275,7 +275,7 @@ class Dataset(object):
                 self._obj_images[image_id] = self._api._image_objs[image_id]
                 continue
             image_obj = Image(from_json=image_detail,
-                api=self._api, load_imagedata=load_imagedata)
+                api=self._api, load_image_data=load_image_data)
             self._obj_images[image_id] = image_obj
             self._api._image_objs[image_id] = image_obj
 

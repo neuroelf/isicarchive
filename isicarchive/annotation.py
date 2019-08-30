@@ -343,14 +343,14 @@ class Annotation(object):
                 elif image_id in self._api._image_cache:
                     image_info = self._api._image_cache[image_id]
                     self._image_obj = Image(image_info, api=self._api,
-                        load_imagedata=True, load_superpixels=True)
+                        load_image_data=True, load_superpixels=True)
                     if self._api._store_objs:
                         self._api._image_objs[image_id] = self._image_obj
                     image_odata = self._image_obj.data
                     image_osp = self._image_obj.superpixels
                 else:
                     self._image_obj = self._api.image(image_id,
-                        load_imagedata=True, load_superpixels=True)
+                        load_image_data=True, load_superpixels=True)
                     image_odata = None
                     image_osp = {
                         'idx': None,
@@ -363,7 +363,7 @@ class Annotation(object):
                 image_osp = self._image_obj.superpixels
             image_obj = self._image_obj
             if image_obj.data is None:
-                image_obj.load_imagedata()
+                image_obj.load_image_data()
             if image_obj.superpixels['map'] is None:
                 image_obj.load_superpixels(map_superpixels=True)
             image_shape = image_obj.superpixels['shp']

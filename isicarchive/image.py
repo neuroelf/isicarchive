@@ -112,7 +112,7 @@ class Image(object):
         from_json:dict = None,
         name:str = None,
         api:object = None,
-        load_imagedata:bool = False,
+        load_image_data:bool = False,
         load_superpixels:bool = False,
         ):
         """Image init."""
@@ -148,9 +148,9 @@ class Image(object):
                 self._from_json(from_json)
             except:
                 raise
-        if self._in_archive and load_imagedata:
+        if self._in_archive and load_image_data:
             try:
-                self.load_imagedata()
+                self.load_image_data()
             except Exception as e:
                 warnings.warn(str(e))
         if self._in_archive and load_superpixels:
@@ -231,7 +231,7 @@ class Image(object):
             }
 
     # load image data
-    def load_imagedata(self, keep_raw_data:bool = False):
+    def load_image_data(self, keep_raw_data:bool = False):
 
         # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
         import imageio
@@ -401,7 +401,7 @@ class Image(object):
         from imfunc import display_image
         try:
             if self.data is None:
-                self.load_imagedata()
+                self.load_image_data()
             return display_image(self.data, max_size=max_size,
                 ipython_as_object=(not call_display), library=library)
         except Exception as e:

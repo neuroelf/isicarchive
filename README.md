@@ -257,7 +257,7 @@ the pixels in the actual color image of a skin lesion:
 ~~~~
 # paint over superpixel with index 472 in an image with red (RGB=(255,0,0))
 image = api.image('ISIC_0000000')
-image.load_imagedata()
+image.load_image_data()
 image.load_superpixels()
 image.map_superpixels()
 image_data = image.data
@@ -292,7 +292,7 @@ The returned value, ```study``` is an object of type
 study = api.study('ISBI 2016: 100 Lesion Classification')
 
 # Download all accessible images and superpixel images for this study
-study.cache_imagedata()
+study.cache_image_data()
 
 # Print study features
 study.load_annotations()
@@ -327,7 +327,7 @@ like to make the binary data available, please use the following methods:
 
 ~~~~
 # Load image data
-image.load_imagedata()
+image.load_image_data()
 
 # Load superpixel image data
 image.load_superpixels()

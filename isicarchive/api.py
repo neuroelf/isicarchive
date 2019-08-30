@@ -1076,7 +1076,7 @@ class IsicApi(object):
 
     # pass through to _get(self._base_url + auth_token + params)
     def get(self,
-        endpoint:str = '/user/me',
+        endpoint:str = 'user/me',
         params:dict = None,
         parse_json:bool = True,
         save_as:str = None,
@@ -1139,7 +1139,7 @@ class IsicApi(object):
         name:str = None,
         params:dict = None,
         save_as:str = None,
-        load_imagedata:bool = False,
+        load_image_data:bool = False,
         load_superpixels:bool = False,
         ) -> any:
         """
@@ -1158,7 +1158,7 @@ class IsicApi(object):
         save_as : str
             Optional filename for the image to be saved as, in which
             case nothing is returned and the images is ONLY downloaded!
-        load_imagedata : bool
+        load_image_data : bool
             If true, immediately attempt to download image data as well
         load_superpixels : bool
             If true, immediately attempt to download superpixels as well
@@ -1199,8 +1199,8 @@ class IsicApi(object):
             return
         if save_as is None and object_id in self._image_objs:
             self._current_image = self._image_objs[object_id]
-            if load_imagedata and self._current_image.data is None:
-                self._current_image.load_imagedata()
+            if load_image_data and self._current_image.data is None:
+                self._current_image.load_image_data()
             if load_superpixels and self._current_image.superpixels['idx'] is None:
                 self._current_image.load_superpixels()
             return self._current_image
@@ -1216,7 +1216,7 @@ class IsicApi(object):
         if not image['name'] in self.images:
             self.images[image['name']] = image['_id']
         image_obj = Image(image, api=self,
-            load_imagedata=load_imagedata, load_superpixels=load_superpixels)
+            load_image_data=load_image_data, load_superpixels=load_superpixels)
         if self._store_objs:
             self._image_objs[image['_id']] = image_obj
         self._current_image = image_obj

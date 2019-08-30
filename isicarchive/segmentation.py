@@ -297,7 +297,7 @@ class Segmentation(object):
                         self._image_obj = self._api._image_objs[self.image_id]
                     else:
                         self._image_obj = self._api.image(self.image_id)
-                self._image_obj.load_imagedata()
+                self._image_obj.load_image_data()
                 alpha = numpy.zeros(image_data.shape, dtype=numpy.float32, order='C')
                 alpha[image_data == 0] = 0.5
                 image_data = image_mix(self._image_obj.data, image_data, alpha)
