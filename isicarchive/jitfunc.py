@@ -166,7 +166,7 @@ def image_conv_float(
     out = numpy.zeros(data.size, dtype=numpy.float32).reshape(data.shape)
     tempv = numpy.zeros(ds1, dtype=numpy.float32).reshape((1, ds1,))
     for c in prange(ds1): #pylint: disable=not-an-iterable
-        col = out[c,:]
+        col = out[:,c]
         colv = 0.0
         for k in range(kernel.size):
             dc = c + k - kh
