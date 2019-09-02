@@ -164,11 +164,6 @@ class Annotation(object):
         load_data:bool = True,
         load_masks:bool = False,
         ):
-
-        # IMPORT DONE HERE TO SAVE TIME AT MODULE IMPORT
-        if load_masks:
-            import imageio
-        
         self.id = from_json['_id']
         self.state = from_json['state']
         self.study_id = from_json['studyId']
@@ -199,43 +194,13 @@ class Annotation(object):
         self._in_archive = True
         if self._api and self.study_id in self._api._studies:
             self._study = self._api._studies[self.study_id]
+        if ('features' in from_json and 
+            isinstance(from_json['features'], dict)):
+            self.features = from_json['features']
         if (not load_data) and (self.state != 'complete'):
             return
         if self._api:
-            try:
-                if ('features' in from_json and 
-                    isinstance(from_json['features'], dict)):
-                    self.features = from_json['features']
-                for (key, value) in self.markups.items():
-                    if not value:
-                        continue
-                    if not (key in self.features and
-                        isinstance(self.features[key], dict) and
-                        ('idx' in self.features[key]) and
-                        (len(self.features[key]['idx']) > 0)):
-                        feat_uri = func.uri_encode(key)
-                        feat_lst = self._api.get(
-                            'annotation/' + self.id + '/' + feat_uri)
-                        if not feat_lst.ok:
-                            raise ValueError('Error loading feature ' + key)
-                        feat_lst = feat_lst.json()
-                        feat_idx = [fidx for fidx in range(len(feat_lst))
-                            if feat_lst[fidx] > 0]
-                        self.features[key] = dict()
-                        self.features[key]['lst'] = [v for v in filter(
-                            lambda v: v > 0, feat_lst)]
-                        self.features[key]['idx'] = feat_idx
-                        self.features[key]['num'] = len(feat_idx)
-                    if not load_masks:
-                        continue
-                    feat_req = self._api.get('/annotation/' + self.id +
-                            '/' + feat_uri + '/mask', parse_json=False)
-                    if not feat_req.ok:
-                        raise ValueError('Error loading feature mask ' + key)
-                    self.features[key]['msk'] = feat_req.content
-                    self.masks[key] = imageio.imread(feat_req.content)
-            except Exception as e:
-                warnings.warn('Error loading annotation: ' + str(e))
+            self.load_data(load_masks=load_masks)
 
     # JSON
     def __repr__(self):
@@ -277,6 +242,106 @@ class Annotation(object):
             self.features = dict()
         if clear_masks:
             self.masks = dict()
+
+    # load data
+    def load_data(self, load_masks:bool=False):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE IMPORT
+        if load_masks:
+            import imageio
+        
+        try:
+            for (key, value) in self.markups.items():
+                if not value:
+                    continue
+                if not (key in self.features and
+                    isinstance(self.features[key], dict) and
+                    ('idx' in self.features[key]) and
+                    (len(self.features[key]['idx']) > 0)):
+                    feat_uri = func.uri_encode(key)
+                    feat_lst = self._api.get(
+                        'annotation/' + self.id + '/' + feat_uri,
+                        parse_json=False)
+                    if not feat_lst.ok:
+                        raise ValueError('Error loading feature ' + key)
+                    feat_lst = feat_lst.json()
+                    feat_idx = [fidx for fidx in range(len(feat_lst))
+                        if feat_lst[fidx] > 0]
+                    self.features[key] = dict()
+                    self.features[key]['lst'] = [v for v in filter(
+                        lambda v: v > 0, feat_lst)]
+                    self.features[key]['idx'] = feat_idx
+                    self.features[key]['num'] = len(feat_idx)
+                if not load_masks:
+                    continue
+                feat_req = self._api.get('/annotation/' + self.id +
+                        '/' + feat_uri + '/mask', parse_json=False)
+                if not feat_req.ok:
+                    raise ValueError('Error loading feature mask ' + key)
+                self.features[key]['msk'] = feat_req.content
+                self.masks[key] = imageio.imread(feat_req.content)
+        except Exception as e:
+            warnings.warn('Error loading annotation: ' + str(e))
+
+    # overlap in features
+    def overlap(self,
+        feature:str,
+        other:object,
+        other_feature:str,
+        measure:str = 'dice',
+        cc_fwhm:float = 40.0,
+        ) -> float:
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from . import imfunc
+
+        # do not return anything unless complete
+        if self.state != 'complete' or other.state != 'complete':
+            raise ValueError('Requires complete annotations.')
+        if not feature in self.markups or not self.markups[feature]:
+            return 0.0
+        if not other_feature in other.markups or not other.markups[other_feature]:
+            return 0.0
+        if measure == 'cc' or measure == 'smcc':
+            load_masks = True
+        else:
+            load_masks = False
+        if not feature in self.features:
+            self.load_data(load_masks=load_masks)
+        if not other_feature in other.features:
+            other.load_data(load_masks=load_masks)
+        if self.image['_id'] == other.image['_id'] and measure == 'dice':
+            return imfunc.superpixel_dice(self.features[feature]['idx'],
+                other.features[other_feature]['idx'])
+        if not self._image_obj:
+            if self._api and self.image_id in self._api._image_objs:
+                self._image_obj = self._api._image_objs[self.image_id]
+            elif not self._api:
+                raise ValueError('API object required to load feature.')
+            else:
+                try:
+                    self._image_obj = self._api.image(self.image_id)
+                except:
+                    raise ValueError('Could not load image object.')
+        if not other._image_obj:
+            if self._api and other.image_id in self._api._image_objs:
+                other._image_obj = self._api._image_objs[other.image_id]
+            elif not self._api:
+                raise ValueError('API object required to load feature.')
+            else:
+                try:
+                    other._image_obj = self._api.image(other.image_id)
+                except:
+                    raise ValueError('Could not load image object.')
+        simage = self._image_obj
+        simeta = simage.meta['acquisition']
+        oimage = other._image_obj
+        oimeta = oimage.meta['acquisition']
+        simage_shape = (simeta['pixelsY'], simeta['pixelsX'])
+        oimage_shape = (oimeta['pixelsY'], oimeta['pixelsX'])
+        if simage_shape != oimage_shape:
+            raise ValueError('Images of difference size not yet implemented.')
+        return 0.0
 
     # show image in notebook
     def show_in_notebook(self,

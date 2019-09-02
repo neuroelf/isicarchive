@@ -311,6 +311,21 @@ def display_image(
             warnings.warn('Problem producing image for display: ' + str(e))
             return None
 
+# image correlation (pixel values)
+def image_corr(im1:numpy.ndarray, im2:numpy.ndarray) -> float:
+    if im1.size != im2.size:
+        raise ValueError('Images must match in size.')
+    cc = numpy.corrcoef(im1.reshape(im1.size), im2.reshape(im2.size))
+    return cc[0,1]
+
+# Dice coeffient
+def image_dice(im1:numpy.ndarray, im2:numpy.ndarray) -> float:
+    im1 = (im1.reshape(im1.size) > 0)
+    im2 = (im1.reshape(im1.size) > 0)
+    s1 = numpy.sum(im1)
+    s2 = numpy.sum(im2)
+    return 2 * numpy.sum(im1 and im2) / (s1 + s2)
+
 # image mixing (python portion)
 def image_mix(
     image_1:numpy.ndarray,
@@ -428,6 +443,46 @@ def image_mix(
         alpha_2.shape = a2shape
     immix.shape = im1shape
     return immix
+
+# smooth image using fft
+def image_smooth_fft(image:numpy.ndarray, fwhm:float) -> numpy.ndarray:
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    from .jitfunc import conv_kernel
+
+    # place kernel into image
+    k = conv_kernel(numpy.float(fwhm))
+    ki = k.repeat(k.size).reshape((k.size,k.size))
+    ki = ki * ki.T
+    im_shape = image.shape
+    if image.dtype != numpy.uint8:
+        from_uint8 = False
+        if len(im_shape) < 3:
+            ka = numpy.zeros_like(image)
+        else:
+            ka = numpy.zeros(im_shape[0] * im_shape[1],
+                dtype=numpy.float32).reshape((im_shape[0], im_shape[1],))
+    else:
+        from_uint8 = True
+        image = image.astype(numpy.float32)
+        ka = numpy.zeros(im_shape[0] * im_shape[1],
+            dtype=numpy.float32).reshape((im_shape[0], im_shape[1],))
+    kh = ki.shape[0] // 2
+    ka[0:kh+1,0:kh+1] = ki[kh:,kh:]
+    ka[0:kh+1,-kh:] = ki[kh:,0:kh]
+    ka[-kh:,0:kh+1] = ki[0:kh,kh:]
+    ka[-kh:,-kh:] = ki[0:kh,0:kh]
+
+    # then perform 2D FFT
+    if len(image.shape) < 3:
+        out = numpy.fft.ifftn(numpy.fft.fft2(image) * numpy.fft.fft2(ka)).real
+    else:
+        out = numpy.zeros(image.size, dtype=image.dtype).reshape(image.shape)
+        for p in range(image.shape[2]):
+            out[:,:,p] = numpy.fft.ifft2(numpy.fft.fft2(image[:,:,p]) * numpy.fft.fft2(ka)).real
+    if from_uint8:
+        out = numpy.trunc(out).astype(numpy.uint8)
+    return out
 
 # color LUT operation
 def lut_lookup(
@@ -625,6 +680,11 @@ def segmentation_outline(
                 neg_path, float(outcoords[1][0])-2.5, float(outcoords[0][0])-2.5,
                 svg_path, path_attrib)
     return outline
+
+# superpixel Dice
+def superpixel_dice(list1:numpy.ndarray, list2:numpy.ndarray) -> float:
+    intersect = numpy.intersect1d(list1, list2)
+    return 2.0 * float(intersect.size) / float(len(list1) + len(list2))
 
 # superpixel outlines (coordinates, image, or SVG/paths)
 def superpixel_outlines(
