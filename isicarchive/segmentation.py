@@ -107,7 +107,7 @@ class Segmentation(object):
         from_json:dict = None,
         name:str = None,
         api:object = None,
-        load_maskdata:bool = False,
+        load_mask_data:bool = False,
         ):
         """Segmentation init."""
 
@@ -137,9 +137,9 @@ class Segmentation(object):
                 self._from_json(from_json)
             except:
                 raise
-        if self._in_archive and load_maskdata:
+        if self._in_archive and load_mask_data:
             try:
-                self.load_maskdata()
+                self.load_mask_data()
             except Exception as e:
                 warnings.warn(str(e))
 
@@ -221,7 +221,7 @@ class Segmentation(object):
             self._sp_in_mask = None
 
     # load mask data
-    def load_maskdata(self, keep_rawdata:bool = False):
+    def load_mask_data(self, keep_raw_data:bool = False):
 
         # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
         import imageio
@@ -236,8 +236,8 @@ class Segmentation(object):
                     self.data = None
                     with open(smask_list[0], 'rb') as mask_file:
                         mask_raw = mask_file.read()
-                    if keep_rawdata:
-                        self._rawdata = mask_raw
+                    if keep_raw_data:
+                        self._raw_data = mask_raw
                     self.mask = imageio.imread(mask_raw)
                     return
                 except Exception as e:
@@ -249,8 +249,8 @@ class Segmentation(object):
                     parse_json=False)
                 if req.ok:
                     mask_raw = req.content
-                    if keep_rawdata:
-                        self._rawdata = mask_raw
+                    if keep_raw_data:
+                        self._raw_data = mask_raw
                     self.mask = imageio.imread(mask_raw)
                     if self._api._cache_folder:
                         if not self._image_obj is None and (len(self._image_obj.name) > 5):
@@ -281,7 +281,7 @@ class Segmentation(object):
         from .imfunc import display_image, image_mix
         try:
             if self.mask is None:
-                self.load_maskdata()
+                self.load_mask_data()
             image_data = self.mask
             mask = (image_data == 0)
             if isinstance(mask_color, tuple) and len(mask_color) == 3:
@@ -314,7 +314,7 @@ class Segmentation(object):
 
         if self._sp_in_mask is None:
             if self.mask is None:
-                self.load_maskdata()
+                self.load_mask_data()
             mask = self.mask.reshape((self.mask.size,))
             if self._image_obj is None:
                 try:

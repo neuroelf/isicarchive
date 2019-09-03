@@ -249,6 +249,8 @@ class Image(object):
                     if keep_raw_data:
                         self._raw_data = image_raw
                     self.data = imageio.imread(image_raw)
+                    if not self.data.flags['C_CONTIGUOUS']:
+                        self.data = func.contiguous_array(self.data)
                     return
                 except Exception as e:
                     warnings.warn('Error loading image: ' + str(e))
@@ -262,6 +264,8 @@ class Image(object):
                     if keep_raw_data:
                         self._raw_data = image_raw
                     self.data = imageio.imread(image_raw)
+                    if not self.data.flags['C_CONTIGUOUS']:
+                        self.data = func.contiguous_array(self.data)
                     if self._api._cache_folder:
                         if self.name and (len(self.name) > 5):
                             extra = self.name

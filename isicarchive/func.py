@@ -46,6 +46,13 @@ from typing import Any, Union
 
 import re
 
+# contiguous array
+def contiguous_array(a:Any) -> Any:
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    import numpy
+    return numpy.ascontiguousarray(a)
+
 # helper function that returns True for valid looking mongo ObjectId strings
 def could_be_mongo_object_id(test_id:str = "") -> bool:
     """

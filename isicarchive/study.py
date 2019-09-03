@@ -393,14 +393,25 @@ class Study(object):
         features:Union[str,list] = 'all',
         users:Union[str,list] = 'all',
         max_raters:int = None,
+        min_raters:int = None,
+        mix_colors:bool = True,
         alpha_scale:str = 'sqrt',
-        underlay_gray:bool = True,
+        underlay_gray:float = 0.75,
+        seg_outline:bool = True,
         ) -> Any:
 
         # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
         from . import imfunc
         import numpy
 
+        if mix_colors is None:
+            mix_colors = True
+        if alpha_scale is None:
+            alpha_scale = 'sqrt'
+        if underlay_gray is None:
+            underlay_gray = 0.75
+        if seg_outline is None:
+            seg_outline = True
         self.load_annotations()
         if image_name is None or image_name == '':
             return None
@@ -424,21 +435,43 @@ class Study(object):
                 image = self._obj_images[image_id]
             else:
                 image = self._api.image(image_id)
-            image_o_raw_data = image._raw_data
-            image_o_data = image.data
-            image_o_superpixels = image.superpixels
             image.load_image_data()
             image_data = image.data
-            if underlay_gray:
-                image_data = imfunc.image_gray(image_data)
+            if underlay_gray > 0.0:
+                if underlay_gray >= 1.0:
+                    image_data = imfunc.image_gray(image_data)
+                else:
+                    image_data = imfunc.image_mix(image_data,
+                        imfunc.image_gray(image_data), underlay_gray)
+            if seg_outline:
+                try:
+                    seg_obj = self._api.segmentation(image_id)
+                    seg_obj.load_mask_data()
+                    seg_outline = imfunc.segmentation_outline(seg_obj.mask, 'coords')
+                    seg_outline = seg_outline[:,1] + seg_obj.mask.shape[1] * seg_outline[:,0]
+                    seg_obj.clear_data()
+                    im_shape = image_data.shape
+                    if len(im_shape) == 3:
+                        planes = im_shape[2]
+                    else:
+                        planes = 1
+                    im_rshape = (im_shape[0] * im_shape[1], planes, )
+                    image_data.shape = im_rshape
+                    for pc in range(planes):
+                        image_data[seg_outline, pc] = 0
+                    image_data.shape = im_shape
+                except:
+                    try:
+                        seg_obj.clear_data()
+                    except:
+                        pass
+                    pass
             image.load_superpixels()
             image.map_superpixels()
             spmap = image.superpixels['map']
         except:
             try:
-                image._raw_data = image_o_raw_data
-                image.data = image_o_data
-                image.superpixels = image_o_superpixels
+                image.clear_data()
             except:
                 pass
             raise
@@ -475,20 +508,18 @@ class Study(object):
                         usel.append(tuser['_id'])
             if len(usel) == 0:
                 warnings.warn('No valid users found.')
-                image._raw_data = image_o_raw_data
-                image.data = image_o_data
-                image.superpixels = image_o_superpixels
+                image.clear_data()
                 return None
             annotations = func.select_from(annotations,
                 [['user._id', 'in', usel]])
-        a_obj = dict()
+        a_objs = dict()
         for a in annotations:
             if a['_id'] in self._obj_annotations:
                 a_o = self._obj_annotations[a['_id']]
             else:
                 a_o = self._api.annotation(a['_id'])
                 self._obj_annotations[a['_id']] = a_o
-            a_obj[a['_id']] = a_o
+            a_objs[a['_id']] = a_o
             a_o.load_data()
         fdict = dict()
         spdict = dict()
@@ -503,10 +534,12 @@ class Study(object):
                     else:
                         fdict[f] = [a['_id']]
                     if not a['user']['_id'] in udict:
-                        udict[a['user']['_id']] = True
+                        udict[a['user']['_id']] = a['user']
             else:
-                for f in flist:
-                    if not a['markups'][f]:
+                for f in features:
+                    if not f in a['markups']:
+                        continue
+                    elif not a['markups'][f]:
                         continue
                     elif f in fdict:
                         fdict[f].append(a['_id'])
@@ -519,34 +552,60 @@ class Study(object):
         for f in flist:
             fcols[f] = self._api.feature_color(f)
             for a in fdict[f]:
-                f_detail = a_obj[a].features[f]
+                a_o = a_objs[a]
+                f_detail = a_o.features[f]
                 for idx in f_detail['idx']:
                     if not idx in spdict:
                         spdict[idx] = []
-                    spdict[idx].append([a, f])
+                    spdict[idx].append([a, f, a_o.user_id])
         if max_raters is None or max_raters <= 0:
             max_raters = len(udict)
         max_raters = float(max_raters)
+        stats = {'users': udict, 'sp': dict(), 'feat': dict(), 'featnum': dict()}
         for [idx, fs] in spdict.items():
             ft = dict()
+            spstats = dict()
             for f in fs:
                 if f[1] in ft:
-                    ft[f[1]].append(f[0])
+                    ft[f[1]].append(f[2])
                 else:
-                    ft[f[1]] = [f[0]]
+                    ft[f[1]] = [f[2]]
             colors = []
             alpha = []
             for [f, fa] in ft.items():
+                spstats[f] = fa
+                if not min_raters is None and len(fa) < min_raters:
+                    continue
                 colors.append(fcols[f])
                 av = float(len(fa)) / max_raters
                 if alpha_scale == 'sqrt':
                     av = numpy.sqrt(av)
                 alpha.append(av)
+            if mix_colors and len(colors) > 1:
+                r = 0.0
+                g = 0.0
+                b = 0.0
+                a = 0.0
+                for (c, av) in zip(colors, alpha):
+                    r += av * float(c[0])
+                    g += av * float(c[1])
+                    b += av * float(c[2])
+                    a += av
+                colors = [[int(r / a), int(g / a), int(b / a)]]
+                alpha = [a / float(len(alpha))]
+            stats['sp'][idx] = spstats
+            spk = '+'.join(sorted([k for k in spstats.keys()]))
+            if not spk in stats['feat']:
+                stats['feat'][spk] = []
+            stats['feat'][spk].append(idx)
+            if len(colors) < 1:
+                continue
             imfunc.color_superpixels(image_data, [idx], spmap, [colors], [alpha])
-        image._raw_data = image_o_raw_data
-        image.data = image_o_data
-        image.superpixels = image_o_superpixels
-        return image_data
+        image.clear_data()
+        featc = sorted([k for k in stats['feat'].keys()])
+        for feat in featc:
+            stats['featnum'][feat] = len(stats['feat'][feat])
+        return (image_data, stats)
 
     # image heatmaps
     def image_heatmaps(self,
@@ -556,8 +615,11 @@ class Study(object):
         features:Union[str,list] = 'all',
         users:Union[str,list] = 'all',
         max_raters:int = None,
-        alpha_scale:str = 'sqrt',
-        underlay_gray:bool = True,
+        min_raters:int = None,
+        mix_colors:bool = None,
+        alpha_scale:str = None,
+        underlay_gray:bool = None,
+        seg_outline:bool = None,
         ):
 
         # IMPORT DONE HERE TO SAVE TIME ON MODULE INIT
@@ -579,16 +641,22 @@ class Study(object):
         else:
             images = self.images
         num_images = len(images)
+        all_stats = dict()
         for (idx, image) in enumerate(images):
             func.print_progress(idx, num_images, 'Creating heatmaps:', image['name'])
             try:
-                image_data = self.image_heatmap(image['_id'], features, users,
-                    max_raters, alpha_scale, underlay_gray)
+                (image_data, stats) = self.image_heatmap(image['_id'],
+                    features=features, users=users, max_raters=max_raters,
+                    min_raters=min_raters, mix_colors=mix_colors,
+                    alpha_scale=alpha_scale, underlay_gray=underlay_gray,
+                    seg_outline=seg_outline)
                 write_image(image_data, target_folder + image['name'] + image_ext)
+                all_stats[image['name']] = stats
             except:
                 func.print_progress(num_images, num_images, 'Error')
                 raise
         func.print_progress(num_images, num_images, 'Creating heatmaps:')
+        return all_stats
 
     # image names
     def image_names(self):

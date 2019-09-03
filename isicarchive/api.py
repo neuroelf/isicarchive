@@ -1397,7 +1397,7 @@ class IsicApi(object):
         object_id:str = None,
         name:str = None,
         params:dict = None,
-        load_maskdata:bool = False,
+        load_mask_data:bool = False,
         ) -> any:
         """
         segmentation endpoint, allows to
@@ -1412,7 +1412,7 @@ class IsicApi(object):
             alternatively the name of the image for the segmentation
         params : dict
             optional parameters for the GET request
-        load_maskdata : bool
+        load_mask_data : bool
             If true, immediately attempt to download mask data as well
         
         Returns
@@ -1476,12 +1476,12 @@ class IsicApi(object):
                         max_id = segmentation['_id']
                 if not max_id is None:
                     return self.segmentation(max_id,
-                        load_maskdata=load_maskdata)
+                        load_mask_data=load_mask_data)
             except:
                 pass
             raise KeyError('segmentation with id %s not found.' % (object_id))
         segmentation_obj = Segmentation(segmentation, api=self,
-            load_maskdata=load_maskdata)
+            load_mask_data=load_mask_data)
         if self._store_objs:
             self._segmentation_objs[segmentation['_id']] = segmentation_obj
         self._current_segmentation = segmentation_obj
