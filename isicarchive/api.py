@@ -313,7 +313,7 @@ class IsicApi(object):
     images : dict
         Resolving image names to unique mongodb ObjectIds (cache)
     meta_hist : dict
-        Returned JSON response from /image/histogram endpoint as dict
+        Returned JSON response from image/histogram endpoint as dict
         This will be pre-loaded if a username is given
     studies : dict
         Resolving study names to unique mongodb ObjectIds (cache)
@@ -524,7 +524,7 @@ class IsicApi(object):
     def _repr_pretty_(self, p:object, cycle:bool = False):
         func.object_pretty(self, p, cycle, _repr_pretty_list)
 
-    # Annotation endpoint
+    # annotation endpoint
     def annotation(self,
         object_id:str = None,
         params:dict = None,
@@ -575,6 +575,7 @@ class IsicApi(object):
         self._current_annotation = annotation_obj
         return annotation_obj
 
+    # annotation list generator
     def annotation_list(self, params:dict = None, as_object:bool = False) -> iter:
         """
         Annotation list/iterator
@@ -871,7 +872,7 @@ class IsicApi(object):
         if deref_studies:
             self._study_objs = dict()
 
-    # Generic /dataset endpoint
+    # dataset endpoint
     def dataset(self,
         object_id:str = None,
         name:str = None,
@@ -931,7 +932,7 @@ class IsicApi(object):
         self._current_dataset = dataset_obj
         return dataset_obj
 
-    # Dataset list (generator)
+    # dataset list (generator)
     def dataset_list(self, params:dict = None, as_object:bool = False) -> iter:
         """
         Dataset list/iterator
@@ -1157,7 +1158,7 @@ class IsicApi(object):
             warnings.warn('Error retrieving information from ' + endpoint)
         return None
 
-    # Generic /image endpoint
+    # image endpoint
     def image(self,
         object_id:str = None,
         name:str = None,
@@ -1246,7 +1247,7 @@ class IsicApi(object):
         self._current_image = image_obj
         return image_obj
 
-    # Image list (generator)
+    # image list (generator)
     def image_list(self, params:dict = None, as_object:bool = False) -> iter:
         """
         Image list/iterator
@@ -1391,7 +1392,7 @@ class IsicApi(object):
             warnings.warn('Error retrieving information from ' + endpoint)
         return None
 
-    # Generic /segmentation endpoint
+    # segmentation endpoint
     def segmentation(self,
         object_id:str = None,
         name:str = None,
@@ -1486,7 +1487,7 @@ class IsicApi(object):
         self._current_segmentation = segmentation_obj
         return segmentation_obj
 
-    # Segmentation list (generator)
+    # segmentation list (generator)
     def segmentation_list(self, params:dict = None, as_object:bool = False) -> iter:
         """
         Segmentation list/iterator
@@ -1581,7 +1582,7 @@ class IsicApi(object):
         self._defaults[name] = value
         return True
         
-    # Generic /study endpoint
+    # study endpoint
     def study(self,
         object_id:str = None,
         name:str = None,

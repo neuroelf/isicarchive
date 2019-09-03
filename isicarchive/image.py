@@ -255,7 +255,7 @@ class Image(object):
                     os.remove(image_list[0])
         if self._in_archive and self._api:
             try:
-                req = self._api.get('/image/' + self.id + '/download',
+                req = self._api.get('image/' + self.id + '/download',
                     parse_json=False)
                 if req.ok:
                     image_raw = req.content
@@ -318,7 +318,7 @@ class Image(object):
             (not self._api._cache_folder) or
             (not os.path.exists(spidx_filename))):
             try:
-                req = self._api.get('/image/' + self.id + '/superpixels',
+                req = self._api.get('image/' + self.id + '/superpixels',
                     parse_json=False)
                 if req.ok:
                     image_raw = req.content
@@ -366,7 +366,7 @@ class Image(object):
         except Exception as e:
             warnings.warn('Error mapping superpixels: ' + str(e))
 
-    # POST metadata for an image to the /image/{id}/metadata endpoint
+    # POST metadata for an image to the image/{id}/metadata endpoint
     def post_metadata(self,
         metadata:dict,
         ) -> bool:
@@ -377,7 +377,7 @@ class Image(object):
             raise ValueError('Invalid image object to post metadata with.')
         if not func.could_be_mongo_object_id(self.id):
             raise ValueError('Invalid image object_id format.')
-        req = self._api.post('/image/' + self.id + '/metadata',
+        req = self._api.post('image/' + self.id + '/metadata',
             params={'metadata': metadata, 'save': 'true'}, parse_json=False)
         if not req.ok:
             warnings.warn("Image metadata posting failed: " + req.text)

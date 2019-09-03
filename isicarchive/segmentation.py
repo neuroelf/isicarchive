@@ -245,7 +245,7 @@ class Segmentation(object):
                     os.remove(smask_list[0])
         if self._in_archive and self._api:
             try:
-                req = self._api.get('/segmentation/' + self.id + '/mask',
+                req = self._api.get('segmentation/' + self.id + '/mask',
                     parse_json=False)
                 if req.ok:
                     mask_raw = req.content

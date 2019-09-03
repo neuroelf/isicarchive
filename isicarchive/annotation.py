@@ -274,7 +274,7 @@ class Annotation(object):
                     self.features[key]['num'] = len(feat_idx)
                 if not load_masks:
                     continue
-                feat_req = self._api.get('/annotation/' + self.id +
+                feat_req = self._api.get('annotation/' + self.id +
                         '/' + feat_uri + '/mask', parse_json=False)
                 if not feat_req.ok:
                     raise ValueError('Error loading feature mask ' + key)
