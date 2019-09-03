@@ -384,6 +384,10 @@ class IsicApi(object):
         self._datasets = dict()
         self._dataset_objs = dict()
         self._debug = debug
+        self._defaults = {
+            'heatmaps_mix_color': True,
+            'image_display_size': vars.ISIC_IMAGE_DISPLAY_SIZE_MAX,
+        }
         self._feature_colors = dict()
         self._hostname = hostname
         self._image_cache_last = '0' * 24
@@ -956,6 +960,10 @@ class IsicApi(object):
                 yield Dataset(from_json=dataset, api=self)
             else:
                 yield dataset
+
+    # defaults (get)
+    def defaults(self) -> dict:
+        return self._defaults
 
     # display image (passthrough)
     def display_image(self,
@@ -1560,6 +1568,19 @@ class IsicApi(object):
                 self.image_selection.pop(image_id, None)
         return self.image_selection
 
+    # defaults (set)
+    def set_default(self,
+        name:str,
+        value:str) -> bool:
+        if not name or name == '':
+            return False
+        if value is None:
+            return False
+        if not name in self._defaults or type(value) != type(self._defaults[name]):
+            return False
+        self._defaults[name] = value
+        return True
+        
     # Generic /study endpoint
     def study(self,
         object_id:str = None,

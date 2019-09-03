@@ -477,6 +477,7 @@ class Study(object):
             a_o.load_data()
         fdict = dict()
         spdict = dict()
+        udict = dict()
         for a in annotations:
             if all_features:
                 for (f, v) in a['markups'].items():
@@ -486,6 +487,8 @@ class Study(object):
                         fdict[f].append(a['_id'])
                     else:
                         fdict[f] = [a['_id']]
+                    if not a['user']['_id'] in udict:
+                        udict[a['user']['_id']] = True
             else:
                 for f in flist:
                     if not a['markups'][f]:
@@ -494,6 +497,8 @@ class Study(object):
                         fdict[f].append(a['_id'])
                     else:
                         fdict[f] = [a['_id']]
+                    if not a['user']['_id'] in udict:
+                        udict[a['user']['_id']] = True
         flist = [k for k in fdict.keys()]
         fcols = dict()
         for f in flist:
@@ -505,10 +510,7 @@ class Study(object):
                         spdict[idx] = []
                     spdict[idx].append([a, f])
         if max_raters is None or max_raters <= 0:
-            max_raters = 1
-            for fs in spdict.values():
-                if len(fs) > max_raters:
-                    max_raters = len(fs)
+            max_raters = len(udict)
         max_raters = float(max_raters)
         for [idx, fs] in spdict.items():
             ft = dict()
@@ -568,7 +570,6 @@ class Study(object):
                 func.print_progress(num_images, num_images, 'Error')
                 raise
         func.print_progress(num_images, num_images, 'Creating heatmaps:')
-            
 
     # image names
     def image_names(self):
