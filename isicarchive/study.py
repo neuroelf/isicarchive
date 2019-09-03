@@ -393,7 +393,9 @@ class Study(object):
         features:Union[str,list] = 'all',
         users:Union[str,list] = 'all',
         max_raters:int = None,
-        alpha_scale:str = 'sqrt') -> Any:
+        alpha_scale:str = 'sqrt',
+        underlay_gray:bool = True,
+        ) -> Any:
 
         # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
         from . import imfunc
@@ -422,13 +424,23 @@ class Study(object):
                 image = self._obj_images[image_id]
             else:
                 image = self._api.image(image_id)
+            image_o_raw_data = image._raw_data
+            image_o_data = image.data
+            image_o_superpixels = image.superpixels
             image.load_image_data()
             image_data = image.data
-            image_data = imfunc.image_gray(image_data)
+            if underlay_gray:
+                image_data = imfunc.image_gray(image_data)
             image.load_superpixels()
             image.map_superpixels()
             spmap = image.superpixels['map']
         except:
+            try:
+                image._raw_data = image_o_raw_data
+                image.data = image_o_data
+                image.superpixels = image_o_superpixels
+            except:
+                pass
             raise
         annotations = func.select_from(self.annotations,
             [['image._id', '==', image_id], ['markups.%%', '~', ':']])
@@ -463,6 +475,9 @@ class Study(object):
                         usel.append(tuser['_id'])
             if len(usel) == 0:
                 warnings.warn('No valid users found.')
+                image._raw_data = image_o_raw_data
+                image.data = image_o_data
+                image.superpixels = image_o_superpixels
                 return None
             annotations = func.select_from(annotations,
                 [['user._id', 'in', usel]])
@@ -528,7 +543,9 @@ class Study(object):
                     av = numpy.sqrt(av)
                 alpha.append(av)
             imfunc.color_superpixels(image_data, [idx], spmap, [colors], [alpha])
-        image.clear_data()
+        image._raw_data = image_o_raw_data
+        image.data = image_o_data
+        image.superpixels = image_o_superpixels
         return image_data
 
     # image heatmaps
@@ -539,7 +556,9 @@ class Study(object):
         features:Union[str,list] = 'all',
         users:Union[str,list] = 'all',
         max_raters:int = None,
-        alpha_scale:str = 'sqrt'):
+        alpha_scale:str = 'sqrt',
+        underlay_gray:bool = True,
+        ):
 
         # IMPORT DONE HERE TO SAVE TIME ON MODULE INIT
         from .imfunc import write_image
@@ -563,8 +582,8 @@ class Study(object):
         for (idx, image) in enumerate(images):
             func.print_progress(idx, num_images, 'Creating heatmaps:', image['name'])
             try:
-                image_data = self.image_heatmap(
-                    image['_id'], features, users, max_raters, alpha_scale)
+                image_data = self.image_heatmap(image['_id'], features, users,
+                    max_raters, alpha_scale, underlay_gray)
                 write_image(image_data, target_folder + image['name'] + image_ext)
             except:
                 func.print_progress(num_images, num_images, 'Error')
@@ -637,12 +656,24 @@ class Study(object):
             if image_id in self._api.image_cache:
                 if image_id in self._api._image_objs:
                     self._obj_images[image_id] = self._api._image_objs[image_id]
+                    if not '_modelType' in self.images[count]:
+                        self.images[count] = self._api.image_cache[image_id]
+                    if load_image_data:
+                        self._obj_images[image_id].load_image_data()
+                    if load_superpixels:
+                        self._obj_images[image_id].load_superpixels()
                     continue
                 image_detail = self._api.image_cache[image_id]
+                if not '_modelType' in self.images[count]:
+                    self.images[count] = image_detail
                 image_obj = Image(from_json=image_detail,
                     api=self._api, load_image_data=load_image_data)
                 self._obj_images[image_id] = image_obj
                 self._api._image_objs[image_id] = image_obj
+                if load_image_data:
+                    image_obj.load_image_data()
+                if load_superpixels:
+                    image_obj.load_superpixels()
                 continue
             if not '_modelType' in self.images[count]:
                 to_load.append(image_id)

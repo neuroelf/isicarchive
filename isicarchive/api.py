@@ -1514,7 +1514,7 @@ class IsicApi(object):
     # Select images from the archive (regardless of study/dataset)
     def select_images(self,
         criteria:list,
-        sub_select:Union[bool, dict] = False,
+        sub_select:Union[bool, list, dict] = False,
         add_to_selection:bool = False,
         remove_from_selection:bool = False,
         ) -> dict:
@@ -1550,6 +1550,15 @@ class IsicApi(object):
                 self._image_cache_timeout = time.time() + vars.ISIC_IMAGE_CACHE_UPDATE_LASTS
             else:
                 self.cache_images()
+        if isinstance(sub_select, list):
+            sub_sel_dict = dict()
+            try:
+                for s in sub_select:
+                    if s['_modelType'] == 'image':
+                        sub_sel_dict[s['_id']] = s
+            except:
+                raise
+            sub_select = sub_sel_dict
         if isinstance(sub_select, dict):
             selection = func.select_from(sub_select, criteria)
         elif sub_select:
