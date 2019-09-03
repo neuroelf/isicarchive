@@ -296,6 +296,8 @@ def display_image(
             return None
     else:
         # IMPORT DONE HERE TO SAVE TIME BETWEEN LIBRARY CHOICES
+        import matplotlib
+        matplotlib.use('nbAgg')
         import matplotlib.pyplot as mpl_pyplot
         try:
             display_width = image_width / ISIC_FUNC_PPI
@@ -336,6 +338,26 @@ def image_dice(im1:numpy.ndarray, im2:numpy.ndarray) -> float:
     s1 = numpy.sum(im1)
     s2 = numpy.sum(im2)
     return 2 * numpy.sum(numpy.logical_and(im1, im2)) / (s1 + s2)
+
+# image in gray
+def image_gray(image:numpy.ndarray, rgb_format:bool = True) -> numpy.ndarray:
+    im_shape = image.shape
+    if len(im_shape) < 3:
+        if rgb_format:
+            if image.dtype != numpy.uint8:
+                image = numpy.trunc(255.0 * image).astype(numpy.uint8)
+            return image.reshape((im_shape[0], im_shape[1], 1,)).repeat(3, axis=2)
+        return image
+    p = image[:, :, 0].astype(numpy.float)
+    for pc in range(1, im_shape[2]):
+        p += image[:, :, pc].astype(numpy.float)
+    p /= numpy.float(im_shape[2])
+    if rgb_format:
+        if image.dtype != numpy.uint8:
+            p = numpy.trunc(255.0 * p).astype(numpy.uint8)
+        return p.astype(numpy.uint8).reshape(
+            (im_shape[0], im_shape[1], 1,)).repeat(3, axis=2)
+    return p.astype(image.dtype)
 
 # image mixing (python portion)
 def image_mix(

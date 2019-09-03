@@ -393,6 +393,12 @@ support and code is being provided by
 [Prof. David Gutman, MD, PhD](https://winshipcancer.emory.edu/bios/faculty/gutman-david.html).
 
 ### History
+- 9/3/2019
+  - added ```study.image_heatmap``` to color annotations on (photographic) image
+- 9/2/2019
+  - implemented Dice and pixel-wise cross-correlation (for annotation overlap)
+- 8/30/2019
+  - added more functions for image coloring
 - 8/29/2019
   - added features.py (list of known features) for later selection (and colors)
   - added status codes and other features to ```__main__``` (```python -m ...```)

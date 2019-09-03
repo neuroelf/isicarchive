@@ -392,13 +392,25 @@ class Study(object):
         image_name:str,
         features:Union[str,list] = 'all',
         users:Union[str,list] = 'all',
+        max_raters:int = None,
         alpha_scale:str = 'sqrt') -> Any:
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from . import imfunc
+        import numpy
+
+        self.load_annotations()
         if image_name is None or image_name == '':
             return None
-        image_names = {v['name']: v['_id'] for v in self.images.values()}
-        image_ids = {v['_id']: v for v in self.images.values()}
+        if isinstance(image_name, dict):
+            if '_id' in image_name:
+                image_name = image_name['_id']
+            else:
+                raise ValueError('Invalid image_name parameter.')
+        image_names = {v['name']: v['_id'] for v in self.images}
+        image_ids = {v['_id']: v for v in self.images}
         if not func.could_be_mongo_object_id(image_name):
-            if not image_name image_names:
+            if not image_name in image_names:
                 raise KeyError('Image name not found in study.')
             image_id = image_names[image_name]
         else:
@@ -406,10 +418,157 @@ class Study(object):
         if not image_id in image_ids:
             raise KeyError('Image ID not found in study.')
         try:
-            image = self._api.image(image_id)
+            if image_id in self._obj_images:
+                image = self._obj_images[image_id]
+            else:
+                image = self._api.image(image_id)
+            image.load_image_data()
+            image_data = image.data
+            image_data = imfunc.image_gray(image_data)
+            image.load_superpixels()
+            image.map_superpixels()
+            spmap = image.superpixels['map']
         except:
             raise
-        return image
+        annotations = func.select_from(self.annotations,
+            [['image._id', '==', image_id], ['markups.%%', '~', ':']])
+        all_features = False
+        if isinstance(features, str):
+            if features == 'all':
+                all_features = True
+            else:
+                features = [features]
+        if isinstance(features, list):
+            if not all_features:
+                flist = '(' + '|'.join(features) + ')'
+                annotations = func.select_from(annotations,
+                    [['markups.%%', '~', flist]])
+        elif not features is None:
+            if not (isinstance(features, str) and features == 'all'):
+                raise ValueError('Invalid feature selection.')
+        if not users is None and (isinstance(users, list) or users != 'all'):
+            if isinstance(users, str):
+                users = [users]
+            elif not isinstance(users, list):
+                raise ValueError('Invalid users list.')
+            usel = []
+            for user in users:
+                for tuser in self.users:
+                    if (tuser['_id'] == user or
+                        (tuser['firstName'] + ' ' + tuser['lastName']) == user or
+                        tuser['lastName'] == user or
+                        tuser['login'] == user or
+                        tuser['name'] == user or
+                        (len(tuser['name']) > 5 and tuser['name'][5:] == user)):
+                        usel.append(tuser['_id'])
+            if len(usel) == 0:
+                warnings.warn('No valid users found.')
+                return None
+            annotations = func.select_from(annotations,
+                [['user._id', 'in', usel]])
+        a_obj = dict()
+        for a in annotations:
+            if a['_id'] in self._obj_annotations:
+                a_o = self._obj_annotations[a['_id']]
+            else:
+                a_o = self._api.annotation(a['_id'])
+                self._obj_annotations[a['_id']] = a_o
+            a_obj[a['_id']] = a_o
+            a_o.load_data()
+        fdict = dict()
+        spdict = dict()
+        for a in annotations:
+            if all_features:
+                for (f, v) in a['markups'].items():
+                    if not v:
+                        continue
+                    elif f in fdict:
+                        fdict[f].append(a['_id'])
+                    else:
+                        fdict[f] = [a['_id']]
+            else:
+                for f in flist:
+                    if not a['markups'][f]:
+                        continue
+                    elif f in fdict:
+                        fdict[f].append(a['_id'])
+                    else:
+                        fdict[f] = [a['_id']]
+        flist = [k for k in fdict.keys()]
+        fcols = dict()
+        for f in flist:
+            fcols[f] = self._api.feature_color(f)
+            for a in fdict[f]:
+                f_detail = a_obj[a].features[f]
+                for idx in f_detail['idx']:
+                    if not idx in spdict:
+                        spdict[idx] = []
+                    spdict[idx].append([a, f])
+        if max_raters is None or max_raters <= 0:
+            max_raters = 1
+            for fs in spdict.values():
+                if len(fs) > max_raters:
+                    max_raters = len(fs)
+        max_raters = float(max_raters)
+        for [idx, fs] in spdict.items():
+            ft = dict()
+            for f in fs:
+                if f[1] in ft:
+                    ft[f[1]].append(f[0])
+                else:
+                    ft[f[1]] = [f[0]]
+            colors = []
+            alpha = []
+            for [f, fa] in ft.items():
+                colors.append(fcols[f])
+                av = float(len(fa)) / max_raters
+                if alpha_scale == 'sqrt':
+                    av = numpy.sqrt(av)
+                alpha.append(av)
+            imfunc.color_superpixels(image_data, [idx], spmap, [colors], [alpha])
+        image.clear_data()
+        return image_data
+
+    # image heatmaps
+    def image_heatmaps(self,
+        target_folder:str = None,
+        image_ext:str = '.jpg',
+        image_sel:Union[list,None] = None,
+        features:Union[str,list] = 'all',
+        users:Union[str,list] = 'all',
+        max_raters:int = None,
+        alpha_scale:str = 'sqrt'):
+
+        # IMPORT DONE HERE TO SAVE TIME ON MODULE INIT
+        from .imfunc import write_image
+
+        if target_folder is None or target_folder == '':
+            target_folder = os.getcwd()
+        target_folder += os.sep
+        if not image_ext in ['.jpg', '.jpeg', '.png', '.tif']:
+            image_ext = '.jpg'
+        if not image_sel is None:
+            try:
+                images = func.select_from(self.images, image_sel)
+                if len(images) == 0:
+                    warnings.warn('No images selected.')
+                    return
+            except:
+                raise
+        else:
+            images = self.images
+        num_images = len(images)
+        for (idx, image) in enumerate(images):
+            func.print_progress(idx, num_images, 'Creating heatmaps:', image['name'])
+            try:
+                image_data = self.image_heatmap(
+                    image['_id'], features, users, max_raters, alpha_scale)
+                write_image(image_data, target_folder + image['name'] + image_ext)
+            except:
+                func.print_progress(num_images, num_images, 'Error')
+                raise
+        func.print_progress(num_images, num_images, 'Creating heatmaps:')
+            
 
     # image names
     def image_names(self):

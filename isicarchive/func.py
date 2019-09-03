@@ -44,6 +44,7 @@ __version__ = '0.4.8'
 from collections.abc import ValuesView
 from typing import Any, Union
 
+import re
 
 # helper function that returns True for valid looking mongo ObjectId strings
 def could_be_mongo_object_id(test_id:str = "") -> bool:
@@ -132,6 +133,10 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
                     val = len(obj)
                 elif name == '$':
                     val = obj.values()
+                elif name == '%':
+                    val = [k for k in obj.keys()]
+                elif name == '%%':
+                    val = ' '.join([k for k in obj.keys()])
                 else:
                     val = obj.get(name)
             elif not isinstance(obj, list) and not isinstance(obj, ValuesView):
@@ -155,10 +160,6 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
                         break
             # item/value-based obj[key]-regexp-name-part lookup
             elif '~' in name:
-
-                # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
-                import re
-
                 name_parts = name.split('~')
                 name = '.'.join(name_parts[0].split('>'))
                 cont = '~'.join(name_parts[1:])
@@ -549,37 +550,37 @@ def selected(item:object, criteria:list) -> bool:
             c_test = c[2]
             val = getxattr(item, c[0], None)
             if c_op == '==':
-                is_selected = is_selected and (val == c_test)
+                is_selected = (val == c_test)
             elif c_op == '!=':
-                is_selected = is_selected and (val != c_test)
+                is_selected = (val != c_test)
             elif c_op == '<':
-                is_selected = is_selected and (val < c_test)
+                is_selected = (val < c_test)
             elif c_op == '<=':
-                is_selected = is_selected and (val <= c_test)
+                is_selected = (val <= c_test)
             elif c_op == '>':
-                is_selected = is_selected and (val > c_test)
+                is_selected = (val > c_test)
             elif c_op == '>=':
-                is_selected = is_selected and (val >= c_test)
+                is_selected = (val >= c_test)
             elif c_op == 'in':
-                is_selected = is_selected and (val in c_test)
+                is_selected = (val in c_test)
             elif c_op == 'not in':
-                is_selected = is_selected and (not val in c_test)
+                is_selected = (not val in c_test)
             elif c_op == 'ni':
-                is_selected = is_selected and (c_test in val)
+                is_selected = (c_test in val)
             elif c_op == 'not ni':
-                is_selected = is_selected and (not c_test in val)
-            elif c_op == 'match':
-                is_selected = is_selected and (not c_test.match(val) is None)
-            elif c_op == 'not match':
-                is_selected = is_selected and (c_test.match(val) is None)
+                is_selected = (not c_test in val)
+            elif c_op == 'match' or c_op == '~':
+                is_selected = (not re.search(c_test, val) is None)
+            elif c_op == 'not match' or c_op == '!~':
+                is_selected = (re.search(c_test, val) is None)
             elif c_op == 'is':
-                is_selected = is_selected and (val is c_test)
+                is_selected = (val is c_test)
             elif c_op == 'not is':
-                is_selected = is_selected and (not val is c_test)
+                is_selected = (not val is c_test)
             elif c_op == 'is None':
-                is_selected = is_selected and (val is None)
+                is_selected = (val is None)
             elif c_op == 'not is None':
-                is_selected = is_selected and (not val is None)
+                is_selected = (not val is None)
             else:
                 raise ValueError('Invalid criterion.')
     except:
@@ -622,7 +623,7 @@ def select_from(
             if dict_as_keys:
                 return [k for (k,v) in items.items() if selected(v, criteria)]
             elif dict_as_values:
-                return [k for v in items.values() if selected(v, criteria)]
+                return [v for v in items.values() if selected(v, criteria)]
             else:
                 return {k: v for (k,v) in items.items() if selected(v, criteria)}
         except:

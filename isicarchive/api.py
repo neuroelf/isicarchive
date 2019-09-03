@@ -957,6 +957,17 @@ class IsicApi(object):
             else:
                 yield dataset
 
+    # display image (passthrough)
+    def display_image(self,
+        image_data:Any,
+        max_size:int = None,
+        library:str = 'matplotlib',
+        ):
+        
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from .imfunc import display_image as imfunc_display_image
+        imfunc_display_image(image_data, max_size=max_size, library=library)
+    
     # download selected images
     def download_selected(self,
         target_folder:str = None,

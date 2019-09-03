@@ -398,7 +398,7 @@ class Image(object):
         ) -> object:
 
         # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
-        from imfunc import display_image
+        from .imfunc import display_image
         try:
             if self.data is None:
                 self.load_image_data()

@@ -278,7 +278,7 @@ class Segmentation(object):
 
         # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
         import numpy
-        from imfunc import display_image, image_mix
+        from .imfunc import display_image, image_mix
         try:
             if self.mask is None:
                 self.load_maskdata()
