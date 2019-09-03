@@ -14,6 +14,7 @@ from .version import __version__
 
 # IsicApi: default URL/URI
 ISIC_API_URI = '/api/v1'
+ISIC_API_TIMEOUT = 15.0
 ISIC_BASE_URL = 'https://isic-archive.com'
 
 # IsicApi: image cache settings
@@ -25,6 +26,9 @@ ISIC_SEG_SAVE_EVERY = 50
 
 # func: screen settings
 ISIC_FUNC_PPI = 72
+
+# Image: default DICE resampling size
+ISIC_DICE_SHAPE = (512,512)
 
 # Image: display settings
 ISIC_IMAGE_DISPLAY_SIZE_MAX = 480

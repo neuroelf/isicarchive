@@ -254,11 +254,11 @@ class Annotation(object):
             for (key, value) in self.markups.items():
                 if not value:
                     continue
+                feat_uri = func.uri_encode(key)
                 if not (key in self.features and
                     isinstance(self.features[key], dict) and
                     ('idx' in self.features[key]) and
                     (len(self.features[key]['idx']) > 0)):
-                    feat_uri = func.uri_encode(key)
                     feat_lst = self._api.get(
                         'annotation/' + self.id + '/' + feat_uri,
                         parse_json=False)
@@ -289,7 +289,7 @@ class Annotation(object):
         other:object,
         other_feature:str,
         measure:str = 'dice',
-        cc_fwhm:float = 40.0,
+        smcc_fwhm:float = 0.05,
         ) -> float:
 
         # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
@@ -302,14 +302,19 @@ class Annotation(object):
             return 0.0
         if not other_feature in other.markups or not other.markups[other_feature]:
             return 0.0
-        if measure == 'cc' or measure == 'smcc':
+        if measure == 'cc' or measure == 'smcc' or self.image['_id'] != other.image['_id']:
             load_masks = True
         else:
             load_masks = False
-        if not feature in self.features:
+        if not feature in self.features or (load_masks and not feature in self.masks):
             self.load_data(load_masks=load_masks)
-        if not other_feature in other.features:
+        if not other_feature in other.features or (load_masks and not other_feature in other.masks):
             other.load_data(load_masks=load_masks)
+        if not feature in self.features or not other_feature in other.features:
+            raise RuntimeError('Error loading features.')
+        if load_masks:
+            if not feature in self.masks or not other_feature in other.masks:
+                raise RuntimeError('Error loading binary masks.')
         if self.image['_id'] == other.image['_id'] and measure == 'dice':
             return imfunc.superpixel_dice(self.features[feature]['idx'],
                 other.features[other_feature]['idx'])
@@ -340,8 +345,30 @@ class Annotation(object):
         simage_shape = (simeta['pixelsY'], simeta['pixelsX'])
         oimage_shape = (oimeta['pixelsY'], oimeta['pixelsX'])
         if simage_shape != oimage_shape:
-            raise ValueError('Images of difference size not yet implemented.')
-        return 0.0
+            if simage_shape[0] <= oimage_shape[0] and simage_shape[1] <= oimage_shape[1]:
+                target = 's'
+            elif simage_shape[0] >= oimage_shape[0] and simage_shape[1] >= oimage_shape[1]:
+                target = 'o'
+            elif (simage_shape[0] * simage_shape[1]) <= (oimage_shape[0] * oimage_shape[1]):
+                target = 's'
+            else:
+                target = 'o'
+            if target == 's':
+                sdata = self.masks[feature]
+                odata = imfunc.image_resample(other.masks[other_feature], simage_shape)
+            else:
+                sdata = imfunc.image_resample(self.masks[feature], oimage_shape)
+                odata = other.masks[other_feature]
+        else:
+            sdata = self.masks[feature]
+            odata = other.masks[other_feature]
+        if measure == 'dice':
+            return imfunc.image_dice(sdata, odata)
+        elif measure == 'cc':
+            return imfunc.image_corr(sdata, odata)
+        else:
+            return imfunc.image_corr(imfunc.image_smooth_fft(sdata, smcc_fwhm),
+                imfunc.image_smooth_fft(odata, smcc_fwhm))
 
     # show image in notebook
     def show_in_notebook(self,

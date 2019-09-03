@@ -23,7 +23,7 @@ import copy
 import datetime
 import glob
 import os
-from typing import Any
+from typing import Any, Union
 import warnings
 
 from . import func
@@ -386,6 +386,30 @@ class Study(object):
                 self._api._image_objs.pop(image_obj.id, None)
         if deref_images:
             self._obj_images = dict()
+
+    # image heatmap
+    def image_heatmap(self,
+        image_name:str,
+        features:Union[str,list] = 'all',
+        users:Union[str,list] = 'all',
+        alpha_scale:str = 'sqrt') -> Any:
+        if image_name is None or image_name == '':
+            return None
+        image_names = {v['name']: v['_id'] for v in self.images.values()}
+        image_ids = {v['_id']: v for v in self.images.values()}
+        if not func.could_be_mongo_object_id(image_name):
+            if not image_name image_names:
+                raise KeyError('Image name not found in study.')
+            image_id = image_names[image_name]
+        else:
+            image_id = image_name
+        if not image_id in image_ids:
+            raise KeyError('Image ID not found in study.')
+        try:
+            image = self._api.image(image_id)
+        except:
+            raise
+        return image
 
     # image names
     def image_names(self):

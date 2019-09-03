@@ -148,6 +148,7 @@ def _get(
     auth_token:str = None,
     params:dict = None,
     save_as:str = None,
+    timeout:float = vars.ISIC_API_TIMEOUT,
     ) -> Any:
     """
     Performs a GET request to the given endpoint, with the provided
@@ -167,6 +168,8 @@ def _get(
         Optional parameters that will be added to the query string
     save_as : str
         Optional string containing a local target filename
+    timeout : float
+        Optional time-out value (in seconds)
     
     Returns
     -------
@@ -183,11 +186,13 @@ def _get(
         return requests.get(url,
         headers=headers,
         params=params,
-        allow_redirects=True)
+        allow_redirects=True,
+        timeout=timeout)
     req = requests.get(url,
         headers=headers,
         params=params,
-        allow_redirects=True)
+        allow_redirects=True,
+        timeout=timeout)
     open(save_as, 'wb').write(req.content)
 
 # authentication
@@ -214,7 +219,7 @@ def _get_auth_token(base_url:str, username:str, password:str) -> str:
     import requests
     
     auth_response = requests.get(base_url + '/user/authentication',
-        auth=(username, password))
+        auth=(username, password), timeout=vars.ISIC_API_TIMEOUT)
     if not auth_response.ok:
         warnings.warn('Login error: ' + auth_response.json()['message'])
         return None

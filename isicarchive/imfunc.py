@@ -32,7 +32,7 @@ import warnings
 
 import numpy
 
-from .vars import ISIC_FUNC_PPI, ISIC_IMAGE_DISPLAY_SIZE_MAX
+from .vars import ISIC_DICE_SHAPE, ISIC_FUNC_PPI, ISIC_IMAGE_DISPLAY_SIZE_MAX
 
 
 # color superpixels in an image
@@ -320,11 +320,22 @@ def image_corr(im1:numpy.ndarray, im2:numpy.ndarray) -> float:
 
 # Dice coeffient
 def image_dice(im1:numpy.ndarray, im2:numpy.ndarray) -> float:
+    if im1.shape != im2.shape:
+        if len(im1.shape) > 2:
+            if im1.shape[2] != 1:
+                raise ValueError('Image cannot have more than 1 plane.')
+        if len(im2.shape) > 2:
+            if im2.shape[2] != 1:
+                raise ValueError('Image cannot have more than 1 plane.')
+        if (im1.shape[0], im1.shape[1]) != ISIC_DICE_SHAPE:
+            im1 = image_resample(im1, ISIC_DICE_SHAPE)
+        if (im2.shape[0], im2.shape[1]) != ISIC_DICE_SHAPE:
+            im2 = image_resample(im2, ISIC_DICE_SHAPE)
     im1 = (im1.reshape(im1.size) > 0)
-    im2 = (im1.reshape(im1.size) > 0)
+    im2 = (im2.reshape(im2.size) > 0)
     s1 = numpy.sum(im1)
     s2 = numpy.sum(im2)
-    return 2 * numpy.sum(im1 and im2) / (s1 + s2)
+    return 2 * numpy.sum(numpy.logical_and(im1, im2)) / (s1 + s2)
 
 # image mixing (python portion)
 def image_mix(
@@ -444,12 +455,43 @@ def image_mix(
     immix.shape = im1shape
     return immix
 
+# image resampling (cheap!)
+def image_resample(image:numpy.ndarray, new_shape:tuple) -> numpy.ndarray:
+    if not isinstance(new_shape, tuple) or len(new_shape) != 2:
+        raise ValueError('Invalid new_shape parameter')
+    if not isinstance(new_shape[0], int) or new_shape[0] < 1:
+        raise ValueError('Invalid new_shape[0] value')
+    if not isinstance(new_shape[1], int) or new_shape[1] < 1:
+        raise ValueError('Invalid new_shape[1] value')
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    from .jitfunc import image_resample as image_resample_jit
+
+    im_shape = image.shape
+    if len(im_shape) < 3:
+        re_shape = (im_shape[0], im_shape[1], 1)
+        try:
+            image.shape = re_shape
+        except:
+            raise RuntimeError('Error setting necessary planes in shape.')
+    rs_image = image_resample_jit(image, new_shape[0], new_shape[1])
+    rs_shape = rs_image.shape
+    if rs_shape[2] == 1:
+        rs_image.shape = (rs_shape[0], rs_shape[1])
+    return rs_image
+    
 # smooth image using fft
 def image_smooth_fft(image:numpy.ndarray, fwhm:float) -> numpy.ndarray:
 
     # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
     from .jitfunc import conv_kernel
 
+    # deal with invalid/special values
+    if fwhm <= 0.0:
+        return image
+    elif fwhm <= 0.36:
+        fwhm = fwhm * numpy.sqrt(float(image.size))
+    
     # place kernel into image
     k = conv_kernel(numpy.float(fwhm))
     ki = k.repeat(k.size).reshape((k.size,k.size))
