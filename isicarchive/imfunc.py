@@ -937,6 +937,7 @@ def write_image(
     out:str,
     imformat:str = None,
     imshape:Tuple = None,
+    jpg_quality:int = 90,
     ) -> Union[bool, bytes]:
     """
     Writes an image (data array) to file or buffer (return value)

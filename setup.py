@@ -31,6 +31,7 @@ setuptools.setup(
     package_dir={'isicarchive': 'isicarchive'},
     python_requires=">=3.6",
     install_requires=requires,
+    include_package_data=True,
     license='MIT',
     classifiers=[
         "Development Status :: 3 - Alpha",

@@ -1,5 +1,5 @@
 """
-isicarchive.StatsImage
+isicarchive.statsimage (StatsImage)
 
 This module provides the StatsImage class and associated methods.
 """

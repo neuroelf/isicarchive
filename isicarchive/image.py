@@ -248,9 +248,11 @@ class Image(object):
                         image_raw = image_file.read()
                     if keep_raw_data:
                         self._raw_data = image_raw
-                    self.data = imageio.imread(image_raw)
-                    if not self.data.flags['C_CONTIGUOUS']:
-                        self.data = func.contiguous_array(self.data)
+                    if (image_list[0][-4:].lower() == '.jpg' or
+                        image_list[0][-5:].lower() == '.jpeg'):
+                        self.data = imageio.imread(image_raw, exifrotate=False)
+                    else:
+                        self.data = imageio.imread(image_raw)
                     return
                 except Exception as e:
                     warnings.warn('Error loading image: ' + str(e))
@@ -261,11 +263,13 @@ class Image(object):
                     parse_json=False)
                 if req.ok:
                     image_raw = req.content
+                    image_type = func.guess_file_extension(req.headers)
                     if keep_raw_data:
                         self._raw_data = image_raw
-                    self.data = imageio.imread(image_raw)
-                    if not self.data.flags['C_CONTIGUOUS']:
-                        self.data = func.contiguous_array(self.data)
+                    if image_type == '.jpg':
+                        self.data = imageio.imread(image_raw, exifrotate=False)
+                    else:
+                        self.data = imageio.imread(image_raw)
                     if self._api._cache_folder:
                         if self.name and (len(self.name) > 5):
                             extra = self.name
