@@ -28,5 +28,5 @@ study = api.study('ISIC Annotation Study - All Features')
 
 #(image_data, stats) = study.image_heatmap(study.images[0], mix_colors=True)
 #imfunc.write_image(image_data, 'C:\\Users\\weberj3\\Documents\\ISIC\\test.jpg')
-stats = study.image_heatmaps('C:\\Users\\weberj3\\Documents\\heatmaps', mix_colors=True)
+stats = study.image_heatmaps('C:\\Users\\weberj3\\Documents\\heatmaps_stripes', mix_colors=False)
 #s = api.select_images(['meta.clinical.melanocytic', '==', True], study.images)

@@ -487,7 +487,7 @@ def image_resample(image:numpy.ndarray, new_shape:tuple) -> numpy.ndarray:
         raise ValueError('Invalid new_shape[1] value')
 
     # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
-    from .jitfunc import image_resample as image_resample_jit
+    from .jitfunc import image_resample_u1, image_resample_f4
 
     im_shape = image.shape
     if len(im_shape) < 3:
@@ -496,7 +496,10 @@ def image_resample(image:numpy.ndarray, new_shape:tuple) -> numpy.ndarray:
             image.shape = re_shape
         except:
             raise RuntimeError('Error setting necessary planes in shape.')
-    rs_image = image_resample_jit(image, new_shape[0], new_shape[1])
+    if image.dtype == numpy.uint8:
+        rs_image = image_resample_u1(image, new_shape[0], new_shape[1])
+    else:
+        rs_image = image_resample_f4(image, new_shape[0], new_shape[1])
     rs_shape = rs_image.shape
     if rs_shape[2] == 1:
         rs_image.shape = (rs_shape[0], rs_shape[1])

@@ -389,6 +389,7 @@ class IsicApi(object):
             'image_display_size': vars.ISIC_IMAGE_DISPLAY_SIZE_MAX,
         }
         self._feature_colors = dict()
+        self._fonts = dict()
         self._hostname = hostname
         self._image_cache_last = '0' * 24
         self._image_cache_timeout = 0.0
@@ -1590,7 +1591,115 @@ class IsicApi(object):
             return False
         self._defaults[name] = value
         return True
-        
+    
+    # set text in image
+    def set_text_in_image(self,
+        image:Any,
+        text:str,
+        font:str = 'calibri',
+        fsize:float = 0.03,
+        xpos:int = -1,
+        ypos:int = -1,
+        padding:int = 12,
+        color:list = [224,224,224],
+        bcolor:list = [32,32,32],
+        invert:bool = False,
+        fcolor:list = [0, 0, 0],
+        fwidth:int = 2,
+        min_alpha:float = 0.75,
+        ) -> list:
+
+        # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
+        import numpy
+        from .font import Font
+        from .imfunc import image_mix
+
+        if not isinstance(image, numpy.ndarray):
+            raise ValueError('Invalid image.')
+        imshape = image.shape
+        if not isinstance(xpos, int):
+            xpos = imshape[1] // 2
+        elif xpos >= imshape[1]:
+            xpos = -1
+        elif xpos <= -imshape[1]:
+            xpos = 0
+        if not isinstance(ypos, int):
+            ypos = imshape[0] // 2
+        elif ypos >= imshape[0]:
+            ypos = -1
+        elif ypos <= -imshape[0]:
+            ypos = 0
+        if not isinstance(font, str) or font == '':
+            font = 'calibri'
+        if font in self._fonts:
+            font_obj = self._fonts[font]
+        else:
+            font_obj = Font(font)
+            if not font_obj.name in self._fonts:
+                self._fonts[font_obj.name] = font_obj
+        if fsize < 1.0:
+            fsize = fsize * float(imshape[0])
+        else:
+            fsize = float(fsize)
+        [inset_image, inset_alpha] = font_obj.set_text(text, fsize,
+            color, bcolor, invert, 0, 0, padding)
+        mix_image = numpy.zeros(inset_image.size, dtype=numpy.uint8).reshape(
+            inset_image.shape)
+        mix_image[:,:,0] = bcolor[0]
+        mix_image[:,:,1] = bcolor[1]
+        mix_image[:,:,2] = bcolor[2]
+        mix_image = image_mix(mix_image, inset_image, inset_alpha)
+        if min_alpha > 0.0:
+            inset_alpha = numpy.maximum(inset_alpha, min_alpha)
+        inshape = inset_alpha.shape
+        sfromx = 0
+        sfromy = 0
+        stox = inshape[1]
+        stoy = inshape[0]
+        if xpos < 0:
+            tfromx = imshape[1] + xpos - stox
+            if tfromx < 0:
+                sfromx -= tfromx
+                tfromx = 0
+        else:
+            tfromx = xpos
+            if (tfromx + stox) > imshape[1]:
+                stox = imshape[1] - tfromx
+        if ypos < 0:
+            tfromy = imshape[0] + ypos - stoy
+            if tfromy < 0:
+                sfromy -= tfromy
+                tfromy = 0
+        else:
+            tfromy = ypos
+            if (tfromy + stoy) > imshape[0]:
+                stoy = imshape[0] - tfromy
+        ttox = tfromx + (stox - sfromx)
+        ttoy = tfromy + (stoy - sfromy)
+        if fwidth > 0:
+            inset_image[sfromy:sfromy+fwidth,:,0] = fcolor[0]
+            inset_image[sfromy:sfromy+fwidth,:,1] = fcolor[1]
+            inset_image[sfromy:sfromy+fwidth,:,2] = fcolor[2]
+            inset_alpha[sfromy:sfromy+fwidth,:] = 1.0
+            inset_image[stoy-fwidth:stoy,:,0] = fcolor[0]
+            inset_image[stoy-fwidth:stoy,:,1] = fcolor[1]
+            inset_image[stoy-fwidth:stoy,:,2] = fcolor[2]
+            inset_alpha[stoy-fwidth:stoy,:] = 1.0
+            inset_image[:,sfromx:sfromx+fwidth,0] = fcolor[0]
+            inset_image[:,sfromx:sfromx+fwidth,1] = fcolor[1]
+            inset_image[:,sfromx:sfromx+fwidth,2] = fcolor[2]
+            inset_alpha[:,sfromx:sfromx+fwidth] = 1.0
+            inset_image[:,stox-fwidth:stox,0] = fcolor[0]
+            inset_image[:,stox-fwidth:stox,1] = fcolor[1]
+            inset_image[:,stox-fwidth:stox,2] = fcolor[2]
+            inset_alpha[:,stox-fwidth:stox] = 1.0
+        image[tfromy:ttoy, tfromx:ttox, :] = image_mix(
+            image[tfromy:ttoy, tfromx:ttox, :],
+            mix_image[sfromy:stoy, sfromx:stox, :],
+            inset_alpha[sfromy:stoy, sfromx:stox])
+
+        return [tfromy, tfromx, ttoy, ttox]
+    
     # study endpoint
     def study(self,
         object_id:str = None,

@@ -179,7 +179,7 @@ def image_conv_float(
 
 # image resampling (cheap!)
 @jit('u1[:,:,:](u1[:,:,:],i4,i4)', nopython=True)
-def image_resample(image:numpy.ndarray, d0:numpy.int, d1:numpy.int) -> numpy.ndarray:
+def image_resample_u1(image:numpy.ndarray, d0:numpy.int, d1:numpy.int) -> numpy.ndarray:
     im_shape = image.shape
     f0 = numpy.float(im_shape[0]) / numpy.float(d0)
     f1 = numpy.float(im_shape[1]) / numpy.float(d1)
@@ -211,6 +211,40 @@ def image_resample(image:numpy.ndarray, d0:numpy.int, d1:numpy.int) -> numpy.nda
             for t in range(ifrom+1, ito+1):
                 tcol += temp[t, :, :]
             out[c, :, :] = tcol // (1 + ito - ifrom)
+    return out
+@jit('f4[:,:,:](f4[:,:,:],i4,i4)', nopython=True)
+def image_resample_f4(image:numpy.ndarray, d0:numpy.int, d1:numpy.int) -> numpy.ndarray:
+    im_shape = image.shape
+    f0 = numpy.float(im_shape[0]) / numpy.float(d0)
+    f1 = numpy.float(im_shape[1]) / numpy.float(d1)
+    temp = numpy.zeros(im_shape[0] * d1 * im_shape[2], dtype=numpy.float32).reshape(
+        (numpy.int64(im_shape[0]),numpy.int64(d1),numpy.int64(im_shape[2]),))
+    for c in prange(d1): #pylint: disable=not-an-iterable
+        ffrom = f1 * numpy.float(c) + 0.5
+        fto = ffrom + f1 - 1.0
+        ifrom = numpy.int64(numpy.trunc(ffrom))
+        ito = numpy.int64(numpy.trunc(fto))
+        if ifrom >= (ito - 1):
+            temp[:, c, :] = image[:, ifrom, :]
+        else:
+            tcol = image[:, ifrom, :]
+            for t in range(ifrom+1, ito+1):
+                tcol += image[:, t, :]
+            temp[:, c, :] = tcol / numpy.float(1 + ito - ifrom)
+    out = numpy.zeros(d0 * d1 * im_shape[2], dtype=numpy.float32).reshape(
+        (numpy.int64(d0),numpy.int64(d1),numpy.int64(im_shape[2]),))
+    for c in prange(d0): #pylint: disable=not-an-iterable
+        ffrom = f0 * numpy.float(c) + 0.5
+        fto = ffrom + f0 - 1.0
+        ifrom = numpy.int64(numpy.trunc(ffrom))
+        ito = numpy.int64(numpy.trunc(fto))
+        if ifrom >= (ito - 1):
+            out[c, :, :] = temp[ifrom, :, :]
+        else:
+            tcol = temp[ifrom, :, :]
+            for t in range(ifrom+1, ito+1):
+                tcol += temp[t, :, :]
+            out[c, :, :] = tcol / numpy.float(1 + ito - ifrom)
     return out
 
 # superpixel contour (results match CV2.findContours coords)
