@@ -393,6 +393,8 @@ support and code is being provided by
 [Prof. David Gutman, MD, PhD](https://winshipcancer.emory.edu/bios/faculty/gutman-david.html).
 
 ### History
+- 9/4/2019
+  - added ```font.py``` (Font class) and code to add correctly set text to images (in ```IsicApi```)
 - 9/3/2019
   - added ```study.image_heatmap``` to color annotations on (photographic) image
 - 9/2/2019
