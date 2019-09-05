@@ -123,6 +123,7 @@ class Image(object):
         self._in_archive = False
         self._model_type = 'image'
         self._raw_data = None
+        self._segmentation = None
         # still needs timezone information!!
         self.created = datetime.datetime.now().strftime(
             '%Y-%m-%dT%H:%M:%S.%f+00:00')
@@ -214,7 +215,10 @@ class Image(object):
         clear_raw_data:bool = True,
         clear_data:bool = True,
         clear_superpixels:bool = True,
-        deref_dataset:bool = False):
+        clear_segmentation:bool = True,
+        deref_dataset:bool = False,
+        deref_segmentation:bool = False,
+        ):
         if deref_dataset:
             self._dataset = None
         if clear_raw_data:
@@ -229,6 +233,11 @@ class Image(object):
                 'shp': (0, 0),
                 'spd': None,
             }
+        if clear_segmentation:
+            if self._segmentation:
+                self._segmentation.clear_data(deref_image=deref_segmentation)
+        if deref_segmentation:
+            self._segmentation = None
 
     # load image data
     def load_image_data(self, keep_raw_data:bool = False):
@@ -282,6 +291,20 @@ class Image(object):
                             image_file.write(image_raw)
             except Exception as e:
                 warnings.warn('Error loading image data: ' + str(e))
+
+    # load segmentation
+    def load_segmentation(self):
+        if not self._api:
+            return
+        try:
+            if self._segmentation:
+                seg_obj = self._segmentation
+            else:
+                seg_obj = self._api.segmentation(self.id)
+                self._segmentation = seg_obj
+        except:
+            return
+        seg_obj.load_mask_data()
 
     # load image superpixels
     def load_superpixels(self, map_superpixels:bool = False):
@@ -373,6 +396,62 @@ class Image(object):
             self.superpixels['map'] = superpixel_map(pixel_img)
         except Exception as e:
             warnings.warn('Error mapping superpixels: ' + str(e))
+
+    # create a meta-information dict with all kinds of information
+    def meta_info(self,
+        data_info:bool = True,
+        metadata_info:bool = True,
+        segmentation_info:bool = True,
+        superpixel_info:bool = True,
+        ) -> dict:
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        import numpy
+        from .imfunc import segmentation_outline
+
+        if not self._api:
+            warnings.warn('Full results only available with API connection.')
+        info = dict()
+        info['_id'] = self.id
+        info['name'] = self.name
+        info['dataset'] = self.dataset
+        if data_info:
+            self.load_image_data()
+            info['image'] = dict()
+            image_data = self.data
+            imshape = image_data.shape
+            r = int(numpy.mean(image_data[:,:,0]))
+            g = int(numpy.mean(image_data[:,:,1]))
+            b = int(numpy.mean(image_data[:,:,2]))
+            info['image']['height'] = int(imshape[0])
+            info['image']['width'] = int(imshape[1])
+            info['image']['num_pixels'] = int(imshape[0] * imshape[1])
+            info['image']['RGB_average'] = [r, g, b]
+        if metadata_info:
+            info['meta'] = self.meta
+        if segmentation_info:
+            self.load_segmentation()
+            info['segmentation'] = dict()
+            seg_mask = (self._segmentation.mask > 0)
+            info['segmentation']['pixels_in_mask'] = int(numpy.sum(seg_mask))
+            info['segmentation']['osvgp_mask'] = segmentation_outline(seg_mask,
+                negative=False)
+            info['segmentation']['osvgp_hole'] = segmentation_outline(seg_mask,
+                negative=True)
+            sp_in_mask = self._segmentation.superpixels_in_mask()
+        else:
+            sp_in_mask = None
+        if superpixel_info:
+            self.load_superpixels()
+            self.map_superpixels()
+            info['superpixels'] = dict()
+            info['superpixels']['number'] = int(self.superpixels['max']) + 1
+            info['superpixels']['cjson'] = self.superpixel_outlines('cjson')
+            info['superpixels']['osvgp'] = self.superpixel_outlines('osvgp')
+            if not sp_in_mask is None:
+                info['superpixels']['sp_in_mask'] = sp_in_mask
+        self.clear_data()
+        return info
 
     # POST metadata for an image to the image/{id}/metadata endpoint
     def post_metadata(self,
