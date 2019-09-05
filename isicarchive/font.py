@@ -3,7 +3,29 @@ isicarchive.font (Font)
 
 This module provides the Font helper class and doesn't have to be
 imported from outside the main package functionality (IsicApi).
+
+To instantiate a Font object, simply call it with the font name:
+
+>>> font = isicarchive.font.Font('calibri')
+
+At this time, only calibri is available as a font file!
+
+The format is similar to that used by
+https://github.com/neuroelf/neuroelf-matlab/
+in the image_font function of the @neuroelf class. It uses an
+image with all available extended ASCII characters, and computes
+a kerning value between all combinations of letters for the type
+setting.
+
+To then create an image with a set text, you can call either the
+```font.set_line(TEXT)``` method for a one-channel uint8 image,
+or the ```font.set_text(TEXT, ...)``` method for an RGB and alpha
+image with additional options.
 """
+
+# in large parts, code was translated from
+# https://github.com/neuroelf/neuroelf-matlab/blob/master/%40neuroelf/private/image_font.m
+
 
 # specific version for file
 __version__ = '0.4.8'
@@ -11,8 +33,7 @@ __version__ = '0.4.8'
 
 # imports (needed for majority of functions)
 import os
-from typing import Any, List, Optional, Tuple, Union
-import warnings
+from typing import Tuple, Union
 
 from imageio import imread
 import numpy
@@ -23,7 +44,7 @@ class Font(object):
     Font
     """
 
-
+    __fonts = {}
     def __init__(self, fontname:str):
 
         # setup object
@@ -32,7 +53,6 @@ class Font(object):
         self._letters = None
         self._lmap = 0 - numpy.ones(1024, dtype=numpy.int32)
         self._num_letters = 0
-        self._sampler = None
         self._size = 0
         self._xktab = None
         self._xstart = None
@@ -51,6 +71,20 @@ class Font(object):
             self.name = fontname
         else:
             self.name = 'calibri'
+        if self.name in self.__fonts:
+            f = self.__fonts[self.name]
+            self._image = f['image']
+            self._kerning = f['kerning']
+            self._letters = f['letters']
+            self._lmap = f['lmap']
+            self._num_letters = f['num_letters']
+            self._size = f['size']
+            self._xktab = f['xktab']
+            self._xstart = f['xstart']
+            self._xstop = f['xstop']
+            self._ybase = f['ybase']
+            self._yret = f['yret']
+            return
 
         # load font file and set in object
         fontfile = fontfolder + 'font_' + self.name + '.npz'
@@ -71,6 +105,19 @@ class Font(object):
             self._xktab[d0-1,d1-1] = v
         self._yret = self._size - self._image.shape[0]
         self._add_kerning()
+        self.__fonts[self.name] = {
+            'image': self._image,
+            'kerning': self._kerning,
+            'letters': self._letters,
+            'lmap': self._lmap,
+            'num_letters': self._num_letters,
+            'size': self._size,
+            'xktab': self._xktab,
+            'xstart': self._xstart,
+            'xstop': self._xstop,
+            'ybase': self._ybase,
+            'yret': self._yret,
+        }
         
     def __repr__(self):
         return 'isicarchive.font.Font(\'' + self.name + '\')'
@@ -151,10 +198,8 @@ class Font(object):
         ) -> numpy.ndarray:
 
         # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
-        from .jitfunc import conv_kernel
-        from .sampler import Sampler, _sample_grid_2d
-        if self._sampler is None:
-            self._sampler = Sampler()
+        from .sampler import Sampler
+        sampler = Sampler()
 
         if isinstance(line, str):
             line = [line]
@@ -163,7 +208,7 @@ class Font(object):
         out = [None] * len(line)
         if fsize < 1.0:
             raise ValueError('Invalid fsize parameter.')
-        ffact = numpy.float(self._size) / fsize
+        ffact = fsize / numpy.float(self._size)
         ifsize = self._image.shape
         for lc in range(len(line)):
             letters = [ord(l) for l in line[lc]]
@@ -200,21 +245,7 @@ class Font(object):
             
             # resize
             if ffact != 1.0:
-                s0 = numpy.arange(ffact-1.0, float(ifsize[0])-0.5, ffact)
-                s1 = numpy.arange(ffact-1.0, float(xstot)-0.5, ffact)
-                k = self._sampler._kernels['cubic']
-                sk = conv_kernel(ffact * float(k[1])).astype(numpy.float64)
-                skl = sk.size
-                skr = (skl - 1) // (2 * k[1])
-                skr = 2 * k[1] * skr + 1
-                skd = (skl - skr) // 2
-                sk = sk[skd:skr+skd]
-                sk = sk / numpy.sum(sk)
-                ksk = numpy.convolve(k[0], sk)
-                while numpy.sum(ksk[0:k[1]]) < 0.01:
-                    ksk = ksk[k[1]:-k[1]]
-                lineimage = numpy.minimum(numpy.maximum(
-                    _sample_grid_2d(lineimage, s0, s1, ksk, k[1]), 0.0), 255.0).astype(numpy.uint8)
+                lineimage = sampler.sample_grid(lineimage, ffact, 'resample', 'uint8')
 
             # store
             out[lc] = lineimage
@@ -326,9 +357,10 @@ class Font(object):
         # resize total if needed
         if ima.shape[0] > outsize_y or ima.shape[1] > outsize_x:
             o_shape = (outsize_y, outsize_x)
-            from .imfunc import image_resample
-            ima = image_resample(ima, o_shape)
-            im = image_resample(im, o_shape)
+            from .sampler import Sampler
+            sampler = Sampler()
+            ima = sampler.sample_grid(ima, o_shape, 'resample', 'float32')
+            im = sampler.sample_grid(im, o_shape, 'resample', 'uint8')
         
         # return
         return (im, ima)

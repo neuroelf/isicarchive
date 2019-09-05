@@ -394,7 +394,6 @@ class IsicApi(object):
         self._image_cache_last = '0' * 24
         self._image_cache_timeout = 0.0
         self._image_objs = dict()
-        self._sampler = None
         self._segmentation_objs = dict()
         self._store_objs = store_objs
         self._studies = dict()
@@ -1402,43 +1401,18 @@ class IsicApi(object):
 
         # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
         import numpy
-        from .jitfunc import conv_kernel
-        from .sampler import Sampler, _sample_grid_2d
-        if self._sampler is None:
-            self._sampler = Sampler()
+        from .sampler import Sampler
+        sampler = Sampler()
         if not isinstance(image_data, numpy.ndarray):
             raise ValueError('Invalid image_data.')
-
-        imshape = image_data.shape
-        f0 = float(imshape[0]) / float(new_size[0])
-        f1 = float(imshape[1]) / float(new_size[1])
-        f01 = numpy.sqrt(f0 * f1)
-        k = self._sampler._kernels['cubic']
-        sk = conv_kernel(f01 * float(k[1])).astype(numpy.float64)
-        skl = sk.size
-        skr = (skl - 1) // (2 * k[1])
-        skr = 2 * k[1] * skr + 1
-        skd = (skl - skr) // 2
-        sk = sk[skd:skr+skd]
-        sk = sk / numpy.sum(sk)
-        ksk = numpy.convolve(k[0], sk)
-        while numpy.sum(ksk[0:k[1]]) < 0.01:
-            ksk = ksk[k[1]:-k[1]]
-        r0 = numpy.arange(f0-1.0, float(imshape[0])-0.5, f0)
-        r1 = numpy.arange(f1-1.0, float(imshape[1])-0.5, f1)
-        if len(imshape) == 2:
-            new_data = _sample_grid_2d(image_data, r0, r1, ksk, k[1])
-        else:
-            new_data = _sample_grid_2d(image_data[:,:,0].reshape((imshape[0], imshape[1],)),
-                r0, r1, ksk, k[1])
-            new_data = numpy.repeat(new_data.reshape((new_data.shape[0], new_data.shape[1], 1,)),
-                imshape[2], axis=2)
-            for p in range(1, image_data.shape[2]):
-                new_data[:,:,p] = _sample_grid_2d(image_data[:,:,p].reshape(
-                    (imshape[0], imshape[1],)), r0, r1, ksk, k[1])
+        if not isinstance(new_size, tuple) or len(new_size) != 2 or (
+            not isinstance(new_size[0], int) or not isinstance(new_size[1], int)):
+            raise ValueError('Invalid size tuple.')
         if image_data.dtype == numpy.uint8:
-            new_data = numpy.minimum(numpy.maximum(new_data, 0.0), 255.0).astype(numpy.uint8)
-        return new_data
+            out_type = 'uint8'
+        else:
+            out_type = 'float32'
+        return sampler.sample_grid(image_data, new_size, 'resample', out_type)
 
     # segmentation endpoint
     def segmentation(self,
@@ -1840,3 +1814,41 @@ class IsicApi(object):
                 yield Study(from_json=study, api=self)
             else:
                 yield study
+
+    # write out image (pass through)
+    def write_image(self,
+        image:Any,
+        out:str,
+        imformat:str = None,
+        imshape:Tuple = None,
+        jpg_quality:int = 90,
+        ) -> Union[bool, bytes]:
+        """
+        Writes an image (data array) to file or buffer (return value)
+        
+        See imfunc.write_image
+
+        Parameters
+        ----------
+        image : numpy.ndarray
+            Image data (HxWxplanes)
+        out : str
+            Output filename or 'buffer' (in that case returns the content)
+        imformat : str
+            Image format (only necessary if out == 'buffer')
+        imshape : Tuple
+            Image data shape (if given, will attempt to set prior to writing)
+        
+        Returns
+        -------
+        result : either bool or bytes
+            For actual filenames returns True if write was successful, for
+            out == 'buffer' returns the resulting byte stream
+        """
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from .imfunc import write_image as im_write_image
+        try:
+            return im_write_image(image, out, imformat, imshape, jpg_quality)
+        except:
+            raise
