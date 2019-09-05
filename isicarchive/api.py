@@ -1014,7 +1014,7 @@ class IsicApi(object):
             from_selection = self.image_selection
         if isinstance(from_selection, list):
             old_selection = self.image_selection
-            full_selection = self.select_images([[]])
+            full_selection = self.select_images([])
             self.image_selection = old_selection
             full_names = dict()
             for (image_id, item) in full_selection.items():
@@ -1600,6 +1600,21 @@ class IsicApi(object):
                 self.image_selection.pop(image_id, None)
         return self.image_selection
 
+    # all metadata of selected images (ready for pandas.DataFrame.from_dict)
+    def selected_metadata(self) -> dict:
+        if self.image_selection is None:
+            self.select_images([])
+        od = dict()
+        sel_images = [v for v in self.image_selection.values()]
+        od['image_id'] = [v['_id'] for v in sel_images]
+        od['image_name'] = [v['name'] for v in sel_images]
+        od['image_created'] = [v['created'] for v in sel_images]
+        od['dataset_name'] = [v['dataset']['name'] for v in sel_images]
+        meta_keys = func.getxkeys(func.getxattr(sel_images, '[].meta'))
+        for k in meta_keys:
+            od[k] = func.getxattr(sel_images, '[].meta.' + k)
+        return od
+
     # defaults (set)
     def set_default(self,
         name:str,
@@ -1624,6 +1639,7 @@ class IsicApi(object):
         padding:int = 12,
         color:list = [224,224,224],
         bcolor:list = [32,32,32],
+        align:str = 'left',
         invert:bool = False,
         fcolor:list = [0, 0, 0],
         fwidth:int = 2,
@@ -1663,7 +1679,8 @@ class IsicApi(object):
         else:
             fsize = float(fsize)
         [inset_image, inset_alpha] = font_obj.set_text(text, fsize,
-            color, bcolor, invert, 0, 0, padding)
+            color=color, bcolor=bcolor, align=align, invert=invert,
+            outsize_x=0, outsize_y=0, padding=padding)
         mix_image = numpy.zeros(inset_image.size, dtype=numpy.uint8).reshape(
             inset_image.shape)
         mix_image[:,:,0] = bcolor[0]
@@ -1721,6 +1738,22 @@ class IsicApi(object):
 
         return [tfromy, tfromx, ttoy, ttox]
     
+    # show image in notebook
+    def show_image_in_notebook(self,
+        image_data:Any,
+        max_size:int = None,
+        library:str = 'matplotlib',
+        call_display:bool = True,
+        ) -> object:
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from .imfunc import display_image
+        try:
+            return display_image(image_data, max_size=max_size,
+                ipython_as_object=(not call_display), library=library)
+        except Exception as e:
+            warnings.warn('show_in_notebook(...) failed: ' + str(e))
+
     # study endpoint
     def study(self,
         object_id:str = None,

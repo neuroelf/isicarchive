@@ -212,6 +212,31 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
         pass
     return val
 
+# get dicts keys *and* sub-keys, etc
+def getxkeys(o:dict, sk:str = '') -> list:
+    if isinstance(o, list):
+        oks = dict()
+        for so in o:
+            sks = getxkeys(so)
+            for sk in sks:
+                oks[sk] = True
+        return sorted([k for k in oks])
+    elif not isinstance(o, dict):
+        return []
+    ok = [k for k in o.keys()]
+    out = []
+    for k in ok:
+        if sk:
+            ksk = sk + '.' + k
+        else:
+            ksk = k
+        so = o[k]
+        if isinstance(so, dict):
+            out.extend(getxkeys(so, ksk))
+        else:
+            out.append(ksk)
+    return out
+
 # guess environment
 def guess_environment() -> str:
     """

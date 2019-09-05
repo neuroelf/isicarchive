@@ -257,6 +257,7 @@ class Font(object):
         fsize:float = 24.0,
         color:list = [0, 0, 0],
         bcolor:list = [255, 255, 255],
+        align:str = 'left',
         invert:bool = False,
         outsize_x:int = 0,
         outsize_y:int = 0,
@@ -331,8 +332,9 @@ class Font(object):
             else:
                 ima = numpy.zeros(fstot0 * fstot1,
                     dtype=numpy.float32).reshape((fstot0, fstot1,))
-        im = numpy.zeros(ima.shape[0] * ima.shape[1] * 3,
-            dtype=numpy.uint8).reshape((ima.shape[0], ima.shape[1], 3,))
+        imash = ima.shape
+        im = numpy.zeros(imash[0] * imash[1] * 3,
+            dtype=numpy.uint8).reshape((imash[0], imash[1], 3,))
         for pc in range(3):
             im[:,:,pc] = bcolor[pc]
 
@@ -345,17 +347,25 @@ class Font(object):
             if invert:
                 lim = 1.0 - lim
             tsize = lim.shape[1]
-            ima[yfrom:yfrom+fsize0[lc], xpad:xpad+tsize] = lim
+            if align == 'left':
+                xfrom = xpad
+            else:
+                xleft = imash[1] - 2 * xpad
+                if align == 'right':
+                    xfrom = xpad + xleft - tsize
+                else:
+                    xfrom = xpad + ((xleft - tsize) // 2)
+            ima[yfrom:yfrom+fsize0[lc], xfrom:xfrom+tsize] = lim
             lim = (lim > 0.0).astype(numpy.float32)
             for pc in range(3):
-                cim = im[yfrom:yfrom+fsize0[lc], xpad:xpad+tsize, pc]
-                im[yfrom:yfrom+fsize0[lc], xpad:xpad+tsize, pc] = numpy.trunc(
+                cim = im[yfrom:yfrom+fsize0[lc], xfrom:xfrom+tsize, pc]
+                im[yfrom:yfrom+fsize0[lc], xfrom:xfrom+tsize, pc] = numpy.trunc(
                     0.5 + (1.0 - lim) * cim.astype(numpy.float32) +
                     numpy.float(color[pc]) * lim).astype(numpy.uint8)
             yfrom = yfrom + fsize0[lc]
         
         # resize total if needed
-        if ima.shape[0] > outsize_y or ima.shape[1] > outsize_x:
+        if imash[0] > outsize_y or imash[1] > outsize_x:
             o_shape = (outsize_y, outsize_x)
             from .sampler import Sampler
             sampler = Sampler()
