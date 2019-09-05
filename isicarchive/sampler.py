@@ -17,11 +17,11 @@ from numba import float64, int64, jit, prange
 import numpy
 
 # sample grid
-# @jit([
-#     'f8[:,:](f8[:,:],f8[:],f8[:],f8[:],f8)',
-#     'f8[:,:](f4[:,:],f8[:],f8[:],f8[:],f8)',
-#     'f8[:,:](u1[:,:],f8[:],f8[:],f8[:],f8)',
-#     ], nopython=True)
+@jit([
+    'f8[:,:](f8[:,:],f8[:],f8[:],f8[:],f8)',
+    'f8[:,:](f4[:,:],f8[:],f8[:],f8[:],f8)',
+    'f8[:,:](u1[:,:],f8[:],f8[:],f8[:],f8)',
+    ], nopython=True)
 def _sample_grid_2d(
     a:numpy.ndarray,
     c0:numpy.ndarray,
@@ -56,7 +56,7 @@ def _sample_grid_2d(
         for ri in range(c0b-ikl, c0b+ikl+1):
             if ri < 0 or ri >= as0:
                 continue
-            wi = mks + (ri-c0b) * ks - int(c0o * fks)
+            wi = int(mks + (ri-c0b) * ks - int(c0o * fks))
             if wi > 0 and wi < nk:
                 kwi = k[wi]
                 row += kwi * a[ri, mn1:mx1].astype(numpy.float64)
@@ -64,7 +64,7 @@ def _sample_grid_2d(
         if rw == 0.0:
             rw = 1.0
         row /= rw
-        row.shape = (l1,)
+        ascol = row.reshape(l1,)
         for i1 in range(nc1):
             c1c = c1[i1]
             c1b = int(c1c + 0.5 - mn1)
@@ -74,10 +74,10 @@ def _sample_grid_2d(
             for ci in range(c1b-ikl, c1b+ikl+1):
                 if ci < 0 or ci >= l1:
                     continue
-                cwi = mks + (ci-c1b) * ks - int(c1o * fks)
+                cwi = int(mks + (ci-c1b) * ks - int(c1o * fks))
                 if cwi > 0 and cwi < nk:
                     kwi = k[cwi]
-                    val += kwi * row[ci]
+                    val += kwi * ascol[ci]
                     vw += kwi
             if vw == 0.0:
                 vw = 1.0

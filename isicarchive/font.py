@@ -17,8 +17,6 @@ import warnings
 from imageio import imread
 import numpy
 
-from .imfunc import image_resample
-
 
 class Font(object):
     """
@@ -34,6 +32,7 @@ class Font(object):
         self._letters = None
         self._lmap = 0 - numpy.ones(1024, dtype=numpy.int32)
         self._num_letters = 0
+        self._sampler = None
         self._size = 0
         self._xktab = None
         self._xstart = None
@@ -150,6 +149,13 @@ class Font(object):
         spkern:int = 0,
         xkern:int = 0,
         ) -> numpy.ndarray:
+
+        # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
+        from .jitfunc import conv_kernel
+        from .sampler import Sampler, _sample_grid_2d
+        if self._sampler is None:
+            self._sampler = Sampler()
+
         if isinstance(line, str):
             line = [line]
         elif not isinstance(line, list):
@@ -157,7 +163,7 @@ class Font(object):
         out = [None] * len(line)
         if fsize < 1.0:
             raise ValueError('Invalid fsize parameter.')
-        ffact = fsize / numpy.float(self._size)
+        ffact = numpy.float(self._size) / fsize
         ifsize = self._image.shape
         for lc in range(len(line)):
             letters = [ord(l) for l in line[lc]]
@@ -194,8 +200,21 @@ class Font(object):
             
             # resize
             if ffact != 1.0:
-                newsize = (int(ffact * ifsize[0]), int(ffact * xstot))
-                lineimage = image_resample(lineimage, newsize)
+                s0 = numpy.arange(ffact-1.0, float(ifsize[0])-0.5, ffact)
+                s1 = numpy.arange(ffact-1.0, float(xstot)-0.5, ffact)
+                k = self._sampler._kernels['cubic']
+                sk = conv_kernel(ffact * float(k[1])).astype(numpy.float64)
+                skl = sk.size
+                skr = (skl - 1) // (2 * k[1])
+                skr = 2 * k[1] * skr + 1
+                skd = (skl - skr) // 2
+                sk = sk[skd:skr+skd]
+                sk = sk / numpy.sum(sk)
+                ksk = numpy.convolve(k[0], sk)
+                while numpy.sum(ksk[0:k[1]]) < 0.01:
+                    ksk = ksk[k[1]:-k[1]]
+                lineimage = numpy.minimum(numpy.maximum(
+                    _sample_grid_2d(lineimage, s0, s1, ksk, k[1]), 0.0), 255.0).astype(numpy.uint8)
 
             # store
             out[lc] = lineimage
@@ -307,6 +326,7 @@ class Font(object):
         # resize total if needed
         if ima.shape[0] > outsize_y or ima.shape[1] > outsize_x:
             o_shape = (outsize_y, outsize_x)
+            from .imfunc import image_resample
             ima = image_resample(ima, o_shape)
             im = image_resample(im, o_shape)
         

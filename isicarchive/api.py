@@ -394,6 +394,7 @@ class IsicApi(object):
         self._image_cache_last = '0' * 24
         self._image_cache_timeout = 0.0
         self._image_objs = dict()
+        self._sampler = None
         self._segmentation_objs = dict()
         self._store_objs = store_objs
         self._studies = dict()
@@ -1392,6 +1393,52 @@ class IsicApi(object):
         except:
             warnings.warn('Error retrieving information from ' + endpoint)
         return None
+
+    # resample image
+    def resample_image(self,
+        image_data:Any,
+        new_size:Tuple[int, int],
+        ) -> Any:
+
+        # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
+        import numpy
+        from .jitfunc import conv_kernel
+        from .sampler import Sampler, _sample_grid_2d
+        if self._sampler is None:
+            self._sampler = Sampler()
+        if not isinstance(image_data, numpy.ndarray):
+            raise ValueError('Invalid image_data.')
+
+        imshape = image_data.shape
+        f0 = float(imshape[0]) / float(new_size[0])
+        f1 = float(imshape[1]) / float(new_size[1])
+        f01 = numpy.sqrt(f0 * f1)
+        k = self._sampler._kernels['cubic']
+        sk = conv_kernel(f01 * float(k[1])).astype(numpy.float64)
+        skl = sk.size
+        skr = (skl - 1) // (2 * k[1])
+        skr = 2 * k[1] * skr + 1
+        skd = (skl - skr) // 2
+        sk = sk[skd:skr+skd]
+        sk = sk / numpy.sum(sk)
+        ksk = numpy.convolve(k[0], sk)
+        while numpy.sum(ksk[0:k[1]]) < 0.01:
+            ksk = ksk[k[1]:-k[1]]
+        r0 = numpy.arange(f0-1.0, float(imshape[0])-0.5, f0)
+        r1 = numpy.arange(f1-1.0, float(imshape[1])-0.5, f1)
+        if len(imshape) == 2:
+            new_data = _sample_grid_2d(image_data, r0, r1, ksk, k[1])
+        else:
+            new_data = _sample_grid_2d(image_data[:,:,0].reshape((imshape[0], imshape[1],)),
+                r0, r1, ksk, k[1])
+            new_data = numpy.repeat(new_data.reshape((new_data.shape[0], new_data.shape[1], 1,)),
+                imshape[2], axis=2)
+            for p in range(1, image_data.shape[2]):
+                new_data[:,:,p] = _sample_grid_2d(image_data[:,:,p].reshape(
+                    (imshape[0], imshape[1],)), r0, r1, ksk, k[1])
+        if image_data.dtype == numpy.uint8:
+            new_data = numpy.minimum(numpy.maximum(new_data, 0.0), 255.0).astype(numpy.uint8)
+        return new_data
 
     # segmentation endpoint
     def segmentation(self,
