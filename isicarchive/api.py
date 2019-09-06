@@ -400,6 +400,7 @@ class IsicApi(object):
         self._studies = dict()
         self._study_objs = dict()
         self._temp_file = None
+        self._user_short = None
         self.datasets = dict()
         self.image_cache = dict()
         self.image_segmentations = dict()
@@ -426,7 +427,6 @@ class IsicApi(object):
 
         # Login required
         if username is not None:
-            self.username = username
 
             # And get the password using getpass
             if password is None:
@@ -450,8 +450,12 @@ class IsicApi(object):
 
                     password = getpass.getpass('Password for "%s":' % (username))
 
-            # Login
+            # Login (and set username if successful!)
             self._auth_token = _get_auth_token(self._base_url, username, password)
+            if not self._auth_token is None:
+                self.username = username
+                user_short = username.split('@')
+                self._user_short = user_short[0]
 
             # if login succeeded, collect meta information histogram
             if self._auth_token and load_meta_hist:
@@ -628,6 +632,7 @@ class IsicApi(object):
         otype:str = None,
         oext:str = None,
         extra:str = None,
+        is_auth:bool = None,
         ) -> str:
         """
         Creates a filename out of an object (type, id, ext).
@@ -664,6 +669,13 @@ class IsicApi(object):
             extra = '_' + extra
         else:
             extra = ''
+        if is_auth is None:
+            if oext in ['.json.gz']:
+                is_auth = True
+            else:
+                is_auth = False
+        if is_auth:
+            extra += '_' + self._user_short
         
         # concatenate items
         return (self._cache_folder +
@@ -1394,6 +1406,19 @@ class IsicApi(object):
             warnings.warn('Error retrieving information from ' + endpoint)
         return None
 
+    # read CSV (pass through)
+    def read_csv(self,
+        csv_filename:str,
+        out_format:str = 'dict_of_lists',
+        parse_lists:bool = True,
+        pack_keys:bool = True,
+        ) -> Any:
+        try:
+            return func.read_csv(csv_filename, out_format=out_format,
+                parse_lists=parse_lists, pack_keys=pack_keys)
+        except:
+            raise
+
     # resample image
     def resample_image(self,
         image_data:Any,
@@ -1850,13 +1875,24 @@ class IsicApi(object):
                 yield study
 
     # write a CSV file
-    def write_csv(self,
-        content:Any,
-        csv_filename:str):
-        try:
-            func.write_csv(content, csv_filename)
-        except Exception as e:
-            warnings.warn('Error writing CSV: ' + str(e))
+    def write_csv(self, csv_filename:str, content:Any):
+        if isinstance(content, str):
+            try:
+                csv_content = func.getxattr(self, content)
+            except:
+                raise ValueError('Unknown field: ' + content)
+            if (not isinstance(csv_content, list) and
+                not isinstance(csv_content, dict)):
+                raise RuntimeError('Not a valid field to write: ' + content)
+            try:
+                func.write_csv(csv_filename, csv_content)
+            except Exception as e:
+                warnings.warn('Error writing CSV: ' + str(e))
+        else:
+            try:
+                func.write_csv(csv_filename, content)
+            except Exception as e:
+                warnings.warn('Error writing CSV: ' + str(e))
 
     # write out image (pass through)
     def write_image(self,

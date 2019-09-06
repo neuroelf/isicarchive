@@ -64,6 +64,24 @@ def could_be_mongo_object_id(test_id:str = "") -> bool:
     return (len(test_id) == 24
             and all([letter in '0123456789abcdef' for letter in test_id]))
 
+# delete key from a tree-structured object
+def delxattr(obj:object, name:str = None):
+    if not isinstance(name, str) or name == '':
+        return
+    if not '.' in name:
+        if not isinstance(obj, dict):
+            return
+        obj.pop(name, None)
+    nl = name.split('.')
+    while len(nl) > 1:
+        obj = getxattr(obj, nl.pop(0))
+        if obj is None:
+            return
+    if not isinstance(obj, dict):
+        return
+    obj.pop(nl[0], None)
+
+# retrieve value from a tree-structured object
 def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
     """
     Get attribute or key-based value from object
@@ -443,6 +461,22 @@ def object_pretty(
         else:
             raise ValueError('Invalid list of fields.')
 
+# pack values
+def pack_vals(l:list, sep:str = ',') -> str:
+    lv = [v for v in l]
+    for (idx, v) in enumerate(lv):
+        if v is None:
+            lv[idx] = ''
+            continue
+        try:
+            if isinstance(v, str):
+                lv[idx] = '"' + v + '"'
+            else:
+                lv[idx] = repr(v)
+        except:
+            lv[idx] = repr(type(v))
+    return sep.join(lv)
+
 # progress bar (text)
 _progress_bar_widget = None
 def print_progress(
@@ -531,6 +565,125 @@ def rand_hex_str(str_len:int = 2) -> str:
         str_len -= 6
     s += ('{0:0' + str(str_len) + 'x}').format(random.randrange(16 ** str_len))
     return s
+
+# read CSV (cheap!!)
+def read_csv(
+    csv_filename:str,
+    sep:str = ',',
+    headers:Union[bool,list] = True,
+    out_format:str = 'dict_of_lists',
+    parse_lists:bool = False,
+    pack_keys:bool = False,
+    ) -> dict:
+    if parse_lists:
+        import json
+    try:
+        with open(csv_filename, 'r') as csv_file:
+            csv_lines = [line.strip() for line in csv_file.readlines()]
+    except:
+        raise
+    if headers is True:
+        headers = csv_lines.pop(0)
+        headers = headers.split(sep)
+    if not isinstance(headers, list):
+        raise ValueError('Invalid headers.')
+    od = dict()
+    num_lines = len(csv_lines)
+    for h in headers:
+        od[h] = [None] * num_lines
+    for (idx, line) in enumerate(csv_lines):
+        values = line.split(sep)
+        for (h, v) in zip(headers, values):
+            if v == '':
+                continue
+            try:
+                nv = float(v)
+                if not '.' in v:
+                    nv = int(nv)
+                v = nv
+            except:
+                if v == 'False':
+                    v = False
+                elif v == 'True':
+                    v = True
+                elif len(v) > 1 and v[0] == '"' and v[-1] == '"':
+                    v = v[1:-1]
+                elif parse_lists and len(v) > 1 and v[0] == '[' and v[-1] == ']':
+                    try:
+                        nv = json.loads(v)
+                        if isinstance(nv, list):
+                            v = nv
+                    except:
+                        pass
+            od[h][idx] = v
+    if pack_keys and '_dicts' in out_format:
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        import copy
+
+        hd = dict()
+        for h in headers:
+            if not '.' in h:
+                hd[h] = dict()
+            else:
+                hks = h.split('.')
+                td = hd
+                while hks[0] in td:
+                    td = td[hks[0]]
+                    hks.pop(0)
+                while len(hks) > 0:
+                    td[hks[0]] = dict()
+                    td = td[hks[0]]
+                    hks.pop(0)
+        ol = dict()
+        for h in hd.keys():
+            if h in headers:
+                ol[h] = od[h]
+            else:
+                ol[h] = [None] * num_lines
+        for idx in range(num_lines):
+            for h in hd.keys():
+                if not h in headers:
+                    ol[h][idx] = copy.deepcopy(hd[h])
+        for h in headers:
+            if not '.' in h:
+                continue
+            hks = h.split('.')
+            hmk = hks.pop(0)
+            hsk = '.'.join(hks)
+            for idx in range(num_lines):
+                v = od[h][idx]
+                if v is None:
+                    delxattr(ol[hmk][idx], hsk)
+                else:
+                    setxattr(ol[hmk][idx], hsk, v)
+        od = ol
+        headers = [k for k in od.keys()]
+    if out_format == 'list_of_dicts':
+        ol = [None] * num_lines
+        for idx in range(num_lines):
+            ol[idx] = {h: od[h][idx] for h in headers}
+        od = ol
+    elif out_format == 'dict_of_dicts':
+        if '_id' in headers:
+            idk = '_id'
+        else:
+            idk = None
+            for h in headers:
+                try:
+                    ts = set(od[h])
+                    if len(ts) == num_lines:
+                        idk = h
+                        break
+                except:
+                    pass
+            if idk is None:
+                raise RuntimeError('No suitable key column in data.')
+        ol = dict()
+        for idx in range(num_lines):
+            ol[od[idk][idx]] = {h: od[h][idx] for h in headers}
+        od = ol
+    return od
 
 # select from list
 def selected(item:object, criteria:list) -> bool:
@@ -659,6 +812,24 @@ def select_from(
         except:
             raise
 
+# set extended attribute
+def setxattr(o, k, v):
+    try:
+        k = k.split('.')
+        while len(k) > 1:
+            o = getxattr(o, k.pop(0))
+            if o is None:
+                return
+    except:
+        return
+    try:
+        if isinstance(o, dict):
+            o[k[0]] = v
+        else:
+            setattr(o, k[0], v)
+    except:
+        return
+
 # superpixel default colors
 def superpixel_colors(
     num_pix:int = 1536,
@@ -717,26 +888,63 @@ def superpixel_colors(
     return colors
 
 # write a CSV file
-def write_csv(content:Any, csv_filename:str):
+def write_csv(
+    csv_filename:str,
+    content:Any,
+    sep:str = ',',
+    headers:bool = True,
+    ):
     try:
-        with open(csv_filename, 'w') as csv_file:
-            try:
-                cl = len(content)
-            except:
-                raise ValueError('Content must allow len(content) call.')
-            if cl == 0:
+        cl = len(content)
+    except:
+        raise ValueError('Content must allow len(content) call.')
+    try:
+        if cl == 0:
+            with open(csv_filename, 'w') as csv_file:
                 csv_file.write('\n')
-                return
-            if isinstance(content, dict) and cl > 0:
+            return
+        if isinstance(content, dict):
+            ck = (k for k in content.keys())
+            cv = [v for v in content.values()]
+            ct = [t for t in map(type, cv)]
+            clist = [v for v in map(lambda x: x is list, ct)]
+            cdict = [v for v in map(lambda x: x is dict, ct)]
+            if all(clist):
+                delk = []
+                for (k, v) in zip(ck, cv):
+                    cnone = [tv for tv in map(lambda x: x is None, v)]
+                    if all(cnone):
+                        delk.append(k)
+                for k in delk:
+                    content.pop(k, None)
                 ck = (k for k in content.keys())
-                cv = [v for v in content.values()]
-                ct = [t for t in map(type, cv)]
-                clist = [v for v in map(lambda x: x is list, ct)]
-                cdict = [v for v in map(lambda x: x is dict, ct)]
-                if all(clist):
-                    csv_file.write((','.join(ck)) + '\n')
+                if delk:
+                    cv = [v for v in content.values()]
+                with open(csv_filename, 'w') as csv_file:
+                    csv_file.write((sep.join(ck)) + '\n')
                     for line in zip(*cv):
-                        csv_file.write((','.join(pack_vals(line))))
+                        csv_file.write(pack_vals(line, sep) + '\n')
+            elif all(cdict):
+                od = dict()
+                od['_id'] = [v['_id'] for v in cv]
+                meta_keys = getxkeys(cv)
+                for k in meta_keys:
+                    od[k] = getxattr(cv, '[].' + k)
+                write_csv(csv_filename, od)
+            else:
+                raise ValueError('Dict only supported with all list/dict fields.')
+        elif isinstance(content, list):
+            cv = [v for v in content]
+            ct = [t for t in map(type, cv)]
+            cdict = [v for v in map(lambda x: x is dict, ct)]
+            if all(cdict):
+                od = dict()
+                meta_keys = getxkeys(cv)
+                for k in meta_keys:
+                    od[k] = getxattr(cv, '[].' + k)
+                write_csv(csv_filename, od)
+            else:
+                raise ValueError('List only supported with all dict fields.')
     except:
         raise
 
