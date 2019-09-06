@@ -656,6 +656,7 @@ class Study(object):
                 func.print_progress(num_images, num_images, 'Error')
                 raise
         func.print_progress(num_images, num_images, 'Creating heatmaps:')
+        func.gzip_save_var(target_folder + 'heatmap_stats.json.gz', all_stats)
         return all_stats
 
     # image names

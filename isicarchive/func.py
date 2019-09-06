@@ -716,6 +716,30 @@ def superpixel_colors(
                     random.randrange(16777216))
     return colors
 
+# write a CSV file
+def write_csv(content:Any, csv_filename:str):
+    try:
+        with open(csv_filename, 'w') as csv_file:
+            try:
+                cl = len(content)
+            except:
+                raise ValueError('Content must allow len(content) call.')
+            if cl == 0:
+                csv_file.write('\n')
+                return
+            if isinstance(content, dict) and cl > 0:
+                ck = (k for k in content.keys())
+                cv = [v for v in content.values()]
+                ct = [t for t in map(type, cv)]
+                clist = [v for v in map(lambda x: x is list, ct)]
+                cdict = [v for v in map(lambda x: x is dict, ct)]
+                if all(clist):
+                    csv_file.write((','.join(ck)) + '\n')
+                    for line in zip(*cv):
+                        csv_file.write((','.join(pack_vals(line))))
+    except:
+        raise
+
 # URI encode
 _uri_tohex = ' !"#$%&\'()*+,/:;<=>?@[\\]^`{|}~'
 def uri_encode(uri:str) -> str:

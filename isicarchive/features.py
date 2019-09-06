@@ -23,12 +23,14 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Circles & Semicircles : NOS",
+        "abbreviation": "Circ:NOS",
         "color": [120,120,120],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Circles & Semicircles : Asymmetric follicular openings",
+        "abbreviation": "Circ:Asym.O.",
         "synonyms": [
             "Circles & Semicircles : Asymmetric follicular openings",
             "Facial Skin : Asymmetric follicular openings"
@@ -37,6 +39,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Circles & Semicircles : Brown",
+        "abbreviation": "Circ:Brown",
         "color": [184,136,112],
         "synonyms": [
             "Circles & Semicircles : Brown",
@@ -46,6 +49,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Circles & Semicircles : Circle within a circle",
+        "abbreviation": "Circ:C.w/iC.",
         "color": [160,128,120],
         "synonyms": [
             "Circles & Semicircles : Circle within a circle",
@@ -56,28 +60,33 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Circles & Semicircles : Fish scale (mucosal lesions)",
+        "abbreviation": "Circ:FishSc.",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Circles & Semicircles : Gray",
+        "abbreviation": "Circ:Gray",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Circles & Semicircles : White",
+        "abbreviation": "Circ:White",
         "color": [192,192,192],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Dots : NOS",
+        "abbreviation": "Dots:NOS",
         "color": [48,48,48],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Annular-granular pattern",
+        "abbreviation": "Dots:An-gran",
         "synonyms": [
             "Dots : Annular-granular pattern",
             "Facial Skin : Annular-granular pattern",
@@ -87,40 +96,47 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Black",
+        "abbreviation": "Dots:Black",
         "color": [48,40,24],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Blue-gray",
+        "abbreviation": "Dots:Bl-gray",
         "color": [8,64,128],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Brown",
+        "abbreviation": "Dots:Brown",
         "color": [76,48,40],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Granularity",
+        "abbreviation": "Dots:Granul.",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Irregular",
+        "abbreviation": "Dots:Irreg.",
         "color": [96,56,56],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Linear",
+        "abbreviation": "Dots:Linear",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Milia-like cysts",
+        "abbreviation": "Dots:MiliaC.",
         "synonyms": [
             "Globules / Clods : Milia-like cysts",
             "Dots : Milia-like cysts",
@@ -130,6 +146,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Peppering",
+        "abbreviation": "Dots:Pepper.",
         "synonyms": [
             "Dots : Peppering",
             "Regression structures : Peppering / Granularity"
@@ -138,12 +155,14 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Regular",
+        "abbreviation": "Dots:Regular",
         "color": [72,48,48],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Rosettes",
+        "abbreviation": "Dots:Rosette",
         "synonyms": [
             "Dots : Rosettes",
             "Shiny white structures : Rosettes"
@@ -152,16 +171,19 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Targetoid",
+        "abbreviation": "Dots:Target.",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Dots : Yellow",
+        "abbreviation": "Dots:Yellow",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Facial Skin : Annular-granular pattern",
+        "abbreviation": "Face:An-gran",
         "synonyms": [
             "Dots : Annular-granular pattern",
             "Facial Skin : Annular-granular pattern",
@@ -171,6 +193,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Facial Skin : Asymmetric follicular openings",
+        "abbreviation": "Face:Asym.O.",
         "synonyms": [
             "Circles & Semicircles : Asymmetric follicular openings",
             "Facial Skin : Asymmetric follicular openings"
@@ -179,6 +202,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Facial Skin : Brown circles",
+        "abbreviation": "Face:BrownC.",
         "synonyms": [
             "Circles & Semicircles : Brown",
             "Facial Skin : Brown circles"
@@ -187,6 +211,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Facial Skin : Circle within a circle",
+        "abbreviation": "Face:C.w/iC.",
         "synonyms": [
             "Circles & Semicircles : Circle within a circle",
             "Facial Skin : Circle within a circle",
@@ -196,6 +221,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Facial Skin : Pseudonetwork",
+        "abbreviation": "Face:PseuNet",
         "synonyms": [
             "Structureless : Pseudonetwork",
             "Facial Skin : Pseudonetwork",
@@ -205,6 +231,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Facial Skin : Rhomboids / Zig-zag pattern",
+        "abbreviation": "Face:Rhb/Zig",
         "synonyms": [
             "Lines : Rhomboids (facial skin)",
             "Facial Skin : Rhomboids / Zig-zag pattern",
@@ -214,30 +241,35 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : NOS",
+        "abbreviation": "G/C.:NOS",
         "color": [128,96,48],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Blue",
+        "abbreviation": "G/C.:Blue",
         "color": [16,48,96],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Blue-gray ovoid nests",
+        "abbreviation": "G/C.:Bl-grON",
         "color": [32,56,112],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Cobblestone pattern",
+        "abbreviation": "G/C.:CobblS.",
         "color": [48,48,104],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Comedo-like openings",
+        "abbreviation": "G/C.:ComedoO",
         "color": [192,136,112],
         "synonyms": [
             "Globules / Clods : Comedo-like openings",
@@ -247,18 +279,21 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Concentric",
+        "abbreviation": "G/C.:Concent",
         "color": [184,120,88],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Irregular",
+        "abbreviation": "G/C.:Irreg.",
         "color": [144,64,120],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Lacunae : NOS",
+        "abbreviation": "G/C.:LacuNOS",
         "synonyms": [
             "Globules / Clods : Lacunae : NOS",
             "Miscellaneous : Lacunae : NOS"
@@ -267,6 +302,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Lacunae : Black",
+        "abbreviation": "G/C.:LacuBlk",
         "color": [56,56,16],
         "synonyms": [
             "Globules / Clods : Lacunae : Black",
@@ -276,6 +312,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Lacunae : Blue",
+        "abbreviation": "G/C.:LacuBlu",
         "synonyms": [
             "Globules / Clods : Lacunae : Blue",
             "Miscellaneous : Lacunae : Blue"
@@ -284,6 +321,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Lacunae : Red",
+        "abbreviation": "G/C.:LacuRed",
         "color": [144,24,16],
         "synonyms": [
             "Globules / Clods : Lacunae : Red",
@@ -293,6 +331,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Lacunae : Red-purple",
+        "abbreviation": "G/C.:LacuR-P",
         "color": [144,16,80],
         "synonyms": [
             "Globules / Clods : Lacunae : Red-purple",
@@ -302,6 +341,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Leaflike area",
+        "abbreviation": "G/C.:LeaflkA",
         "color": [72,48,64],
         "synonyms": [
             "Lines : Leaf like areas",
@@ -312,6 +352,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Milia-like cysts",
+        "abbreviation": "G/C.:MiliaC.",
         "color": [224,208,192],
         "synonyms": [
             "Globules / Clods : Milia-like cysts",
@@ -322,24 +363,28 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Milky red",
+        "abbreviation": "G/C.:MilkRed",
         "color": [240,160,120],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Regular",
+        "abbreviation": "G/C.:Regular",
         "color": [152,80,72],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Rim of brown globules",
+        "abbreviation": "G/C.:RimBrwn",
         "color": [184,112,96],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Shiny white blotches and strands",
+        "abbreviation": "G/C.:ShWhtB.",
         "color": [192,136,112],
         "synonyms": [
             "Globules / Clods : Shiny white blotches and strands",
@@ -349,6 +394,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Spoke wheel areas",
+        "abbreviation": "G/C.:SpkWhlA",
         "synonyms": [
             "Lines : Spoke wheel areas",
             "Globules / Clods : Spoke wheel areas",
@@ -358,22 +404,26 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : Variant of spoke wheel area",
+        "abbreviation": "G/C.:VarSpkW",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Globules / Clods : White",
+        "abbreviation": "G/C.:White",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Lines : NOS",
+        "abbreviation": "Line:NOS",
         "color": [40,40,64],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Angulated lines / Polygons / Zig-zag pattern",
+        "abbreviation": "Line:Ang/P/Z",
         "color": [96,32,32],
         "synonyms": [
             "Lines : Angulated lines / Polygons / Zig-zag pattern",
@@ -383,6 +433,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Atypical pigment network / Reticulation",
+        "abbreviation": "Line:AtypPNR",
         "synonyms": [
             "Lines : Atypical pigment network / Reticulation",
             "Network : Atypical pigment network / Reticulation"
@@ -391,11 +442,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Branched streaks",
+        "abbreviation": "Line:BranSt.",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Broadened pigment network / Reticulation",
+        "abbreviation": "Line:Brd.PNR",
         "synonyms": [
             "Lines : Broadened pigment network / Reticulation",
             "Network : Broadened pigment network / Reticulation"
@@ -404,6 +457,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Cerebriform pattern",
+        "abbreviation": "Line:CerebFP",
         "synonyms": [
             "Lines : Cerebriform pattern",
             "Pattern : Cerebriform"
@@ -412,6 +466,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Crypts",
+        "abbreviation": "Line:Crypts",
         "synonyms": [
             "Lines : Crypts",
             "Miscellaneous : Crypts"
@@ -420,6 +475,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Delicate pigment network / Reticulation",
+        "abbreviation": "Line:DeliPNR",
         "synonyms": [
             "Lines : Delicate pigment network / Reticulation",
             "Network : Delicate Pigment Network / Reticulation"
@@ -428,6 +484,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Fibrillar pattern",
+        "abbreviation": "Line:FibrilP",
         "synonyms": [
             "Lines : Fibrillar pattern",
             "Pattern : Fibrilar",
@@ -437,6 +494,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Fingerprint pattern",
+        "abbreviation": "Line:FingP.P",
         "synonyms": [
             "Lines : Fingerprint pattern",
             "Pattern : Fingerprint"
@@ -445,6 +503,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Leaf like areas",
+        "abbreviation": "Line:LeaflkA",
         "synonyms": [
             "Lines : Leaf like areas",
             "Globules / Clods : Leaflike area",
@@ -454,6 +513,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Negative pigment network",
+        "abbreviation": "Line:Neg.PN.",
         "synonyms": [
             "Lines : Negative pigment network",
             "Network : Negative pigment network"
@@ -462,6 +522,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Parallel furrows pattern (volar lesions)",
+        "abbreviation": "Line:ParFurP",
         "synonyms": [
             "Lines : Parallel furrows pattern (volar lesions)",
             "Pattern : Parallel furrow",
@@ -471,6 +532,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Parallel lines (volar lesions)",
+        "abbreviation": "Line:ParLine",
         "synonyms": [
             "Lines : Parallel lines (volar lesions)",
             "Pattern : Parallel ridge",
@@ -480,6 +542,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Parallel ridge pattern (volar lesions)",
+        "abbreviation": "Line:ParRidP",
         "synonyms": [
             "Lines : Parallel ridge pattern (volar lesions)",
             "Volar lesions : Parallel ridge pattern"
@@ -488,6 +551,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Pseudopods",
+        "abbreviation": "Line:PseuPd.",
         "synonyms": [
             "Lines : Pseudopods",
             "Miscellaneous : Pseudopods"
@@ -496,6 +560,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Radial streaming",
+        "abbreviation": "Line:RadStr.",
         "synonyms": [
             "Lines : Radial streaming",
             "Miscellaneous : Radial streaming"
@@ -504,6 +569,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Rhomboids (facial skin)",
+        "abbreviation": "Line:RhbFac.",
         "synonyms": [
             "Lines : Rhomboids (facial skin)",
             "Facial Skin : Rhomboids / Zig-zag pattern",
@@ -513,6 +579,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Shiny white streaks",
+        "abbreviation": "Line:ShWhtS.",
         "synonyms": [
             "Lines : Shiny white streaks",
             "Shiny white structures : Shiny white streaks"
@@ -521,6 +588,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Spoke wheel areas",
+        "abbreviation": "Line:SpkWhlA",
         "synonyms": [
             "Lines : Spoke wheel areas",
             "Globules / Clods : Spoke wheel areas",
@@ -530,6 +598,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Starburst pattern",
+        "abbreviation": "Line:StarbP.",
         "synonyms": [
             "Lines : Starburst pattern",
             "Pattern : Starburst"
@@ -538,6 +607,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Streaks",
+        "abbreviation": "Line:Streaks",
         "synonyms": [
             "Lines : Streaks",
             "Miscellaneous : Streaks"
@@ -546,6 +616,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Lines : Typical pigment network / Reticulation",
+        "abbreviation": "Line:Typ.PNR",
         "synonyms": [
             "Lines : Typical pigment network / Reticulation",
             "Network : Typical pigment network / Reticulation"
@@ -554,6 +625,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Angulated lines / Polygons",
+        "abbreviation": "Misc:AngLine",
         "synonyms": [
             "Lines : Angulated lines / Polygons / Zig-zag pattern",
             "Miscellaneous : Angulated lines / Polygons"
@@ -562,6 +634,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Annular-granular pattern",
+        "abbreviation": "Misc:An-gran",
         "synonyms": [
             "Dots : Annular-granular pattern",
             "Facial Skin : Annular-granular pattern",
@@ -571,11 +644,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Asymmetric pigmented follicular openings",
+        "abbreviation": "Misc:Asym.O.",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Blood spots",
+        "abbreviation": "Misc:BloodSp",
         "synonyms": [
             "Nail lesions : Blood spots",
             "Miscellaneous : Blood spots"
@@ -584,6 +659,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Blotch irregular",
+        "abbreviation": "Misc:BlotIrr",
         "synonyms": [
             "Structureless : Blotch irregular",
             "Miscellaneous : Blotch irregular"
@@ -592,6 +668,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Blotch regular",
+        "abbreviation": "Misc:BlotReg",
         "synonyms": [
             "Structureless : Blotch regular",
             "Miscellaneous : Blotch regular"
@@ -600,6 +677,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Blue-whitish veil",
+        "abbreviation": "Misc:Blu-WhV",
         "synonyms": [
             "Structureless : Blue-whitish veil",
             "Miscellaneous : Blue-whitish veil"
@@ -608,6 +686,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Circle within a circle",
+        "abbreviation": "Misc:C.w/iC.",
         "synonyms": [
             "Circles & Semicircles : Circle within a circle",
             "Facial Skin : Circle within a circle",
@@ -617,6 +696,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Comedo-like openings",
+        "abbreviation": "Misc:ComedoO",
         "synonyms": [
             "Globules / Clods : Comedo-like openings",
             "Miscellaneous : Comedo-like openings"
@@ -625,6 +705,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Crypts",
+        "abbreviation": "Misc:Crypts",
         "synonyms": [
             "Lines : Crypts",
             "Miscellaneous : Crypts"
@@ -633,21 +714,25 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Disruption of parallelism",
+        "abbreviation": "Misc:Disrup.",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Fissures",
+        "abbreviation": "Misc:Fissure",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Granularity or granules",
+        "abbreviation": "Misc:Granul.",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Hutchinson sign",
+        "abbreviation": "Misc:HutchS.",
         "synonyms": [
             "Nail lesions : Hutchinson sign",
             "Miscellaneous : Hutchinson sign"
@@ -656,6 +741,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Lacunae : NOS",
+        "abbreviation": "Misc:LacuNOS",
         "synonyms": [
             "Globules / Clods : Lacunae : NOS",
             "Miscellaneous : Lacunae : NOS"
@@ -664,6 +750,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Lacunae : Black",
+        "abbreviation": "Misc:LacuBlk",
         "synonyms": [
             "Globules / Clods : Lacunae : Black",
             "Miscellaneous : Lacunae : Black"
@@ -672,6 +759,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Lacunae : Blue",
+        "abbreviation": "Misc:LacuBlu",
         "synonyms": [
             "Globules / Clods : Lacunae : Blue",
             "Miscellaneous : Lacunae : Blue"
@@ -680,6 +768,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Lacunae : Red",
+        "abbreviation": "Misc:LacuRed",
         "color": [160,40,0],
         "synonyms": [
             "Globules / Clods : Lacunae : Red",
@@ -689,6 +778,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Lacunae : Red-purple",
+        "abbreviation": "Misc:LacuR-P",
         "synonyms": [
             "Globules / Clods : Lacunae : Red-purple",
             "Miscellaneous : Lacunae : Red-purple"
@@ -697,6 +787,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Leaflike area",
+        "abbreviation": "Misc:LacuLfA",
         "synonyms": [
             "Lines : Leaf like areas",
             "Globules / Clods : Leaflike area",
@@ -706,6 +797,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Milia-like cysts, cloudy or starry",
+        "abbreviation": "Misc:MiliaC.",
         "synonyms": [
             "Globules / Clods : Milia-like cysts",
             "Dots : Milia-like cysts",
@@ -715,11 +807,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Moth-eaten border",
+        "abbreviation": "Misc:MothBor",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Pseudo-Hutchinson sign",
+        "abbreviation": "Misc:PseuHut",
         "synonyms": [
             "Nail lesions : Pseudo-Hutchinson sign",
             "Miscellaneous : Pseudo-Hutchinson sign"
@@ -728,6 +822,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Pseudonetwork",
+        "abbreviation": "Misc:PseuNet",
         "synonyms": [
             "Structureless : Pseudonetwork",
             "Facial Skin : Pseudonetwork",
@@ -737,6 +832,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Pseudopods",
+        "abbreviation": "Misc:PseuPod",
         "synonyms": [
             "Lines : Pseudopods",
             "Miscellaneous : Pseudopods"
@@ -745,6 +841,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Radial streaming",
+        "abbreviation": "Misc:RadStr.",
         "synonyms": [
             "Lines : Radial streaming",
             "Miscellaneous : Radial streaming"
@@ -753,11 +850,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Regularly bended ribbon sign",
+        "abbreviation": "Misc:RegBRib",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Rhomboids / Zig-zag pattern",
+        "abbreviation": "Misc:Rhb/Zig",
         "synonyms": [
             "Lines : Rhomboids (facial skin)",
             "Facial Skin : Rhomboids / Zig-zag pattern",
@@ -767,21 +866,25 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Ridges",
+        "abbreviation": "Misc:Ridges",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Scale",
+        "abbreviation": "Misc:Scale",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Setting-sun pattern",
+        "abbreviation": "Misc:SunsetP",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Spoke wheel area",
+        "abbreviation": "Misc:SpkWhlA",
         "synonyms": [
             "Lines : Spoke wheel areas",
             "Globules / Clods : Spoke wheel areas",
@@ -791,6 +894,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Streaks",
+        "abbreviation": "Misc:Streaks",
         "synonyms": [
             "Lines : Streaks",
             "Miscellaneous : Streaks"
@@ -799,6 +903,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : String of pearls",
+        "abbreviation": "Misc:SoPearl",
         "synonyms": [
             "Vessels : String of pearls",
             "Miscellaneous : String of pearls"
@@ -807,6 +912,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Structureless, brown (tan)",
+        "abbreviation": "Misc:S/lBrwn",
         "synonyms": [
             "Structureless : Structureless brown (tan)",
             "Miscellaneous : Structureless, brown (tan)"
@@ -815,16 +921,19 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Twisted red loops",
+        "abbreviation": "Misc:TwistRL",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Miscellaneous : Ulceration / Erosion",
+        "abbreviation": "Misc:Ulcer/E",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Nail lesions : Blood spots",
+        "abbreviation": "Nail:BloodSp",
         "synonyms": [
             "Nail lesions : Blood spots",
             "Miscellaneous : Blood spots"
@@ -833,11 +942,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Nail lesions : Granular inclusions",
+        "abbreviation": "Nail:GranInc",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Nail lesions : Hutchinson sign",
+        "abbreviation": "Nail:HutchS.",
         "synonyms": [
             "Nail lesions : Hutchinson sign",
             "Miscellaneous : Hutchinson sign"
@@ -846,11 +957,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Nail lesions : Irregular lines",
+        "abbreviation": "Nail:Irr.Lin",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Nail lesions : Pseudo-Hutchinson sign",
+        "abbreviation": "Nail:PseuHut",
         "synonyms": [
             "Nail lesions : Pseudo-Hutchinson sign",
             "Miscellaneous : Pseudo-Hutchinson sign"
@@ -859,21 +972,25 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Nail lesions : Regular lines",
+        "abbreviation": "Nail:Reg.Lin",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Nail lesions : Splinter hemorrhage",
+        "abbreviation": "Nail:SplintH",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Network : NOS",
+        "abbreviation": "Net:NOS",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Network : Atypical pigment network / Reticulation",
+        "abbreviation": "Net:AtypPNR",
         "synonyms": [
             "Lines : Atypical pigment network / Reticulation",
             "Network : Atypical pigment network / Reticulation"
@@ -882,6 +999,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Network : Broadened pigment network / Reticulation",
+        "abbreviation": "Net:Brd.PNR",
         "synonyms": [
             "Lines : Broadened pigment network / Reticulation",
             "Network : Broadened pigment network / Reticulation"
@@ -890,6 +1008,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Network : Delicate Pigment Network / Reticulation",
+        "abbreviation": "Net:DeliPNR",
         "synonyms": [
             "Lines : Delicate pigment network / Reticulation",
             "Network : Delicate Pigment Network / Reticulation"
@@ -898,6 +1017,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Network : Negative pigment network",
+        "abbreviation": "Net:Neg.PN.",
         "synonyms": [
             "Lines : Negative pigment network",
             "Network : Negative pigment network"
@@ -906,6 +1026,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Network : Typical pigment network / Reticulation",
+        "abbreviation": "Net:Typ.PNR",
         "synonyms": [
             "Lines : Typical pigment network / Reticulation",
             "Network : Typical pigment network / Reticulation"
@@ -914,11 +1035,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : NOS",
+        "abbreviation": "Patt:NOS",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Cerebriform",
+        "abbreviation": "Patt:CerebF.",
         "synonyms": [
             "Lines : Cerebriform pattern",
             "Pattern : Cerebriform"
@@ -927,6 +1050,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Fibrilar",
+        "abbreviation": "Patt:Fibril.",
         "synonyms": [
             "Lines : Fibrillar pattern",
             "Pattern : Fibrilar",
@@ -936,6 +1060,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Fingerprint",
+        "abbreviation": "Patt:FingerP",
         "synonyms": [
             "Lines : Fingerprint pattern",
             "Pattern : Fingerprint"
@@ -944,6 +1069,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Homogeneous : NOS",
+        "abbreviation": "Patt:Hom.NOS",
         "synonyms": [
             "Structureless : Homogeneous pattern : NOS",
             "Pattern : Homogeneous : NOS"
@@ -952,6 +1078,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Homogeneous : Blue",
+        "abbreviation": "Patt:Hom.Blu",
         "synonyms": [
             "Structureless : Homogeneous pattern : Blue",
             "Pattern : Homogeneous : Blue"
@@ -960,6 +1087,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Homogeneous : Brown",
+        "abbreviation": "Patt:Hom.Brw",
         "synonyms": [
             "Structureless : Homogeneous pattern : Brown",
             "Pattern : Homogeneous : Brown"
@@ -968,6 +1096,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Homogeneous : Pink",
+        "abbreviation": "Patt:Hom.Pnk",
         "synonyms": [
             "Structureless : Homogeneous pattern : Pink",
             "Pattern : Homogeneous : Pink"
@@ -976,11 +1105,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Honeycomb",
+        "abbreviation": "Patt:Honeycb",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Latticelike",
+        "abbreviation": "Patt:Lattice",
         "synonyms": [
             "Pattern : Latticelike",
             "Volar lesions : Latticelike pattern"
@@ -989,6 +1120,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Parallel furrow",
+        "abbreviation": "Patt:Par.Fur",
         "synonyms": [
             "Lines : Parallel furrows pattern (volar lesions)",
             "Pattern : Parallel furrow",
@@ -998,6 +1130,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Parallel ridge",
+        "abbreviation": "Patt:Par.Rid",
         "synonyms": [
             "Lines : Parallel lines (volar lesions)",
             "Pattern : Parallel ridge",
@@ -1007,6 +1140,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Rainbow",
+        "abbreviation": "Patt:Rainbow",
         "synonyms": [
             "Structureless : Rainbow pattern",
             "Pattern : Rainbow"
@@ -1015,6 +1149,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Starburst",
+        "abbreviation": "Patt:Starb.",
         "synonyms": [
             "Lines : Starburst pattern",
             "Pattern : Starburst"
@@ -1023,6 +1158,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Pattern : Strawberry",
+        "abbreviation": "Patt:Strawb.",
         "synonyms": [
             "Structureless : Strawberry pattern",
             "Pattern : Strawberry"
@@ -1031,11 +1167,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Regression structures : NOS",
+        "abbreviation": "RegS:NOS",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Regression structures : Peppering / Granularity",
+        "abbreviation": "RegS:PepperG",
         "synonyms": [
             "Dots : Peppering",
             "Regression structures : Peppering / Granularity"
@@ -1044,6 +1182,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Regression structures : Scarlike depigmentation",
+        "abbreviation": "RegS:ScarlkD",
         "synonyms": [
             "Structureless : Scar-like depigmentation",
             "Regression structures : Scarlike depigmentation"
@@ -1052,11 +1191,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Shiny white structures : NOS",
+        "abbreviation": "SWhS:NOS",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Shiny white structures : Rosettes",
+        "abbreviation": "SWhS:Rosette",
         "synonyms": [
             "Dots : Rosettes",
             "Shiny white structures : Rosettes"
@@ -1065,6 +1206,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Shiny white structures : Shiny white blotches and strands",
+        "abbreviation": "SWhS:ShWhtB.",
         "synonyms": [
             "Globules / Clods : Shiny white blotches and strands",
             "Shiny white structures : Shiny white blotches and strands"
@@ -1073,6 +1215,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Shiny white structures : Shiny white streaks",
+        "abbreviation": "SWhS:ShWhtS.",
         "synonyms": [
             "Lines : Shiny white streaks",
             "Shiny white structures : Shiny white streaks"
@@ -1081,11 +1224,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : NOS",
+        "abbreviation": "SLes:NOS",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Blotch irregular",
+        "abbreviation": "SLes:BlotIrr",
         "synonyms": [
             "Structureless : Blotch irregular",
             "Miscellaneous : Blotch irregular"
@@ -1094,6 +1239,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Blotch regular",
+        "abbreviation": "SLes:BlotReg",
         "synonyms": [
             "Structureless : Blotch regular",
             "Miscellaneous : Blotch regular"
@@ -1102,6 +1248,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Blue-whitish veil",
+        "abbreviation": "SLes:Blu-WhV",
         "synonyms": [
             "Structureless : Blue-whitish veil",
             "Miscellaneous : Blue-whitish veil"
@@ -1110,11 +1257,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Central white patch",
+        "abbreviation": "SLes:CentWhP",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Homogeneous pattern : NOS",
+        "abbreviation": "SLes:Hom.NOS",
         "synonyms": [
             "Structureless : Homogeneous pattern : NOS",
             "Pattern : Homogeneous : NOS"
@@ -1123,6 +1272,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Homogeneous pattern : Blue",
+        "abbreviation": "SLes:Hom.Blu",
         "synonyms": [
             "Structureless : Homogeneous pattern : Blue",
             "Pattern : Homogeneous : Blue"
@@ -1131,6 +1281,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Homogeneous pattern : Brown",
+        "abbreviation": "SLes:Hom.Brw",
         "synonyms": [
             "Structureless : Homogeneous pattern : Brown",
             "Pattern : Homogeneous : Brown"
@@ -1139,6 +1290,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Homogeneous pattern : Pink",
+        "abbreviation": "SLes:Hom.Pnk",
         "synonyms": [
             "Structureless : Homogeneous pattern : Pink",
             "Pattern : Homogeneous : Pink"
@@ -1147,11 +1299,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Milky red areas",
+        "abbreviation": "SLes:MilkRed",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Pseudonetwork",
+        "abbreviation": "SLes:PseuNet",
         "synonyms": [
             "Structureless : Pseudonetwork",
             "Facial Skin : Pseudonetwork",
@@ -1161,6 +1315,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Rainbow pattern",
+        "abbreviation": "SLes:Rainbow",
         "synonyms": [
             "Structureless : Rainbow pattern",
             "Pattern : Rainbow"
@@ -1169,6 +1324,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Scar-like depigmentation",
+        "abbreviation": "SLes:ScarlkD",
         "synonyms": [
             "Structureless : Scar-like depigmentation",
             "Regression structures : Scarlike depigmentation"
@@ -1177,6 +1333,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Strawberry pattern",
+        "abbreviation": "SLes:Strawb.",
         "synonyms": [
             "Structureless : Strawberry pattern",
             "Pattern : Strawberry"
@@ -1185,6 +1342,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Structureless : Structureless brown (tan)",
+        "abbreviation": "SLes:Brown/T",
         "synonyms": [
             "Structureless : Structureless brown (tan)",
             "Miscellaneous : Structureless, brown (tan)"
@@ -1193,63 +1351,75 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : NOS",
+        "abbreviation": "Vess:NOS",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : Arborizing",
+        "abbreviation": "Vess:Arbor.",
         "color": [128,128,32],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : Comma",
+        "abbreviation": "Vess:Comma",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : Corkscrew",
+        "abbreviation": "Vess:Corksc.",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : Crown",
+        "abbreviation": "Vess:Crown",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : Dotted",
+        "abbreviation": "Vess:Dotted",
         "color": [192,32,32],
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : Glomerular",
+        "abbreviation": "Vess:Glomer.",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : Hairpin",
+        "abbreviation": "Vess:Hairpin",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : Linear irregular",
+        "abbreviation": "Vess:Lin.Irr",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : Monomorphous",
+        "abbreviation": "Vess:Monomrp",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : Polymorphous",
+        "abbreviation": "Vess:Polymrp",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : String of pearls",
+        "abbreviation": "Vess:SoPearl",
         "synonyms": [
             "Vessels : String of pearls",
             "Miscellaneous : String of pearls"
@@ -1258,11 +1428,13 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Vessels : Targetoid",
+        "abbreviation": "Vess:Target.",
         "synonyms": []
     },
     {
         "nomenclature": "metaphoric",
         "id": "Volar lesions : Fibrilar pattern",
+        "abbreviation": "VolL:FibrilP",
         "synonyms": [
             "Lines : Fibrillar pattern",
             "Pattern : Fibrilar",
@@ -1272,6 +1444,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Volar lesions : Latticelike pattern",
+        "abbreviation": "VolL:Lattice",
         "synonyms": [
             "Pattern : Latticelike",
             "Volar lesions : Latticelike pattern"
@@ -1280,6 +1453,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Volar lesions : Parallel furrow pattern",
+        "abbreviation": "VolL:Par.Fur",
         "synonyms": [
             "Lines : Parallel furrows pattern (volar lesions)",
             "Pattern : Parallel furrow",
@@ -1289,6 +1463,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Volar lesions : Parallel lines",
+        "abbreviation": "VolL:Par.Lin",
         "synonyms": [
             "Lines : Parallel lines (volar lesions)",
             "Pattern : Parallel ridge",
@@ -1298,6 +1473,7 @@ master_features = [
     {
         "nomenclature": "metaphoric",
         "id": "Volar lesions : Parallel ridge pattern",
+        "abbreviation": "VolL:Par.Rid",
         "synonyms": [
             "Lines : Parallel ridge pattern (volar lesions)",
             "Volar lesions : Parallel ridge pattern"

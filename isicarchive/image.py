@@ -140,6 +140,8 @@ class Image(object):
             'max': 0,
             'shp': (0, 0),
             'spd': None,
+            'szs': None,
+            'xyc': None,
         }
         self.updated = self.created
 
@@ -232,6 +234,8 @@ class Image(object):
                 'max': 0,
                 'shp': (0, 0),
                 'spd': None,
+                'szs': None,
+                'xyc': None,
             }
         if clear_segmentation:
             if self._segmentation:
@@ -379,6 +383,7 @@ class Image(object):
     def map_superpixels(self):
 
         # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        import numpy
         from .jitfunc import superpixel_map
 
         if not self.superpixels['map'] is None:
@@ -393,7 +398,20 @@ class Image(object):
             return
         pixel_img = self.superpixels['idx']
         try:
-            self.superpixels['map'] = superpixel_map(pixel_img)
+            pi_cols = pixel_img.shape[1]
+            sp_map = superpixel_map(pixel_img)
+            sp_shp = sp_map.shape
+            self.superpixels['map'] = sp_map
+            self.superpixels['szs'] = sp_map[:,-1].tolist()
+            self.superpixels['xyc'] = [None] * sp_shp[0]
+            for spidx in range(sp_shp[0]):
+                splen = sp_map[spidx,-1]
+                spcrd = sp_map[spidx,0:splen]
+                spcrx = spcrd % pi_cols
+                spcry = spcrd // pi_cols
+                self.superpixels['xyc'][spidx] = [
+                    int(numpy.trunc(numpy.mean(spcrx)) + 0.5),
+                    int(numpy.trunc(numpy.mean(spcry)) + 0.5)]
         except Exception as e:
             warnings.warn('Error mapping superpixels: ' + str(e))
 
@@ -448,6 +466,8 @@ class Image(object):
             info['superpixels']['number'] = int(self.superpixels['max']) + 1
             info['superpixels']['cjson'] = self.superpixel_outlines('cjson')
             info['superpixels']['osvgp'] = self.superpixel_outlines('osvgp')
+            info['superpixels']['numpix'] = self.superpixels['szs']
+            info['superpixels']['centers'] = self.superpixels['xyc']
             if not sp_in_mask is None:
                 info['superpixels']['sp_in_mask'] = sp_in_mask
         self.clear_data()

@@ -349,9 +349,9 @@ def image_gray(image:numpy.ndarray, rgb_format:bool = True) -> numpy.ndarray:
             return image.reshape((im_shape[0], im_shape[1], 1,)).repeat(3, axis=2)
         return image
     p = image[:, :, 0].astype(numpy.float)
-    for pc in range(1, im_shape[2]):
+    for pc in range(1, min(3, im_shape[2])):
         p += image[:, :, pc].astype(numpy.float)
-    p /= numpy.float(im_shape[2])
+    p /= numpy.float(min(3, im_shape[2]))
     if rgb_format:
         if image.dtype != numpy.uint8:
             p = numpy.trunc(255.0 * p).astype(numpy.uint8)
@@ -391,7 +391,9 @@ def image_mix(
 
     # get original shapes and perform necessary checks and reshaping
     im1shape = image_1.shape
+    im1reshape = True
     im2shape = image_2.shape
+    im2reshape = True
     if image_1.shape[0] != image_2.shape[0]:
         raise ValueError('Invalid input images.')
     if not alpha_2 is None and isinstance(alpha_2, numpy.ndarray):
@@ -408,7 +410,15 @@ def image_mix(
             if len(im1shape) > 2:
                 im1planes = im1shape[2]
     if not im1planes in [1, 3]:
-        raise ValueError('Invalid input image_1.')
+        if im1planes > 3:
+            if len(im1shape) == 3:
+                image_1 = image_1[:,:,0:3]
+            else:
+                image_1 = image_1[:,0:3]
+            im1planes = 3
+            im1reshape = False
+        else:
+            raise ValueError('Invalid input image_1.')
     im2pix = im2shape[0]
     im2planes = 1
     if len(im2shape) > 1:
@@ -419,6 +429,15 @@ def image_mix(
             if len(im2shape) > 2:
                 im2planes = im2shape[2]
     if not im2planes in [1, 3]:
+        if im2planes > 3:
+            if len(im2shape) == 3:
+                image_2 = image_2[:,:,0:3]
+            else:
+                image_2 = image_2[:,0:3]
+            im2planes = 3
+            im2reshape = False
+        else:
+            raise ValueError('Invalid input image_1.')
         raise ValueError('Invalid input image_2.')
     if im1pix != im2pix:
         raise ValueError('Invalid input images.')
@@ -437,7 +456,8 @@ def image_mix(
         try:
             image_2 = image_2.reshape((im1pix, im2planes))
         except:
-            image_1.shape = im1shape
+            if im1reshape:
+                image_1.shape = im1shape
             raise ValueError('Unabled to format image_2.')
     if not alpha_2 is None:
         if isinstance(alpha_2, float):
@@ -455,8 +475,10 @@ def image_mix(
                     try:
                         alpha_2 = alpha_2.reshape(im1pix)
                     except:
-                        image_1.shape = im1shape
-                        image_2.shape = im2shape
+                        if im1reshape:
+                            image_1.shape = im1shape
+                        if im2reshape:
+                            image_2.shape = im2shape
                         raise ValueError('Unable to format alpha_2.')
     
     # attempt to use JIT function
@@ -465,16 +487,24 @@ def image_mix(
     
     # and return original inputs to their previous state in any case!
     except:
-        image_1.shape = im1shape
-        image_2.shape = im2shape
+        if im1reshape:
+            image_1.shape = im1shape
+        if im2reshape:
+            image_2.shape = im2shape
         if isinstance(alpha_2, numpy.ndarray):
             alpha_2.shape = a2shape
         raise
-    image_1.shape = im1shape
-    image_2.shape = im2shape
+    if im1reshape:
+        image_1.shape = im1shape
+    if im2reshape:
+        image_2.shape = im2shape
     if not alpha_2 is None:
         alpha_2.shape = a2shape
-    immix.shape = im1shape
+    if im1shape[-1] in [1, 3]:
+        immix.shape = im1shape
+    else:
+        if len(im1shape) == 3:
+            immix.shape = (im1shape[0], im1shape[1], immix.shape[-1])
     return immix
 
 # image resampling (cheap!)

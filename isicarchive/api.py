@@ -388,6 +388,7 @@ class IsicApi(object):
             'heatmaps_mix_color': True,
             'image_display_size': vars.ISIC_IMAGE_DISPLAY_SIZE_MAX,
         }
+        self._features = master_features
         self._feature_colors = dict()
         self._fonts = dict()
         self._hostname = hostname
@@ -1847,6 +1848,15 @@ class IsicApi(object):
                 yield Study(from_json=study, api=self)
             else:
                 yield study
+
+    # write a CSV file
+    def write_csv(self,
+        content:Any,
+        csv_filename:str):
+        try:
+            func.write_csv(content, csv_filename)
+        except Exception as e:
+            warnings.warn('Error writing CSV: ' + str(e))
 
     # write out image (pass through)
     def write_image(self,
