@@ -19,10 +19,10 @@ superpixel_outline_dir
 __version__ = '0.4.8'
 
 
-from typing import Tuple
+from typing import Optional, Tuple
 
-#import matplotlib.pyplot as pyplot
-from numba import int32 as numba_int32, jit, prange
+import numba
+from numba import jit, prange
 import numpy
 
 # convolution (smoothing) kernel
@@ -247,12 +247,88 @@ def image_resample_f4(image:numpy.ndarray, d0:numpy.int, d1:numpy.int) -> numpy.
             out[c, :, :] = tcol / numpy.float(1 + ito - ifrom)
     return out
 
+# parse CSV buffer
+@jit(numba.int64[:,:](numba.typeof(b'bb'), numba.uint8), nopython=True)
+def parse_csv_buffer(
+    b:bytes,
+    sep:numba.uint8,
+    ) -> numpy.ndarray:
+    lb = len(b)
+    num_lines = 1
+    num_fields = 1
+    max_fields = 1
+    inq = False
+    bi = 0
+    while bi < lb:
+        bv = b[bi]
+        bi += 1
+        if bv == 34: # ord('"')
+            if inq and bi < lb and b[bi] == 34:
+                bi += 1
+            else:
+                inq = not inq
+            continue
+        if inq:
+            continue
+        if bv == sep:
+            num_fields += 1
+        elif bv == 13: # ord('\r')
+            if bi < lb and b[bi] == 10: # ord('\n')
+                bi += 1
+            max_fields = max(num_fields, max_fields)
+            if bi < lb:
+                num_lines += 1
+            num_fields = 0
+        elif bv == 10: # ord('\n')
+            max_fields = max(num_fields, max_fields)
+            if bi < lb:
+                num_lines += 1
+            num_fields = 0
+    num_lines += 1
+    max_fields += 1
+    begs = numpy.zeros(num_lines * max_fields, dtype=numpy.int64).reshape(
+        (num_lines, max_fields,))
+    li = 0
+    fi = 0
+    inq = False
+    bi = 0
+    while bi < lb:
+        bv = b[bi]
+        bi += 1
+        if bv == 34: # ord('"')
+            if inq and bi < lb and b[bi] == 34:
+                bi += 1
+            else:
+                inq = not inq
+            continue
+        if inq:
+            continue
+        if bv == sep:
+            fi += 1
+            begs[li,fi] = bi
+        elif bv == 13: # ord('\r')
+            if bi < lb and b[bi] == 10: # ord('\n')
+                bi += 1
+            fi += 1
+            begs[li,fi] = bi
+            li += 1
+            fi = 0
+            begs[li,fi] = bi
+        elif bv == 10: # ord('\n')
+            fi += 1
+            begs[li,fi] = bi
+            li += 1
+            fi = 0
+            begs[li,fi] = bi
+    begs[num_lines-1,0] = bi
+    return begs
+
 # superpixel contour (results match CV2.findContours coords)
 @jit('i4[:,:](i4,i4,i4,b1[:,::1])', nopython=True)
 def superpixel_contour(
-    num_pix:numba_int32,
-    ypos:numba_int32,
-    xpos:numba_int32,
+    num_pix:numba.int32,
+    ypos:numba.int32,
+    xpos:numba.int32,
     spx_map:numpy.ndarray,
     ) -> numpy.ndarray:
     if not spx_map[ypos, xpos]:
@@ -414,15 +490,15 @@ def superpixel_map(pixel_img:numpy.ndarray) -> numpy.ndarray:
 # superpixel outlines
 @jit('Tuple((i4,i4,i4[:]))(i4,b1[:,::1])', nopython=True)
 def superpixel_outline_dir(
-    num_pix:numba_int32,
+    num_pix:numba.int32,
     spx_map:numpy.ndarray,
     ) -> Tuple:
     out = numpy.zeros(2 * num_pix, dtype=numpy.int32).reshape((2 * num_pix,))
     map_shape = spx_map.shape
     spsx = map_shape[1] - 2
     spsy = map_shape[0] - 2
-    ycoord = numba_int32(2)
-    xcoord = numba_int32(2)
+    ycoord = numba.int32(2)
+    xcoord = numba.int32(2)
     while not (
         spx_map[ycoord, xcoord] and
         spx_map[ycoord, xcoord+1] and
@@ -430,12 +506,12 @@ def superpixel_outline_dir(
         if xcoord < spsx:
             xcoord += 1
         elif ycoord < spsy:
-            xcoord = numba_int32(2)
+            xcoord = numba.int32(2)
             ycoord += 1
         else:
             out = numpy.zeros(0, dtype=numpy.int32).reshape(0,)
-            ycoord = numba_int32(1 + spsy // 2)
-            xcoord = numba_int32(1 + spsx // 2)
+            ycoord = numba.int32(1 + spsy // 2)
+            xcoord = numba.int32(1 + spsx // 2)
             return (ycoord,xcoord,out)
     y0 = ycoord
     x0 = xcoord
@@ -765,16 +841,16 @@ def superpixel_outline_dir(
 # superpixel path
 @jit('i4[:,:](i4,i4,i4,b1[:,::1])', nopython=True)
 def superpixel_path(
-    num_pix:numba_int32,
-    ypos:numba_int32,
-    xpos:numba_int32,
+    num_pix:numba.int32,
+    ypos:numba.int32,
+    xpos:numba.int32,
     spx_map:numpy.ndarray,
     ) -> numpy.ndarray:
     if not spx_map[ypos, xpos]:
         return numpy.zeros(0, dtype=numpy.int32).reshape((0,2,))
     num_pix = 4 + 2 * num_pix
     out = numpy.zeros(2 * num_pix, dtype=numpy.int32).reshape((num_pix,2,))
-    step = numba_int32(1)
+    step = numba.int32(1)
     yval = 0
     xval = 1
     idx = 1

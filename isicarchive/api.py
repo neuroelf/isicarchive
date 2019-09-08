@@ -395,6 +395,7 @@ class IsicApi(object):
         self._image_cache_last = '0' * 24
         self._image_cache_timeout = 0.0
         self._image_objs = dict()
+        self._init_time = time.time()
         self._segmentation_objs = dict()
         self._store_objs = store_objs
         self._studies = dict()
@@ -459,7 +460,15 @@ class IsicApi(object):
 
             # if login succeeded, collect meta information histogram
             if self._auth_token and load_meta_hist:
-                self.meta_hist = self.get('image/histogram')
+                cache_filename = self.cache_filename('0' * 24, 'ihcache', '.json.gz')
+                if self._cache_folder and os.path.exists(cache_filename):
+                    fmtime = os.path.getmtime(cache_filename)
+                    if (self._init_time - fmtime) < vars.ISIC_IMAGE_CACHE_UPDATE_LASTS:
+                        self.meta_hist = func.gzip_load_var(cache_filename)
+                if not self.meta_hist:
+                    self.meta_hist = self.get('image/histogram')
+                    if self._cache_folder:
+                        func.gzip_save_var(cache_filename, self.meta_hist)
 
         # pre-populate feature colors
         for item in master_features:
@@ -474,12 +483,30 @@ class IsicApi(object):
         
         # pre-populate information about datasets and studies
         if load_datasets:
-            items = self.dataset(params={'limit': 0, 'detail': 'true'})
+            cache_filename = self.cache_filename('0' * 24, 'dscache', '.json.gz')
+            items = None
+            if self._cache_folder and os.path.exists(cache_filename):
+                fmtime = os.path.getmtime(cache_filename)
+                if (self._init_time - fmtime) < vars.ISIC_DATASET_GRACE_PERIOD:
+                    items = func.gzip_load_var(cache_filename)
+            if items is None:
+                items = self.dataset(params={'limit': 0, 'detail': 'true'})
+                if self._cache_folder:
+                    func.gzip_save_var(cache_filename, items)
             for item in items:
                 self._datasets[item['_id']] = item
                 self.datasets[item['name']] = item['_id']
         if load_studies:
-            items = self.study(params={'limit': 0, 'detail': 'true'})
+            cache_filename = self.cache_filename('0' * 24, 'stcache', '.json.gz')
+            items = None
+            if self._cache_folder and os.path.exists(cache_filename):
+                fmtime = os.path.getmtime(cache_filename)
+                if (self._init_time - fmtime) < vars.ISIC_STUDY_GRACE_PERIOD:
+                    items = func.gzip_load_var(cache_filename)
+            if items is None:
+                items = self.study(params={'limit': 0, 'detail': 'true'})
+                if self._cache_folder:
+                    func.gzip_save_var(cache_filename, items)
             for item in items:
                 self._studies[item['_id']] = item
                 self.studies[item['name']] = item['_id']
@@ -674,7 +701,7 @@ class IsicApi(object):
                 is_auth = True
             else:
                 is_auth = False
-        if is_auth:
+        if is_auth and not self._user_short is None:
             extra += '_' + self._user_short
         
         # concatenate items
@@ -795,7 +822,8 @@ class IsicApi(object):
             params['imageId'] = sub_list[idx]
             seg_infos = self.get('segmentation', params)
             if len(seg_infos) == 0:
-                randid = 'ffffff' + func.rand_hex_str(18)
+                tnow = '{0:08x}'.format(int(time.time()))
+                randid = 'ffffffff' + tnow + func.rand_hex_str(8)
                 self.segmentation_cache[randid] = {
                     '_id': randid,
                     'created': None,
@@ -804,7 +832,7 @@ class IsicApi(object):
                     'imageId': sub_list[idx],
                     'meta': None,
                     'reviews': [],
-                    'skill': 'None',
+                    'skill': 'none',
                 }
             for seg_info in seg_infos:
                 seg_detail = self.get('segmentation/' + seg_info['_id'])
@@ -1328,10 +1356,15 @@ class IsicApi(object):
 
     # parse segmentations
     def parse_segmentations(self):
+        tnow = time.time()
         rmitems = []
         for (seg_id, item) in self.segmentation_cache.items():
             try:
                 if item['failed']:
+                    if seg_id[0:8] == 'ffffffff':
+                        ttest = int(seg_id[8:16], 16)
+                        if (tnow - ttest) < vars.ISIC_SEG_GRACE_PERIOD:
+                            continue
                     rmitems.append(seg_id)
                     continue
                 max_skill = -1

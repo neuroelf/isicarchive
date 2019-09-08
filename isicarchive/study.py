@@ -307,11 +307,7 @@ class Study(object):
             load_image_data = not image_list
             spimg_filename = self._api.cache_filename(
                 image_id, 'spimg', '.png')
-            spidx_filename = self._api.cache_filename(
-                image_id, 'spidx', '.npz')
-            load_superpixels = not (
-                os.path.exists(spimg_filename) and
-                os.path.exists(spidx_filename))
+            load_superpixels = not os.path.exists(spimg_filename)
             if not (load_image_data or load_superpixels):
                 continue
             func.print_progress(count, total, 'Caching image data:')
@@ -319,21 +315,14 @@ class Study(object):
             image_obj = None
             if image_id in self._obj_images:
                 image_obj = self._obj_images[image_id]
-                image_data = image_obj.data
-                image_superpixels = image_obj.superpixels
+                clear_image_data = (image_obj.data is None)
+                clear_image_superpixels = (image_obj.superpixels['idx'] is None)
             elif image_id in self._api._image_objs:
                 image_obj = self._api._image_objs[image_id]
                 self._obj_images[image_id] = image_obj
-                image_data = image_obj.data
-                image_superpixels = image_obj.superpixels
+                clear_image_data = (image_obj.data is None)
+                clear_image_superpixels = (image_obj.superpixels['idx'] is None)
             else:
-                image_data = None
-                image_superpixels = {
-                    'idx': None,
-                    'map': None,
-                    'max': 0,
-                    'shp': (0, 0),
-                }
                 if not image_id in self._api.image_cache:
                     image_obj = self._api.image(image_id,
                         load_image_data=False, load_superpixels=False)
@@ -343,12 +332,15 @@ class Study(object):
                         load_image_data=False, load_superpixels=False)
                     self._obj_images[image_id] = image_obj
                     self._api._obj_images[image_id] = image_obj
+                clear_image_data = True
+                clear_image_superpixels = True
             if load_image_data:
                 image_obj.load_image_data()
-                image_obj.data = image_data
             if load_superpixels:
                 image_obj.load_superpixels()
-                image_obj.superpixels = image_superpixels
+            image_obj.clear_data(clear_data=clear_image_data,
+                clear_superpixels=clear_image_superpixels,
+                clear_segmentation=False)
         if did_progress:
             func.print_progress(total, total, 'Caching image data:')
 

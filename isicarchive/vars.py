@@ -17,12 +17,19 @@ ISIC_API_URI = '/api/v1'
 ISIC_API_TIMEOUT = 15.0
 ISIC_BASE_URL = 'https://isic-archive.com'
 
+# IsicApi: dataset cache settings
+ISIC_DATASET_GRACE_PERIOD = 7 * 86400
+
 # IsicApi: image cache settings
-ISIC_IMAGE_CACHE_UPDATE_LASTS = 900.0 # minimum time between updates in seconds
+ISIC_IMAGE_CACHE_UPDATE_LASTS = 3600.0 # minimum time between updates in seconds
 ISIC_IMAGES_PER_CACHING = 500 # number of image detail items per get(...) call
 
 # IsicApi: segmentation cache settings
 ISIC_SEG_SAVE_EVERY = 50
+ISIC_SEG_GRACE_PERIOD = 30 * 86400
+
+# IsicApi: study cache settings
+ISIC_STUDY_GRACE_PERIOD = 7 * 86400
 
 # func: screen settings
 ISIC_FUNC_PPI = 72

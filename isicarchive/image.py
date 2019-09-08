@@ -318,40 +318,24 @@ class Image(object):
         import numpy
         from .jitfunc import superpixel_decode
 
+        if not self.superpixels['idx'] is None:
+            return
         if not self._api:
             raise ValueError('Invalid image object to load superpixels for.')
         spimg_filename = self._api.cache_filename(self.id, 'spimg', '.png')
-        spidx_filename = self._api.cache_filename(self.id, 'spidx', '.npz')
-        if self._api._cache_folder:
-            if os.path.exists(spidx_filename):
-                try:
-                    if self.superpixels['idx'] is None:
-                        spidx_data = numpy.load(spidx_filename)
-                        if 'idx' in spidx_data:
-                            self.superpixels['idx'] = spidx_data['idx']
-                            self.superpixels['max'] = numpy.amax(
-                                self.superpixels['idx']).item()
-                            self.superpixels['shp'] = self.superpixels['idx'].shape
-                except Exception as e:
-                    os.remove(spidx_filename)
-                    warnings.warn('Error loading spidx cache file: ' + str(e))
-            if self.superpixels['idx'] is None:
-                if os.path.exists(spimg_filename):
-                    try:
-                        with open(spimg_filename, 'rb') as image_file:
-                            image_raw = image_file.read()
-                        image_png = imageio.imread(image_raw)
-                        self.superpixels['idx'] = superpixel_decode(image_png)
-                        self.superpixels['max'] = numpy.amax(
-                            self.superpixels['idx']).item()
-                        self.superpixels['shp'] = self.superpixels['idx'].shape
-                        numpy.savez_compressed(spidx_filename, idx=self.superpixels['idx'])
-                    except Exception as e:
-                        os.remove(spimg_filename)
-                        warnings.warn('Error loading image: ' + str(e))
-        if self._in_archive and self._api and (
-            (not self._api._cache_folder) or
-            (not os.path.exists(spidx_filename))):
+        if self._api._cache_folder and os.path.exists(spimg_filename):
+            try:
+                with open(spimg_filename, 'rb') as image_file:
+                    image_raw = image_file.read()
+                image_png = imageio.imread(image_raw)
+                self.superpixels['idx'] = superpixel_decode(image_png)
+                self.superpixels['max'] = numpy.amax(
+                    self.superpixels['idx']).item()
+                self.superpixels['shp'] = self.superpixels['idx'].shape
+            except Exception as e:
+                os.remove(spimg_filename)
+                warnings.warn('Error loading image: ' + str(e))
+        if self.superpixels['idx'] is None:
             try:
                 req = self._api.get('image/' + self.id + '/superpixels',
                     parse_json=False)
@@ -365,9 +349,8 @@ class Image(object):
                     self.superpixels['max'] = numpy.amax(
                         self.superpixels['idx']).item()
                     self.superpixels['shp'] = self.superpixels['idx'].shape
-                    if self._api._cache_folder:
-                        numpy.savez_compressed(spidx_filename,
-                        idx=self.superpixels['idx'])
+                else:
+                    raise RuntimeError('HTTP server error: ' + req.text)
             except Exception as e:
                 warnings.warn('Error loading superpixels: ' + str(e))
                 return

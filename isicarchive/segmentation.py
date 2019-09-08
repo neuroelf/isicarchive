@@ -22,7 +22,7 @@ __version__ = '0.4.8'
 import datetime
 import glob
 import os
-from typing import List, Tuple
+from typing import Any, List, Tuple
 import warnings
 
 from . import func
@@ -59,6 +59,8 @@ _repr_pretty_list = {
     'reviews_highest_skill': 'skill',
 }
 _skill_precedence = {
+    'missing': -1,
+    'none': 0,
     'novice': 2,
     'expert': 8,
 }
@@ -266,6 +268,25 @@ class Segmentation(object):
                             mask_file.write(mask_raw)
             except Exception as e:
                 warnings.warn('Error loading segmentation mask: ' + str(e))
+
+    # segmentation outline
+    def outline(self,
+        out_format:str = 'osvg',
+        negative:bool = True,
+        ) -> Any:
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from .imfunc import segmentation_outline
+
+        if self.mask is None:
+            try:
+                self.load_mask_data()
+                if self.mask is None:
+                    raise RuntimeError('Error loading mask.')
+            except:
+                raise
+        return segmentation_outline(self.mask,
+            out_format=out_format, negative=negative)
 
     # show image in notebook
     def show_in_notebook(self,

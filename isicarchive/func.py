@@ -44,6 +44,7 @@ __version__ = '0.4.8'
 from collections.abc import ValuesView
 from typing import Any, Union
 
+import json
 import re
 
 # helper function that returns True for valid looking mongo ObjectId strings
@@ -342,10 +343,9 @@ def gzip_load_var(gzip_file:str) -> Any:
 
     # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
     from gzip import GzipFile
-    from json import loads as json_loads
     try:
         with GzipFile(gzip_file, 'r') as gzip_in:
-            json_var = json_loads(gzip_in.read().decode('utf-8'))
+            json_var = json.loads(gzip_in.read().decode('utf-8'))
     except:
         raise
     return json_var
@@ -369,9 +369,8 @@ def gzip_save_var(gzip_file:str, save_var:Any) -> bool:
     """
     # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
     from gzip import GzipFile
-    from json import dumps as json_dumps
     try:
-        json_bytes = (json_dumps(save_var) + "\n").encode('utf-8')
+        json_bytes = (json.dumps(save_var) + "\n").encode('utf-8')
         with GzipFile(gzip_file, 'w') as gzip_out:
             gzip_out.write(json_bytes)
         return True
@@ -470,11 +469,15 @@ def pack_vals(l:list, sep:str = ',') -> str:
             continue
         try:
             if isinstance(v, str):
-                lv[idx] = '"' + v + '"'
-            else:
+                lv[idx] = '"' + v.replace('"', '""') + '"'
+            elif isinstance(v, int) or isinstance(v, float) or isinstance(v, bool):
                 lv[idx] = repr(v)
+            elif isinstance(v, list):
+                lv[idx] = '"' + json.dumps(v).replace('"', '""') + '"'
+            else:
+                lv[idx] = '"' + repr(v).replace('"', '""') + '"'
         except:
-            lv[idx] = repr(type(v))
+            lv[idx] = '"' + repr(type(v)) + '"'
     return sep.join(lv)
 
 # progress bar (text)
@@ -575,24 +578,68 @@ def read_csv(
     parse_lists:bool = False,
     pack_keys:bool = False,
     ) -> dict:
-    if parse_lists:
-        import json
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    import numpy
+    from .jitfunc import parse_csv_buffer
+
+    if not isinstance(headers, list) and not isinstance(headers, bool):
+        raise ValueError('Parameter headers must either be a list or boolean.')
+    if not isinstance(sep, str) or len(sep) != 1 or sep == '\n' or sep == '\r' or sep == '"':
+        sep = ','
+    bsep = numpy.uint8(ord(sep))
     try:
-        with open(csv_filename, 'r') as csv_file:
-            csv_lines = [line.strip() for line in csv_file.readlines()]
+        with open(csv_filename, 'rb') as csv_file:
+            csv_cont = csv_file.read()
+            if len(csv_cont) > 3 and (csv_cont[0] == 239 and
+                csv_cont[1] == 187 and csv_cont[2] == 191):
+                csv_cont = csv_cont[3:]
+            csv_str = csv_cont.decode()
+            csv_dec = (len(csv_cont) == len(csv_str))
+            begs = parse_csv_buffer(csv_cont, bsep)
+            num_lines = begs.shape[0] - 1
+            num_fieldsp = begs.shape[1]
+            num_fields = num_fieldsp - 1
     except:
         raise
-    if headers is True:
-        headers = csv_lines.pop(0)
-        headers = headers.split(sep)
-    if not isinstance(headers, list):
-        raise ValueError('Invalid headers.')
+    csv_lines = [None] * num_lines
+    for li in range(num_lines):
+        if csv_dec:
+            csv_lines[li] = csv_str[begs[li,0]:begs[li+1,0]].strip()
+        else:
+            csv_lines[li] = csv_cont[begs[li,0]:begs[li+1,0]]
+    skip_line = 0
+    if headers is False:
+        headers = ['column_{0:d}'.format(k+1) for k in range(num_fields)]
+    elif headers is True:
+        skip_line = 1
+        num_lines -= 1
+        line = csv_lines.pop(0)
+        headers = [None] * num_fields
+        for fi in range(num_fields):
+            if csv_dec:
+                hname = line[begs[0,fi]:begs[0,fi+1]-1].strip()
+            else:
+                hname = line[begs[0,fi]:begs[0,fi+1]-1].decode().strip()
+            if len(hname) > 2 and hname[0] == '"' and hname[-1] == '"':
+                hname = hname[1:-1]
+            headers[fi] = hname
+    else:
+        if len(headers) > num_fields:
+            raise ValueError('CSV file does not contain as many fields.')
     od = dict()
-    num_lines = len(csv_lines)
     for h in headers:
         od[h] = [None] * num_lines
     for (idx, line) in enumerate(csv_lines):
-        values = line.split(sep)
+        tidx = idx + skip_line
+        values = [None] * num_fields
+        lbegs = begs[tidx,:].reshape((num_fieldsp,))
+        lbegs -= lbegs[0]
+        for fi in range(num_fields):
+            if csv_dec:
+                values[fi] = line[lbegs[fi]:lbegs[fi+1]-1].strip()
+            else:
+                values[fi] = line[lbegs[fi]:lbegs[fi+1]-1].decode().strip()
         for (h, v) in zip(headers, values):
             if v == '':
                 continue
@@ -607,8 +654,8 @@ def read_csv(
                 elif v == 'True':
                     v = True
                 elif len(v) > 1 and v[0] == '"' and v[-1] == '"':
-                    v = v[1:-1]
-                elif parse_lists and len(v) > 1 and v[0] == '[' and v[-1] == ']':
+                    v = v[1:-1].replace('""', '"')
+                if isinstance(v, str) and parse_lists and len(v) > 1 and v[0] == '[' and v[-1] == ']':
                     try:
                         nv = json.loads(v)
                         if isinstance(nv, list):
@@ -921,7 +968,8 @@ def write_csv(
                 if delk:
                     cv = [v for v in content.values()]
                 with open(csv_filename, 'w') as csv_file:
-                    csv_file.write((sep.join(ck)) + '\n')
+                    ckq = [k.replace('"', '""') for k in ck]
+                    csv_file.write('"' + (('"' + sep + '"').join(ckq)) + '"\n')
                     for line in zip(*cv):
                         csv_file.write(pack_vals(line, sep) + '\n')
             elif all(cdict):
