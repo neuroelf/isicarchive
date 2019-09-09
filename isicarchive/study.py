@@ -23,7 +23,7 @@ import copy
 import datetime
 import glob
 import os
-from typing import Any, Union
+from typing import Any, Tuple, Union
 import warnings
 
 from . import func
@@ -146,6 +146,7 @@ class Study(object):
         self.image_features = dict()
         self.loaded_features = dict()
         self.loaded_features_in = dict()
+        self.meta_data = dict()
         self.name = name if name else ''
         self.participation_requests = []
         self.questions = []
@@ -390,6 +391,8 @@ class Study(object):
         alpha_scale:str = 'sqrt',
         underlay_gray:float = 0.75,
         seg_outline:bool = True,
+        resize_output:Tuple = None,
+        legend_position:str = None,
         ) -> Any:
 
         # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
@@ -429,6 +432,7 @@ class Study(object):
                 image = self._api.image(image_id)
             image.load_image_data()
             image_data = image.data
+            im_shape = image_data.shape
             if underlay_gray > 0.0:
                 if underlay_gray >= 1.0:
                     image_data = imfunc.image_gray(image_data)
@@ -442,7 +446,6 @@ class Study(object):
                     seg_outline = imfunc.segmentation_outline(seg_obj.mask, 'coords')
                     seg_outline = seg_outline[:,1] + seg_obj.mask.shape[1] * seg_outline[:,0]
                     seg_obj.clear_data()
-                    im_shape = image_data.shape
                     if len(im_shape) == 3:
                         planes = im_shape[2]
                     else:
@@ -594,6 +597,42 @@ class Study(object):
                 continue
             imfunc.color_superpixels(image_data, [idx], spmap, [colors], [alpha])
         image.clear_data()
+
+        # resize image
+        if isinstance(resize_output, tuple):
+            if len(resize_output) == 1:
+                if isinstance(resize_output, float):
+                    image_data = imfunc.image_resample(image_data, resize_output)
+                elif isinstance(resize_output, int):
+                    resize_output = float(resize_output) / float(max(im_shape))
+                    imfunc.image_resample(image_data, resize_output)
+                else:
+                    raise ValueError('Invalid resize_output parameter.')
+            elif len(resize_output) == 2:
+                if isinstance(resize_output[0], float):
+                    size_y = int(0.5 + float(im_shape[0]) * resize_output[0])
+                elif isinstance(resize_output[0], int):
+                    size_y = resize_output[0]
+                elif not resize_output[0] is None:
+                    raise ValueError('Invalid resize_output[0] parameter.')
+                else:
+                    size_y = None
+                if isinstance(resize_output[1], float):
+                    size_x = int(0.5 + float(im_shape[1]) * resize_output[1])
+                elif isinstance(resize_output[1], int):
+                    size_x = resize_output[1]
+                elif not resize_output[1] is None:
+                    raise ValueError('Invalid resize_output[1] parameter.')
+                else:
+                    size_x = None
+                if not (size_x is None and size_y is None):
+                    if size_x is None:
+                        size_x = int(0.5 + float(im_shape[1]) * float(size_y) / float(im_shape[0]))
+                    elif size_y is None:
+                        size_y = int(0.5 + float(im_shape[0]) * float(size_x) / float(im_shape[1]))
+                    imfunc.image_resample(image_data, (size_y, size_x))
+
+        # feature information
         featc = sorted([k for k in stats['feat'].keys()])
         for feat in featc:
             stats['featnum'][feat] = len(stats['feat'][feat])
@@ -603,6 +642,7 @@ class Study(object):
     def image_heatmaps(self,
         target_folder:str = None,
         image_ext:str = '.jpg',
+        image_extra:str = None,
         image_sel:Union[list,None] = None,
         features:Union[str,list] = 'all',
         users:Union[str,list] = 'all',
@@ -622,6 +662,8 @@ class Study(object):
         target_folder += os.sep
         if not image_ext in ['.jpg', '.jpeg', '.png', '.tif']:
             image_ext = '.jpg'
+        if image_extra is None or not isinstance(image_extra, str):
+            image_extra = ''
         if not image_sel is None:
             try:
                 images = func.select_from(self.images, image_sel)
@@ -785,6 +827,84 @@ class Study(object):
                 self._api._image_objs[image_id] = image_obj
             if total > 0 and (load_image_data or load_superpixels):
                 func.print_progress(total, total, 'Loading images:')
+
+    # load meta data
+    def load_meta_data(self,
+        meta_file:str,
+        meta_format:str = None,
+        meta_key:str = None,
+        list_to_dict:bool = False,
+        dict_key:str = '_id',
+        extract_key:str = None,
+        ):
+        if not os.path.exists(meta_file):
+            warnings.warn('File ' + meta_file + ' not found.')
+            return
+        finfo = os.path.basename(meta_file).split('.')
+        if meta_format is None:
+            meta_format = '.'.join(finfo[1:])
+        elif not isinstance(meta_format, str) or len(meta_format) < 3:
+            warnings.warn('Invalid meta_format parameter.')
+            return
+        fmt = meta_format.lower()
+        if fmt[0] == '.':
+            fmt = fmt[1:]
+        if fmt == 'csv':
+            try:
+                meta_data = func.read_csv(meta_file, out_format='list_of_dicts')
+                if not isinstance(meta_data, list) or len(meta_data) < 1:
+                    warnings.warn('No content in file.')
+                    return
+            except:
+                raise
+        elif fmt == 'json.gz':
+            try:
+                meta_data = func.gzip_load_var(meta_file)
+            except:
+                raise
+        elif fmt == 'json':
+            from json import loads as json_loads
+            try:
+                with open(meta_file, 'r') as json_file:
+                    meta_data = json_loads(json_file.read())
+            except:
+                raise
+        else:
+            raise ValueError('Invalid format ' + meta_format + '.')
+        if list_to_dict and isinstance(meta_data, list) and len(meta_data) > 0:
+            lmd = len(meta_data)
+            if not isinstance(meta_data[0], dict):
+                warnings.warn('Parameter list_to_dict requires dicts in list.')
+            else:
+                if not dict_key in meta_data[0]:
+                    dict_key = None
+                    for k in meta_data[0].keys():
+                        vals = list(set(func.getxattr(meta_data, '[].' + k)))
+                        if len(vals) == lmd:
+                            dict_key = k
+                            break
+                    if dict_key is None:
+                        raise RuntimeError('Meta data file does not contain unique keys.')
+                meta_dict = dict()
+                for item in meta_data:
+                    meta_dict[func.getxattr(item, dict_key)] = item
+                meta_data = meta_dict
+        if not extract_key is None:
+            if isinstance(meta_data, list):
+                extract_data = [None] * len(meta_data)
+                for (idx, item) in enumerate(meta_data):
+                    extract_data[idx] = func.getxattr(item, extract_key)
+                meta_data = extract_data
+            elif isinstance(meta_data, dict):
+                extract_data = dict()
+                for (key, item) in meta_data.items():
+                    extract_data[key] = func.getxattr(item, extract_key)
+                meta_data = extract_data
+        if meta_key is None or meta_key == '':
+            k = finfo[0]
+        else:
+            k = meta_key
+        self.meta_data[k] = meta_data
 
     # show annotations (grid)
     def show_annotations(self,

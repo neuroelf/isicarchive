@@ -17,10 +17,14 @@ cache_folder = doc_folder + 'ISIC'
 debug = True
 
 api = IsicApi(username, cache_folder=cache_folder, debug=debug)
-study = api.study('EASY_STUDY_4')
-api.write_csv(doc_folder + 'test.csv', study.images)
-od = api.read_csv(doc_folder + 'test.csv', 'list_of_dicts')
-api.write_csv(doc_folder + 'test_od.csv', od)
+#study = api.study('EASY_STUDY_4')
+#api.write_csv(doc_folder + 'test.csv', study.images)
+#od = api.read_csv(doc_folder + 'test.csv', 'list_of_dicts')
+#api.write_csv(doc_folder + 'test_od.csv', od)
+
+from isicarchive import func
+seg_list = [v for v in api.segmentation_cache.values()]
+all_ks = func.getxkeys(seg_list)
 
 #api = IsicApi(username, cache_folder=cache_folder, debug=debug)
 #image = api.image('ISIC_0000000')

@@ -313,6 +313,107 @@ def display_image(
             warnings.warn('Problem producing image for display: ' + str(e))
             return None
 
+# image composition (from other images)
+def image_compose(
+    imlist:list,
+    outsize:Tuple,
+    bgcolor:list = [255,255,255],
+    ) -> numpy.ndarray:
+    if not isinstance(outsize, tuple) and not isinstance(outsize, list):
+        raise ValueError('Invalid outsize parameter.')
+    if (len(outsize) != 2 or not isinstance(outsize[0], int) or
+        not isinstance(outsize[1], int) or outsize[0] < 1 or
+        outsize[1] < 1 or (outsize[0] * outsize[2] > 16777216)):
+        raise ValueError('Invalid image dimensions in outsize parameter.')
+    out = numpy.zeros(3 * outsize[0] * outsize[1], dtype=numpy.uint8).reshape(
+        (outsize[1], outsize[0], 3,))
+    if (isinstance(bgcolor, tuple) or isinstance(bgcolor, list)) and len(bgcolor) == 3:
+        try:
+            out[:,:,0] = bgcolor[0]
+        except:
+            pass
+        try:
+            out[:,:,1] = bgcolor[1]
+        except:
+            pass
+        try:
+            out[:,:,2] = bgcolor[2]
+        except:
+            pass
+    im_shape = out.shape
+    for ii in imlist:
+        if not isinstance(ii, list) or len(ii) < 3:
+            continue
+        ii_image = ii[0]
+        ii_shape = ii_image.shape
+        if len(ii_shape) < 2 or len(ii_shape) > 3:
+            continue
+        elif len(ii_shape) == 3 and not ii_shape[2] in [1, 3]:
+            continue
+        ii_x = ii[1]
+        ii_y = ii[2]
+        if ii_x >= im_shape[1] or ii_y >= im_shape[0]:
+            continue
+        if len(ii) == 3:
+            ii_alpha = 1.0
+        else:
+            ii_alpha = ii[3]
+        if ii_alpha <= 0.0:
+            continue
+        if ii_alpha > 1.0:
+            ii_alpha = 1.0
+        if not (isinstance(ii_image, numpy.ndarray) and
+            isinstance(ii_x, int) and isinstance(ii_y, int) and
+            (isinstance(ii_alpha, float) or (
+            isinstance(ii_alpha, numpy.ndarray) and
+            ii_alpha.ndim == 2 and ii_alpha.shape[0] == ii_image.shape[0]))):
+            continue
+        sfrom_x = 0
+        sfrom_y = 0
+        sto_x = ii_shape[1]
+        sto_y = ii_shape[0]
+        tfrom_x = ii_x
+        tfrom_y = ii_y
+        if tfrom_x < 0:
+            sfrom_x -= tfrom_x
+            tfrom_x = 0
+        if tfrom_y < 0:
+            sfrom_y -= tfrom_y
+            tfrom_y = 0
+        from_x = sto_x - sfrom_x
+        from_y = sto_y - sfrom_y
+        if from_x <= 0 or from_y <= 0:
+            continue
+        tto_x = tfrom_x + from_x
+        tto_y = tfrom_y + from_y
+        if tto_x > im_shape[1]:
+            shrink = tto_x - im_shape[1]
+            tto_x -= shrink
+            sto_x -= shrink
+        if tto_y > im_shape[0]:
+            shrink = tto_y - im_shape[0]
+            tto_y -= shrink
+            sto_y -= shrink
+        if tto_x <= tfrom_x or tto_y <= tfrom_y:
+            continue
+        if len(ii_shape) == 2:
+            if sfrom_x == 0 and sfrom_y == 0 and sto_x == ii_shape[1] and sto_y == ii_shape[0]:
+                out[tfrom_y:tto_y, tfrom_x:tto_x, :] = image_mix(
+                    out[tfrom_y:tto_y, tfrom_x:tto_x, :], ii_image, ii_alpha)
+            else:
+                out[tfrom_y:tto_y, tfrom_x:tto_x, :] = image_mix(
+                    out[tfrom_y:tto_y, tfrom_x:tto_x, :],
+                    ii_image[sfrom_y:sto_y, sfrom_x:sto_x], ii_alpha)
+        else:
+            if sfrom_x == 0 and sfrom_y == 0 and sto_x == ii_shape[1] and sto_y == ii_shape[0]:
+                out[tfrom_y:tto_y, tfrom_x:tto_x, :] = image_mix(
+                    out[tfrom_y:tto_y, tfrom_x:tto_x, :], ii_image, ii_alpha)
+            else:
+                out[tfrom_y:tto_y, tfrom_x:tto_x, :] = image_mix(
+                    out[tfrom_y:tto_y, tfrom_x:tto_x, :],
+                    ii_image[sfrom_y:sto_y, sfrom_x:sto_x, :], ii_alpha)
+    return out
+
 # image correlation (pixel values)
 def image_corr(im1:numpy.ndarray, im2:numpy.ndarray) -> float:
     if im1.size != im2.size:
@@ -509,6 +610,12 @@ def image_mix(
 
 # image resampling (cheap!)
 def image_resample(image:numpy.ndarray, new_shape:tuple) -> numpy.ndarray:
+    im_shape = image.shape
+    if len(im_shape) < 2:
+        raise ValueError('Invalid image array.')
+    if isinstance(new_shape, float) and new_shape > 0.0 and new_shape <= 8.0:
+        new_shape = (int(new_shape * float(im_shape[0])),
+            int(new_shape * float(im_shape[1])))
     if not isinstance(new_shape, tuple) or len(new_shape) != 2:
         raise ValueError('Invalid new_shape parameter')
     if not isinstance(new_shape[0], int) or new_shape[0] < 1:
@@ -519,7 +626,6 @@ def image_resample(image:numpy.ndarray, new_shape:tuple) -> numpy.ndarray:
     # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
     from .jitfunc import image_resample_u1, image_resample_f4
 
-    im_shape = image.shape
     if len(im_shape) < 3:
         re_shape = (im_shape[0], im_shape[1], 1)
         try:

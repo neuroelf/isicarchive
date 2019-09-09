@@ -264,7 +264,7 @@ class Font(object):
         padding:int = 4,
         spkern:int = 0,
         xkern:int = 0,
-        ) -> Tuple[numpy.ndarray, numpy.ndarray]:
+        ) -> Tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray]:
 
         if not isinstance(text, str):
             raise ValueError('Invalid text.')
@@ -340,6 +340,7 @@ class Font(object):
 
         # store font pieces into
         yfrom = ypad
+        yfroms = numpy.zeros(len(lines), dtype=numpy.int32)
         for lc in range(len(lines)):
             lim = (1.0 / 255.0) * lines[lc].astype(numpy.float32)
             if lim.shape[1] > outsize_x:
@@ -362,6 +363,7 @@ class Font(object):
                 im[yfrom:yfrom+fsize0[lc], xfrom:xfrom+tsize, pc] = numpy.trunc(
                     0.5 + (1.0 - lim) * cim.astype(numpy.float32) +
                     numpy.float(color[pc]) * lim).astype(numpy.uint8)
+            yfroms[lc] = yfrom
             yfrom = yfrom + fsize0[lc]
         
         # resize total if needed
@@ -373,4 +375,4 @@ class Font(object):
             im = sampler.sample_grid(im, o_shape, 'resample', 'uint8')
         
         # return
-        return (im, ima)
+        return (im, ima, yfroms)

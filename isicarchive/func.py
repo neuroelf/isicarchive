@@ -8,8 +8,14 @@ Functions
 ---------
 could_be_mongo_object_id
     Returns true if the input is a 24 lower-case hex character string
+delxattr
+    Remove attribute from object (tree), if present
 getxattr
     Extended getattr function, including sub-fields
+getxattrs
+    Retrieve several attributes and return a list
+getxkeys
+    Retrieve keys *and* sub-keys from dict object
 guess_environment
     Guesses the environment (e.g. 'jupyter' vs. 'terminal')
 guess_file_extension
@@ -20,20 +26,28 @@ gzip_save_var
     Saves a variable into a .json.gz file
 object_pretty
     Pretty-prints an objects representation from fields
+parse_expr
+    Parse expression passing $name$ string through getxattr
 print_progress
     Text-based progress bar
 rand_color
     Random RGB color 3-element list
 rand_hex_str
     Random hex string of specified length
+read_csv
+    Somewhat extended CSV file reading
 selected
     Helper function to select from a list (select_from)
 select_from
     Complex field-based criteria selection of list or dict elements
+setxattr
+    Extended setattr function, including sub-fields
 superpixel_colors
     Create a list of colors for superpixel (SVG) path attribs
 uri_encode
     Encodes non-letter/number characters into %02x sequences
+write_csv
+    Extended CSV writing of dicts
 """
 
 # specific version for file
@@ -67,6 +81,18 @@ def could_be_mongo_object_id(test_id:str = "") -> bool:
 
 # delete key from a tree-structured object
 def delxattr(obj:object, name:str = None):
+    """
+    Remove attribute from object (tree), if present
+
+    Parameters
+    ----------
+    obj : object
+        Object (root node) from which to remove an attribute/key
+    name : str
+        Hierarchical field expression, e.g. ```field1.subfield2.sub3```
+    
+    No return value.
+    """
     if not isinstance(name, str) or name == '':
         return
     if not '.' in name:
@@ -158,10 +184,10 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
                     val = ' '.join([k for k in obj.keys()])
                 else:
                     val = obj.get(name)
-            elif not isinstance(obj, list) and not isinstance(obj, ValuesView):
-                val = getattr(obj, name)
             elif name.isdigit() or (name[0] == '-' and name[1:].isdigit()):
                 val = obj[int(name)]
+            elif not isinstance(obj, list) and not isinstance(obj, ValuesView):
+                val = getattr(obj, name)
             elif name == '#':
                 val = len(obj)
 
@@ -193,6 +219,10 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
         except:
             pass
         return val
+
+    # still allow name1.name2.name3 IF ACTUALLY in dict object!
+    elif isinstance(obj, dict) and name in obj:
+        return obj[name]
     
     # special case: pass on name to each list item, return list
     if isinstance(obj, list) and (len(name) > 3) and (name[0:3] == '[].'):
@@ -231,25 +261,76 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
         pass
     return val
 
+# get attrib list
+def getxattrs(obj:Any, names:list) -> list:
+    """
+    Retrieve several attributes and return a list.
+
+    Parameters
+    ----------
+    obj : object
+        Object (root node) to retrieve attributes from
+    names : list
+        List of hierarchical attribute names to retrieve from obj
+    
+    Returns
+    -------
+    values : list
+        List of values, None for any missing attribute
+    """
+    if not isinstance(names, list):
+        raise ValueError('Parameter names must be a list.')
+    vs = [None] * len(names)
+    for (idx, name) in enumerate(names):
+        vs[idx] = getxattr(obj, name)
+    return vs
+
 # get dicts keys *and* sub-keys, etc
-def getxkeys(o:dict, sk:str = '') -> list:
-    if isinstance(o, list):
+def getxkeys(obj:dict, sk:str = '', sanitize:bool = True) -> list:
+    """
+    Retrieve keys *and* sub-keys from dict object
+
+    Parameters
+    ----------
+    obj : dict
+        Dict object to retrieve keys (and sub-keys) from
+    sk : str
+        Internal string to track current level in hierarchy
+    sanitize : bool
+        If True (default), remove parent dict keys
+    
+    Returns
+    -------
+    key_names : list
+        List of hierarchical key name for *xattr functions
+    """
+    if isinstance(obj, list):
         oks = dict()
-        for so in o:
+        for so in obj:
             sks = getxkeys(so)
             for sk in sks:
                 oks[sk] = True
-        return sorted([k for k in oks])
-    elif not isinstance(o, dict):
+        if sanitize:
+            okt = dict()
+            okr = []
+            for k in reversed(sorted([k for k in oks.keys()])):
+                if getxattr(okt, k):
+                    okr.append(k)
+                else:
+                    setxattr(okt, k, True, True)
+            for k in okr:
+                oks.pop(k, None)
+        return sorted([k for k in oks.keys()])
+    elif not isinstance(obj, dict):
         return []
-    ok = [k for k in o.keys()]
+    ok = [k for k in obj.keys()]
     out = []
     for k in ok:
         if sk:
             ksk = sk + '.' + k
         else:
             ksk = k
-        so = o[k]
+        so = obj[k]
         if isinstance(so, dict):
             out.extend(getxkeys(so, ksk))
         else:
@@ -460,25 +541,36 @@ def object_pretty(
         else:
             raise ValueError('Invalid list of fields.')
 
-# pack values
-def pack_vals(l:list, sep:str = ',') -> str:
-    lv = [v for v in l]
-    for (idx, v) in enumerate(lv):
-        if v is None:
-            lv[idx] = ''
-            continue
-        try:
-            if isinstance(v, str):
-                lv[idx] = '"' + v.replace('"', '""') + '"'
-            elif isinstance(v, int) or isinstance(v, float) or isinstance(v, bool):
-                lv[idx] = repr(v)
-            elif isinstance(v, list):
-                lv[idx] = '"' + json.dumps(v).replace('"', '""') + '"'
-            else:
-                lv[idx] = '"' + repr(v).replace('"', '""') + '"'
-        except:
-            lv[idx] = '"' + repr(type(v)) + '"'
-    return sep.join(lv)
+# parse expression
+_parse_expr = re.compile(r'(\$[^\$]+\$)')
+def parse_expr(expr:str, obj:dict) -> str:
+    """
+    Parse expression passing $name$ string through getxattr
+
+    Parameters
+    ----------
+    expr : str
+        Expression to be parsed, e.g. 'image_$name$.jpg'
+    obj : object
+        Object to retrieve name-based fields from with getxattr
+    
+    Returns
+    -------
+    r_expr : str
+        String with $fields$ replaced by return values from getxattr
+    """
+    def _parse_repl(m:Any) -> str:
+        v = getxattr(obj, m.group(1)[1:-1])
+        if isinstance(v, int) or isinstance(v, float):
+            v = str(v)
+        elif isinstance(v, list):
+            v = 'List'
+        elif isinstance(v, dict):
+            v = 'Dict'
+        elif v is None:
+            v = 'None'
+        return v
+    return _parse_expr.sub(_parse_repl, expr)
 
 # progress bar (text)
 _progress_bar_widget = None
@@ -548,6 +640,16 @@ def print_progress(
 
 # random color (3-RGB list)
 def rand_color() -> list:
+    """
+    Random RGB color 3-element list
+
+    No parameters
+
+    Returns
+    -------
+    col_code : list
+        3-value RGB color code, e.g. ```[175,94,221]```
+    """
 
     # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
     import random
@@ -556,6 +658,19 @@ def rand_color() -> list:
 
 # random hex char string of specified length
 def rand_hex_str(str_len:int = 2) -> str:
+    """
+    Random hex string of specified length
+
+    Parameters
+    ----------
+    str_len : int
+        Length of random hex string, default 2 (characters)
+    
+    Returns
+    -------
+    rand_str : str
+        String with random hexadecimal characters
+    """
 
     # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
     import random
@@ -575,99 +690,96 @@ def read_csv(
     sep:str = ',',
     headers:Union[bool,list] = True,
     out_format:str = 'dict_of_lists',
-    parse_lists:bool = False,
+    parse_vals:bool = True,
     pack_keys:bool = False,
     ) -> dict:
+    """
+    Somewhat extended CSV file reading
 
-    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
-    import numpy
-    from .jitfunc import parse_csv_buffer
+    Parameters
+    ----------
+    csv_filename : str
+        Filename to read from
+    sep : str
+        Separator string (length MUST be 1!)
+    headers : bool or list
+        Read headers (if True) or use passed in headers
+    out_format : str
+        Specify how to return CSV, either of
+        'dict_of_dicts' (each row will be a dict, using an ID column)
+        'dict_of_lists' (each column will be one list)
+        'list_of_dicts' (each row will be a dict, using row indexing)
+    parse_vals : bool
+        If True, re-convert complex values (lists, etc.) into python
+    pack_keys : bool
+        If True (default: False!), pack hierarchical keys into sub-dicts
+    
+    Returns
+    -------
+    csv_out : list / dict
+        List or Dict with read records from CSV
+    """
+
+    # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
+    import ast
+    import copy
+    import csv
 
     if not isinstance(headers, list) and not isinstance(headers, bool):
         raise ValueError('Parameter headers must either be a list or boolean.')
     if not isinstance(sep, str) or len(sep) != 1 or sep == '\n' or sep == '\r' or sep == '"':
         sep = ','
-    bsep = numpy.uint8(ord(sep))
     try:
-        with open(csv_filename, 'rb') as csv_file:
-            csv_cont = csv_file.read()
-            if len(csv_cont) > 3 and (csv_cont[0] == 239 and
-                csv_cont[1] == 187 and csv_cont[2] == 191):
-                csv_cont = csv_cont[3:]
-            csv_str = csv_cont.decode()
-            csv_dec = (len(csv_cont) == len(csv_str))
-            begs = parse_csv_buffer(csv_cont, bsep)
-            num_lines = begs.shape[0] - 1
-            num_fieldsp = begs.shape[1]
-            num_fields = num_fieldsp - 1
+        with open(csv_filename, 'r', newline='') as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=sep)
+            row = next(csv_reader)
+            num_fields = len(row)
+            d = []
+            if headers is False:
+                headers = ['column_{0:d}'.format(k+1) for k in range(num_fields)]
+                d.append({hk:dv for (hk,dv) in zip(headers, row)})
+            elif headers is True:
+                headers = row
+            else:
+                num_fields = len(headers)
+                if num_fields > len(row):
+                    row.extend([None] * (num_fields - len(row)))
+                    warnings.warn('CSV file does not contain as many fields.')
+                d.append({hk:dv for (hk,dv) in zip(headers, row)})
+            for row in csv_reader:
+                if num_fields > len(row):
+                    row.extend([None] * (num_fields - len(row)))
+                d.append({hk:dv for (hk,dv) in zip(headers, row)})
+        num_lines = len(d)
     except:
         raise
-    csv_lines = [None] * num_lines
-    for li in range(num_lines):
-        if csv_dec:
-            csv_lines[li] = csv_str[begs[li,0]:begs[li+1,0]].strip()
-        else:
-            csv_lines[li] = csv_cont[begs[li,0]:begs[li+1,0]]
-    skip_line = 0
-    if headers is False:
-        headers = ['column_{0:d}'.format(k+1) for k in range(num_fields)]
-    elif headers is True:
-        skip_line = 1
-        num_lines -= 1
-        line = csv_lines.pop(0)
-        headers = [None] * num_fields
-        for fi in range(num_fields):
-            if csv_dec:
-                hname = line[begs[0,fi]:begs[0,fi+1]-1].strip()
-            else:
-                hname = line[begs[0,fi]:begs[0,fi+1]-1].decode().strip()
-            if len(hname) > 2 and hname[0] == '"' and hname[-1] == '"':
-                hname = hname[1:-1]
-            headers[fi] = hname
-    else:
-        if len(headers) > num_fields:
-            raise ValueError('CSV file does not contain as many fields.')
-    od = dict()
-    for h in headers:
-        od[h] = [None] * num_lines
-    for (idx, line) in enumerate(csv_lines):
-        tidx = idx + skip_line
-        values = [None] * num_fields
-        lbegs = begs[tidx,:].reshape((num_fieldsp,))
-        lbegs -= lbegs[0]
-        for fi in range(num_fields):
-            if csv_dec:
-                values[fi] = line[lbegs[fi]:lbegs[fi+1]-1].strip()
-            else:
-                values[fi] = line[lbegs[fi]:lbegs[fi+1]-1].decode().strip()
-        for (h, v) in zip(headers, values):
-            if v == '':
-                continue
-            try:
-                nv = float(v)
-                if not '.' in v:
-                    nv = int(nv)
-                v = nv
-            except:
-                if v == 'False':
-                    v = False
-                elif v == 'True':
-                    v = True
-                elif len(v) > 1 and v[0] == '"' and v[-1] == '"':
-                    v = v[1:-1].replace('""', '"')
-                if isinstance(v, str) and parse_lists and len(v) > 1 and v[0] == '[' and v[-1] == ']':
+    if parse_vals:
+        for item in d:
+            for h in headers:
+                v = item[h]
+                if isinstance(v, str) and v:
+                    if v.lower() == 'true':
+                        item[h] = True
+                        continue
+                    elif v.lower() == 'false':
+                        item[h] = False
+                        continue
                     try:
-                        nv = json.loads(v)
-                        if isinstance(nv, list):
-                            v = nv
+                        nv = float(v)
+                        if nv == float(int(nv)):
+                            nv = int(nv)
+                        item[h] = nv
                     except:
                         pass
-            od[h][idx] = v
-    if pack_keys and '_dicts' in out_format:
-
-        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
-        import copy
-
+                    if v[0] == '[' and v[-1] == ']':
+                        try:
+                            nv = ast.literal_eval(v)
+                            if isinstance(nv, list):
+                                item[h] = nv
+                        except:
+                            pass
+    if ((pack_keys and '_dicts' in out_format) or
+        (isinstance(pack_keys, str) and pack_keys == 'force')):
         hd = dict()
         for h in headers:
             if not '.' in h:
@@ -682,35 +794,20 @@ def read_csv(
                     td[hks[0]] = dict()
                     td = td[hks[0]]
                     hks.pop(0)
-        ol = dict()
-        for h in hd.keys():
-            if h in headers:
-                ol[h] = od[h]
-            else:
-                ol[h] = [None] * num_lines
+        od = []
         for idx in range(num_lines):
-            for h in hd.keys():
-                if not h in headers:
-                    ol[h][idx] = copy.deepcopy(hd[h])
-        for h in headers:
-            if not '.' in h:
-                continue
-            hks = h.split('.')
-            hmk = hks.pop(0)
-            hsk = '.'.join(hks)
-            for idx in range(num_lines):
-                v = od[h][idx]
-                if v is None:
-                    delxattr(ol[hmk][idx], hsk)
+            ov = copy.deepcopy(hd)
+            for h in headers:
+                v = d[idx][h]
+                if v is None or (isinstance(v, str) and v == ''):
+                    delxattr(ov, h)
                 else:
-                    setxattr(ol[hmk][idx], hsk, v)
-        od = ol
-        headers = [k for k in od.keys()]
+                    setxattr(ov, h, v)
+            od.append(ov)
+        d = od
+        headers = [k for k in hd.keys()]
     if out_format == 'list_of_dicts':
-        ol = [None] * num_lines
-        for idx in range(num_lines):
-            ol[idx] = {h: od[h][idx] for h in headers}
-        od = ol
+        return d
     elif out_format == 'dict_of_dicts':
         if '_id' in headers:
             idk = '_id'
@@ -726,11 +823,16 @@ def read_csv(
                     pass
             if idk is None:
                 raise RuntimeError('No suitable key column in data.')
-        ol = dict()
+        od = dict()
         for idx in range(num_lines):
-            ol[od[idk][idx]] = {h: od[h][idx] for h in headers}
-        od = ol
-    return od
+            od[d[idx][idk]] = d[idx]
+        d = od
+    elif out_format == 'dict_of_lists':
+        od = dict()
+        for h in headers:
+            od[h] = [v[h] for v in d]
+        d = od
+    return d
 
 # select from list
 def selected(item:object, criteria:list) -> bool:
@@ -860,22 +962,44 @@ def select_from(
             raise
 
 # set extended attribute
-def setxattr(o, k, v):
+def setxattr(obj:Any, name:str, value:Any, force:bool = False):
+    """
+    Set attribute or key-based value from object
+
+    Parameters
+    ----------
+    obj : object
+        Either a dictionary or object with attributes
+    name : str
+        String describing what to retrieve, see help(getxattr)
+    value : Any
+        Value to return if name is not found (or error)
+    force : bool
+        If True (default: False!), extend object with key, if possible
+    
+    No return value.
+    """
     try:
-        k = k.split('.')
-        while len(k) > 1:
-            o = getxattr(o, k.pop(0))
-            if o is None:
-                return
+        names = name.split('.')
+        while len(names) > 1:
+            sn = names.pop(0)
+            so = getxattr(obj, sn)
+            if so is None:
+                if force:
+                    obj[sn] = dict()
+                    so = obj[sn]
+                else:
+                    return
+            obj = so
     except:
         return
     try:
-        if isinstance(o, dict):
-            o[k[0]] = v
+        if isinstance(obj, dict):
+            obj[names[0]] = value
         else:
-            setattr(o, k[0], v)
+            setattr(obj, names[0], value)
     except:
-        return
+        pass
 
 # superpixel default colors
 def superpixel_colors(
@@ -934,6 +1058,25 @@ def superpixel_colors(
                     random.randrange(16777216))
     return colors
 
+# URI encode
+_uri_tohex = ' !"#$%&\'()*+,/:;<=>?@[\\]^`{|}~'
+def uri_encode(uri:str) -> str:
+    """
+    Encode non-letter/number characters (below 127) to %02x for URI
+
+    Parameters
+    ----------
+    uri : str
+        URI element as string
+    
+    Returns
+    -------
+    encoded_uri : str
+        URI with non-letters/non-numbers encoded
+    """
+    letters = ['%' + hex(ord(c))[-2:] if c in _uri_tohex else c for c in uri]
+    return ''.join(letters)
+
 # write a CSV file
 def write_csv(
     csv_filename:str,
@@ -941,6 +1084,26 @@ def write_csv(
     sep:str = ',',
     headers:bool = True,
     ):
+    """
+    Extended CSV writing of dicts
+
+    Parameters
+    ----------
+    csv_filename : str
+        Filename of CSV to write
+    content : list or dict
+        Content to write, can be list or dict, with dicts
+    sep : str
+        Separator string (len must be 1!)
+    headers : bool
+        If True (default), write keys as first row
+    
+    No return value.
+    """
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    import csv
+
     try:
         cl = len(content)
     except:
@@ -967,11 +1130,12 @@ def write_csv(
                 ck = (k for k in content.keys())
                 if delk:
                     cv = [v for v in content.values()]
-                with open(csv_filename, 'w') as csv_file:
-                    ckq = [k.replace('"', '""') for k in ck]
-                    csv_file.write('"' + (('"' + sep + '"').join(ckq)) + '"\n')
+                with open(csv_filename, 'w', newline='') as csv_file:
+                    cw = csv.writer(csv_file, delimiter=sep)
+                    if headers:
+                        cw.writerow(ck)
                     for line in zip(*cv):
-                        csv_file.write(pack_vals(line, sep) + '\n')
+                        cw.writerow(line)
             elif all(cdict):
                 od = dict()
                 od['_id'] = [v['_id'] for v in cv]
@@ -995,22 +1159,3 @@ def write_csv(
                 raise ValueError('List only supported with all dict fields.')
     except:
         raise
-
-# URI encode
-_uri_tohex = ' !"#$%&\'()*+,/:;<=>?@[\\]^`{|}~'
-def uri_encode(uri:str) -> str:
-    """
-    Encode non-letter/number characters (below 127) to %02x for URI
-
-    Parameters
-    ----------
-    uri : str
-        URI element as string
-    
-    Returns
-    -------
-    encoded_uri : str
-        URI with non-letters/non-numbers encoded
-    """
-    letters = ['%' + hex(ord(c))[-2:] if c in _uri_tohex else c for c in uri]
-    return ''.join(letters)

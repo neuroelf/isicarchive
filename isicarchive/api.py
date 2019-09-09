@@ -1024,23 +1024,29 @@ class IsicApi(object):
         target_folder:str = None,
         filename_pattern:str = None,
         from_selection:Union[dict, list] = None,
+        download_superpixels:bool = False,
+        download_seg_masks:bool = False,
         ) -> bool:
         """
-        Download images from the (or a) selection.
+        Download images from the (given) selection.
 
         Parameters
         ----------
         target_folder : str
             Target folder to download images to
         filename_pattern : str
-            Pattern containing $field terms; extension will be added!
+            Pattern containing $field$ terms; extension will be added!
         from_selection : dict (default: self.image_selection)
             Dictionary with imageIds as keys
+        download_superpixels : bool (default: False)
+            Also download superpixel image (PNG)
+        download_seg_masks : bool (default: False)
+            Also download segmentation mask images
         
         No return values. If both `target_folder` and `filename_pattern`
         are unset (None), download the images (and their superpixel) to
         cache folder (if set, otherwise an error is raised). If only the
-        `target_folder` is set, the pattern will be set to '$name'.
+        `target_folder` is set, the pattern will be set to '$name$'.
         """
 
         # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
@@ -1072,10 +1078,11 @@ class IsicApi(object):
                     raise ValueError('Invalid selection item.')
             from_selection = selection_details
         if target_folder and filename_pattern is None:
-            filename_pattern = '$name'
+            filename_pattern = '$name$'
         elif target_folder is None or target_folder == '':
-            repl = re.compile(r'(\$[a-zA-Z._\-]+)')
             target_folder = None
+        spimage_pattern = filename_pattern + '_superpixels'
+        #segmask_pattern = filename_pattern + '_seg_mask'
         for (image_id, item) in from_selection:
             try:
                 image_req = self.get('image/' + image_id + '/download',
@@ -1084,15 +1091,33 @@ class IsicApi(object):
             except Exception as e:
                 warnings.warn('Error downloading {0:s}: {1:s}'.format(
                     item['name'], str(e)))
+                continue
             if target_folder is None:
-                image_filename = self.cache_filename(image_id, 'image',
+                cache_filename = self.cache_filename(image_id, 'image',
                     image_ext, extra=item['name'])
             else:
-                image_filename = target_folder + os.sep + repl.sub(lambda x:
-                    getxattr(item, x.group(1)[1:]),
-                    filename_pattern) + image_ext
-            with open(image_filename, 'wb') as image_file:
-                image_file.write(image_req.content)
+                cache_filename = target_folder + os.sep + func.parse_expr(
+                    filename_pattern, item) + image_ext
+            with open(cache_filename, 'wb') as cache_file:
+                cache_file.write(image_req.content)
+            if download_superpixels:
+                try:
+                    image_req = self.get('image/' + image_id + '/superpixels',
+                        parse_json=False)
+                    image_ext = func.guess_file_extension(image_req.headers)
+                except Exception as e:
+                    warnings.warn('Error downloading superpixels for id {0:s}: {1:s}'.format(
+                        item['name'], str(e)))
+                    continue
+                if target_folder is None:
+                    cache_filename = self.cache_filename(image_id, 'spimg', image_ext)
+                else:
+                    cache_filename = target_folder + os.sep + func.parse_expr(
+                        spimage_pattern, item) + image_ext
+                with open(cache_filename, 'wb') as cache_file:
+                    cache_file.write(image_req.content)
+            if download_seg_masks:
+                pass
 
     # lookup color code
     def feature_color(self, feature:str = None) -> list:
@@ -1443,12 +1468,12 @@ class IsicApi(object):
     def read_csv(self,
         csv_filename:str,
         out_format:str = 'dict_of_lists',
-        parse_lists:bool = True,
+        parse_vals:bool = True,
         pack_keys:bool = True,
         ) -> Any:
         try:
             return func.read_csv(csv_filename, out_format=out_format,
-                parse_lists=parse_lists, pack_keys=pack_keys)
+                parse_vals=parse_vals, pack_keys=pack_keys)
         except:
             raise
 
@@ -1710,9 +1735,12 @@ class IsicApi(object):
         from .font import Font
         from .imfunc import image_mix
 
-        if not isinstance(image, numpy.ndarray):
+        if not image is None and not isinstance(image, numpy.ndarray):
             raise ValueError('Invalid image.')
-        imshape = image.shape
+        if image is None:
+            imshape = (1024, 1024)
+        else:
+            imshape = image.shape
         if not isinstance(xpos, int):
             xpos = imshape[1] // 2
         elif xpos >= imshape[1]:
@@ -1737,7 +1765,7 @@ class IsicApi(object):
             fsize = fsize * float(imshape[0])
         else:
             fsize = float(fsize)
-        [inset_image, inset_alpha] = font_obj.set_text(text, fsize,
+        [inset_image, inset_alpha, fromys] = font_obj.set_text(text, fsize,
             color=color, bcolor=bcolor, align=align, invert=invert,
             outsize_x=0, outsize_y=0, padding=padding)
         mix_image = numpy.zeros(inset_image.size, dtype=numpy.uint8).reshape(
@@ -1749,6 +1777,8 @@ class IsicApi(object):
         if min_alpha > 0.0:
             inset_alpha = numpy.maximum(inset_alpha, min_alpha)
         inshape = inset_alpha.shape
+        if image is None:
+            return [0, 0, inshape[0], inshape[1], mix_image, inset_alpha, fromys]
         sfromx = 0
         sfromy = 0
         stox = inshape[1]
@@ -1795,7 +1825,7 @@ class IsicApi(object):
             mix_image[sfromy:stoy, sfromx:stox, :],
             inset_alpha[sfromy:stoy, sfromx:stox])
 
-        return [tfromy, tfromx, ttoy, ttox]
+        return [tfromy, tfromx, ttoy, ttox, mix_image, inset_alpha, fromys]
     
     # show image in notebook
     def show_image_in_notebook(self,
