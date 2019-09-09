@@ -598,6 +598,11 @@ class Study(object):
             imfunc.color_superpixels(image_data, [idx], spmap, [colors], [alpha])
         image.clear_data()
 
+        # feature information
+        featc = sorted([k for k in stats['feat'].keys()])
+        for feat in featc:
+            stats['featnum'][feat] = len(stats['feat'][feat])
+            
         # resize image
         if isinstance(resize_output, tuple):
             if len(resize_output) == 1:
@@ -632,10 +637,17 @@ class Study(object):
                         size_y = int(0.5 + float(im_shape[0]) * float(size_x) / float(im_shape[1]))
                     imfunc.image_resample(image_data, (size_y, size_x))
 
-        # feature information
-        featc = sorted([k for k in stats['feat'].keys()])
-        for feat in featc:
-            stats['featnum'][feat] = len(stats['feat'][feat])
+        # legend
+        if isinstance(legend_position, str) and legend_position:
+            lp = legend_position.lower().split('.')
+            if not lp[0] in ['top', 'bottom', 'left', 'right']:
+                return (image_data, stats)
+            if len(lp) < 2 or not lp[1] in ['in', 'inside', 'out', 'outside']:
+                lpl = 'o'
+            else:
+                lpl = lp[1][0]
+            #fcol_keys = [self._featk for k in sorted([k for k in fcols.keys()])]
+            
         return (image_data, stats)
 
     # image heatmaps
