@@ -179,9 +179,9 @@ def getxattr(obj:object, name:str = None, default:Any = None) -> Any:
                 elif name == '$':
                     val = obj.values()
                 elif name == '%':
-                    val = [k for k in obj.keys()]
+                    val = list(obj.keys())
                 elif name == '%%':
-                    val = ' '.join([k for k in obj.keys()])
+                    val = ' '.join(list(obj.keys()))
                 else:
                     val = obj.get(name)
             elif name.isdigit() or (name[0] == '-' and name[1:].isdigit()):
@@ -313,14 +313,14 @@ def getxkeys(obj:dict, sk:str = '', sanitize:bool = True) -> list:
         if sanitize:
             okt = dict()
             okr = []
-            for k in reversed(sorted([k for k in oks.keys()])):
+            for k in reversed(sorted(list(oks.keys()))):
                 if getxattr(okt, k):
                     okr.append(k)
                 else:
                     setxattr(okt, k, True, True)
             for k in okr:
                 oks.pop(k, None)
-        return sorted([k for k in oks.keys()])
+        return sorted(list(oks.keys()))
     elif not isinstance(obj, dict):
         return []
     ok = [k for k in obj.keys()]
@@ -805,7 +805,7 @@ def read_csv(
                     setxattr(ov, h, v)
             od.append(ov)
         d = od
-        headers = [k for k in hd.keys()]
+        headers = list(hd.keys())
     if out_format == 'list_of_dicts':
         return d
     elif out_format == 'dict_of_dicts':
@@ -1115,21 +1115,21 @@ def write_csv(
             return
         if isinstance(content, dict):
             ck = (k for k in content.keys())
-            cv = [v for v in content.values()]
-            ct = [t for t in map(type, cv)]
-            clist = [v for v in map(lambda x: x is list, ct)]
-            cdict = [v for v in map(lambda x: x is dict, ct)]
+            cv = list(content.values())
+            ct = list(map(type, cv))
+            clist = list(map(lambda x: x is list, ct))
+            cdict = list(map(lambda x: x is dict, ct))
             if all(clist):
                 delk = []
                 for (k, v) in zip(ck, cv):
-                    cnone = [tv for tv in map(lambda x: x is None, v)]
+                    cnone = list(map(lambda x: x is None, v))
                     if all(cnone):
                         delk.append(k)
                 for k in delk:
                     content.pop(k, None)
                 ck = (k for k in content.keys())
                 if delk:
-                    cv = [v for v in content.values()]
+                    cv = list(content.values())
                 with open(csv_filename, 'w', newline='') as csv_file:
                     cw = csv.writer(csv_file, delimiter=sep)
                     if headers:
@@ -1146,9 +1146,9 @@ def write_csv(
             else:
                 raise ValueError('Dict only supported with all list/dict fields.')
         elif isinstance(content, list):
-            cv = [v for v in content]
-            ct = [t for t in map(type, cv)]
-            cdict = [v for v in map(lambda x: x is dict, ct)]
+            cv = list(content)
+            ct = list(map(type, cv))
+            cdict = list(map(lambda x: x is dict, ct))
             if all(cdict):
                 od = dict()
                 meta_keys = getxkeys(cv)

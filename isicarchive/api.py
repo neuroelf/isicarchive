@@ -1136,6 +1136,23 @@ class IsicApi(object):
         """
         if feature is None:
             return func.rand_color()
+        if '+' in feature:
+            features = feature.split('+')
+            r = 0.0
+            g = 0.0
+            b = 0.0
+            fd = 0.0
+            for f in features:
+                fc = self._feature_colors.get(f, None)
+                if fc:
+                    r += fc[0]
+                    g += fc[1]
+                    b += fc[2]
+                    fd += 1.0
+            if fd > 0.0:
+                return [int(r / fd), int(g / fd), int(b / fd)]
+            else:
+                return func.rand_color()
         elif feature not in self._feature_colors:
             self._feature_colors[feature] = self.feature_color()
             if self._cache_folder:
@@ -1147,6 +1164,115 @@ class IsicApi(object):
                     pass
         return self._feature_colors[feature]
     
+    # feature legend
+    def feature_legend(self,
+        features:list,
+        features_alpha:list,
+        fsize:float = 48.0,
+        fcolor:tuple = (0,0,0),
+        bcolor:tuple = (255,255,255),
+        patch_size:tuple = (40,60),
+        patch_frame:int = 1,
+        align:str = 'left',
+        padding:int = 2,
+        columns:int = 1,
+        frame_color:tuple = (0,0,0),
+        frame_width:int = 2,
+        ):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        import numpy
+
+        try:
+            columns = max(1, int(columns))
+        except:
+            columns = 1
+        try:
+            patchy = max(16, int(patch_size[0]))
+            patchx = max(16, int(patch_size[1]))
+        except:
+            patchy = 40
+            patchx = 60
+        try:
+            f_image = self.set_text_in_image(None,
+                features, fsize=fsize, fcolor=fcolor, bcolor=bcolor,
+                align=align, padding=0)
+        except:
+            raise
+        if not isinstance(features, list):
+            if isinstance(features, str):
+                features = [features]
+                num_features = 1
+            else:
+                raise ValueError('Invalid features list.')
+        if not isinstance(features_alpha, list):
+            features_alpha = [1.0] * num_features
+        t_image = f_image[4]
+        t_shape = t_image.shape
+        sfromx = 0
+        stox = t_shape[1]
+        yfroms = f_image[6]
+        num_lines = len(yfroms)
+        if num_lines > 1:
+            lh = yfroms[1] - yfroms[0]
+        else:
+            lh = t_shape[0] - 2 * padding
+        patchy = min(patchy, lh - 4)
+        pfromy = (lh - patchy) // 2
+        out_lines = num_lines // columns
+        if (out_lines * columns) < num_lines:
+            out_lines += 1
+        if out_lines < num_lines:
+            outy = yfroms[outy+1] + yfroms[0]
+        else:
+            outy = t_shape[0]
+        pf_padding = int(2.5 + 0.25 * fsize)
+        col_width = (patchx + pf_padding + stox + padding)
+        outx = col_width * columns + padding
+        o_image = numpy.zeros(outy * outx * 3, dtype=numpy.uint8).reshape(
+            (outy, outx, 3,))
+        o_image[:,:,0] = bcolor[0]
+        o_image[:,:,1] = bcolor[1]
+        o_image[:,:,2] = bcolor[2]
+        for l in range(num_lines):
+            c = l // out_lines
+            ol = l - c * out_lines
+            sfromy = yfroms[l]
+            stoy = sfromy + lh
+            tfromy = padding + ol * lh
+            ttoy= tfromy + lh
+            tfromx = c * col_width + padding + patchx + pf_padding
+            ttox = tfromx + stox
+            o_image[tfromy:ttoy, tfromx:ttox, :] = t_image[sfromy:stoy, sfromx:stox, :]
+            f_alpha = features_alpha[l]
+            f_name = features[l].split('(')
+            f_color = self.feature_color(f_name[0].strip())
+            i_alpha = 1.0 - f_alpha
+            p_color = (int(i_alpha * float(bcolor[0]) + f_alpha * float(f_color[0])),
+                int(i_alpha * float(bcolor[1]) + f_alpha * float(f_color[1])),
+                int(i_alpha * float(bcolor[2]) + f_alpha * float(f_color[2])))
+            tfromy = tfromy + pfromy
+            ttoy = tfromy + patchy
+            tfromx -= patchx + pf_padding
+            ttox = tfromx + patchx
+            o_image[tfromy:ttoy,tfromx:ttox,0] = p_color[0]
+            o_image[tfromy:ttoy,tfromx:ttox,1] = p_color[1]
+            o_image[tfromy:ttoy,tfromx:ttox,2] = p_color[2]
+            if patch_frame > 0:
+                o_image[tfromy:tfromy+patch_frame,tfromx:ttox,0] = fcolor[0]
+                o_image[tfromy:tfromy+patch_frame,tfromx:ttox,1] = fcolor[1]
+                o_image[tfromy:tfromy+patch_frame,tfromx:ttox,2] = fcolor[2]
+                o_image[ttoy-patch_frame:ttoy,tfromx:ttox,0] = fcolor[0]
+                o_image[ttoy-patch_frame:ttoy,tfromx:ttox,1] = fcolor[1]
+                o_image[ttoy-patch_frame:ttoy,tfromx:ttox,2] = fcolor[2]
+                o_image[tfromy:ttoy,tfromx:tfromx+patch_frame,0] = fcolor[0]
+                o_image[tfromy:ttoy,tfromx:tfromx+patch_frame,1] = fcolor[1]
+                o_image[tfromy:ttoy,tfromx:tfromx+patch_frame,2] = fcolor[2]
+                o_image[tfromy:ttoy,ttox-patch_frame:ttox,0] = fcolor[0]
+                o_image[tfromy:ttoy,ttox-patch_frame:ttox,1] = fcolor[1]
+                o_image[tfromy:ttoy,ttox-patch_frame:ttox,2] = fcolor[2]
+        return o_image
+
     # set feature color
     def feature_set_color(self, name:str, color:list):
         if not isinstance(name, str) or not name:
@@ -1721,12 +1847,12 @@ class IsicApi(object):
         xpos:int = -1,
         ypos:int = -1,
         padding:int = 12,
-        color:list = [224,224,224],
-        bcolor:list = [32,32,32],
+        fcolor:tuple = (0, 0, 0),
+        bcolor:tuple = (255,255,255),
         align:str = 'left',
         invert:bool = False,
-        fcolor:list = [0, 0, 0],
-        fwidth:int = 2,
+        frame_color:tuple = (0,0,0),
+        frame_width:int = 2,
         min_alpha:float = 0.75,
         ) -> list:
 
@@ -1766,7 +1892,7 @@ class IsicApi(object):
         else:
             fsize = float(fsize)
         [inset_image, inset_alpha, fromys] = font_obj.set_text(text, fsize,
-            color=color, bcolor=bcolor, align=align, invert=invert,
+            color=fcolor, bcolor=bcolor, align=align, invert=invert,
             outsize_x=0, outsize_y=0, padding=padding)
         mix_image = numpy.zeros(inset_image.size, dtype=numpy.uint8).reshape(
             inset_image.shape)
@@ -1777,8 +1903,6 @@ class IsicApi(object):
         if min_alpha > 0.0:
             inset_alpha = numpy.maximum(inset_alpha, min_alpha)
         inshape = inset_alpha.shape
-        if image is None:
-            return [0, 0, inshape[0], inshape[1], mix_image, inset_alpha, fromys]
         sfromx = 0
         sfromy = 0
         stox = inshape[1]
@@ -1803,28 +1927,28 @@ class IsicApi(object):
                 stoy = imshape[0] - tfromy
         ttox = tfromx + (stox - sfromx)
         ttoy = tfromy + (stoy - sfromy)
-        if fwidth > 0:
-            inset_image[sfromy:sfromy+fwidth,:,0] = fcolor[0]
-            inset_image[sfromy:sfromy+fwidth,:,1] = fcolor[1]
-            inset_image[sfromy:sfromy+fwidth,:,2] = fcolor[2]
-            inset_alpha[sfromy:sfromy+fwidth,:] = 1.0
-            inset_image[stoy-fwidth:stoy,:,0] = fcolor[0]
-            inset_image[stoy-fwidth:stoy,:,1] = fcolor[1]
-            inset_image[stoy-fwidth:stoy,:,2] = fcolor[2]
-            inset_alpha[stoy-fwidth:stoy,:] = 1.0
-            inset_image[:,sfromx:sfromx+fwidth,0] = fcolor[0]
-            inset_image[:,sfromx:sfromx+fwidth,1] = fcolor[1]
-            inset_image[:,sfromx:sfromx+fwidth,2] = fcolor[2]
-            inset_alpha[:,sfromx:sfromx+fwidth] = 1.0
-            inset_image[:,stox-fwidth:stox,0] = fcolor[0]
-            inset_image[:,stox-fwidth:stox,1] = fcolor[1]
-            inset_image[:,stox-fwidth:stox,2] = fcolor[2]
-            inset_alpha[:,stox-fwidth:stox] = 1.0
-        image[tfromy:ttoy, tfromx:ttox, :] = image_mix(
-            image[tfromy:ttoy, tfromx:ttox, :],
-            mix_image[sfromy:stoy, sfromx:stox, :],
-            inset_alpha[sfromy:stoy, sfromx:stox])
-
+        if frame_width > 0:
+            mix_image[sfromy:sfromy+frame_width,:,0] = frame_color[0]
+            mix_image[sfromy:sfromy+frame_width,:,1] = frame_color[1]
+            mix_image[sfromy:sfromy+frame_width,:,2] = frame_color[2]
+            inset_alpha[sfromy:sfromy+frame_width,:] = 1.0
+            mix_image[stoy-frame_width:stoy,:,0] = frame_color[0]
+            mix_image[stoy-frame_width:stoy,:,1] = frame_color[1]
+            mix_image[stoy-frame_width:stoy,:,2] = frame_color[2]
+            inset_alpha[stoy-frame_width:stoy,:] = 1.0
+            mix_image[:,sfromx:sfromx+frame_width,0] = frame_color[0]
+            mix_image[:,sfromx:sfromx+frame_width,1] = frame_color[1]
+            mix_image[:,sfromx:sfromx+frame_width,2] = frame_color[2]
+            inset_alpha[:,sfromx:sfromx+frame_width] = 1.0
+            mix_image[:,stox-frame_width:stox,0] = frame_color[0]
+            mix_image[:,stox-frame_width:stox,1] = frame_color[1]
+            mix_image[:,stox-frame_width:stox,2] = frame_color[2]
+            inset_alpha[:,stox-frame_width:stox] = 1.0
+        if not image is None:
+            image[tfromy:ttoy, tfromx:ttox, :] = image_mix(
+                image[tfromy:ttoy, tfromx:ttox, :],
+                mix_image[sfromy:stoy, sfromx:stox, :],
+                inset_alpha[sfromy:stoy, sfromx:stox])
         return [tfromy, tfromx, ttoy, ttox, mix_image, inset_alpha, fromys]
     
     # show image in notebook
@@ -1848,6 +1972,8 @@ class IsicApi(object):
         object_id:str = None,
         name:str = None,
         params:dict = None,
+        meta_dict_key:str = '_id',
+        **meta_files,
         ) -> any:
         """
         study endpoint, allows to
@@ -1896,7 +2022,7 @@ class IsicApi(object):
             raise KeyError('Dataset with id %s not found.' % (object_id))
         if not study['name'] in self.studies:
             self.studies[study['name']] = study['_id']
-        study_obj = Study(study, api=self)
+        study_obj = Study(study, api=self, meta_dict_key=meta_dict_key, **meta_files)
         if self._store_objs:
             self._study_objs[study['_id']] = study_obj
         return study_obj

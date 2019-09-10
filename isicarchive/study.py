@@ -124,6 +124,8 @@ class Study(object):
         description:str = None,
         api:object = None,
         image_details:bool = True,
+        meta_dict_key:str = '_id',
+        **meta_files,
         ):
         """Study init."""
 
@@ -179,6 +181,17 @@ class Study(object):
                     warnings.warn('Study {0:s} not found.'.format(self.name))
             except:
                 raise
+
+        # load meta files
+        if meta_dict_key is None or not isinstance(meta_dict_key, str):
+            meta_dict_key = '_id'
+        for (key_word, meta_file) in meta_files.items():
+            if os.path.exists(meta_file):
+                try:
+                    self.load_meta_data(meta_file, meta_key=key_word,
+                        list_to_dict=True, dict_key=meta_dict_key)
+                except:
+                    pass
 
     # read from JSON
     def _from_json(self, from_json:dict, image_details:bool = True):
@@ -380,6 +393,19 @@ class Study(object):
         if deref_images:
             self._obj_images = dict()
 
+    # list of features (from annotations)
+    def feature_list(self) -> list:
+        feature_keys = func.getxattr(self.annotations, '[].markups.%')
+        feature_true = func.getxattr(self.annotations, '[].markups.$')
+        feature_dict = dict()
+        for (k, t) in zip(feature_keys, feature_true):
+            if k is None:
+                continue
+            for (f, ft) in zip(k, t):
+                if ft:
+                    feature_dict[f] = True
+        return sorted(list(feature_dict.keys()))
+
     # image heatmap
     def image_heatmap(self,
         image_name:str,
@@ -392,7 +418,6 @@ class Study(object):
         underlay_gray:float = 0.75,
         seg_outline:bool = True,
         resize_output:Tuple = None,
-        legend_position:str = None,
         ) -> Any:
 
         # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
@@ -542,7 +567,7 @@ class Study(object):
                         fdict[f] = [a['_id']]
                     if not a['user']['_id'] in udict:
                         udict[a['user']['_id']] = True
-        flist = [k for k in fdict.keys()]
+        flist = list(fdict.keys())
         fcols = dict()
         for f in flist:
             fcols[f] = self._api.feature_color(f)
@@ -556,15 +581,24 @@ class Study(object):
         if max_raters is None or max_raters <= 0:
             max_raters = len(udict)
         max_raters = float(max_raters)
-        stats = {'users': udict, 'sp': dict(), 'feat': dict(), 'featnum': dict()}
+        stats = {
+            'feat': dict(),
+            'featcols': dict(),
+            'featnum': dict(),
+            'sp': dict(),
+            'users': udict,
+        }
         for [idx, fs] in spdict.items():
             ft = dict()
+            ftl = []
             spstats = dict()
             for f in fs:
+                ftl.append(f[1])
                 if f[1] in ft:
                     ft[f[1]].append(f[2])
                 else:
                     ft[f[1]] = [f[2]]
+            ftl = '+'.join(sorted(ftl))
             colors = []
             alpha = []
             for [f, fa] in ft.items():
@@ -576,18 +610,21 @@ class Study(object):
                 if alpha_scale == 'sqrt':
                     av = numpy.sqrt(av)
                 alpha.append(av)
+            r = 0.0
+            g = 0.0
+            b = 0.0
+            a = 0.0
+            for (c, av) in zip(colors, alpha):
+                r += av * float(c[0])
+                g += av * float(c[1])
+                b += av * float(c[2])
+                a += av
+            mix_color = [[int(r / a), int(g / a), int(b / a)]]
+            mix_alpha = [a / float(len(alpha))]
             if mix_colors and len(colors) > 1:
-                r = 0.0
-                g = 0.0
-                b = 0.0
-                a = 0.0
-                for (c, av) in zip(colors, alpha):
-                    r += av * float(c[0])
-                    g += av * float(c[1])
-                    b += av * float(c[2])
-                    a += av
-                colors = [[int(r / a), int(g / a), int(b / a)]]
-                alpha = [a / float(len(alpha))]
+                colors = mix_color
+                alpha = mix_alpha
+            stats['featcols'][ftl] = [colors, alpha]
             stats['sp'][idx] = spstats
             spk = '+'.join(sorted([k for k in spstats.keys()]))
             if not spk in stats['feat']:
@@ -636,18 +673,6 @@ class Study(object):
                     elif size_y is None:
                         size_y = int(0.5 + float(im_shape[0]) * float(size_x) / float(im_shape[1]))
                     imfunc.image_resample(image_data, (size_y, size_x))
-
-        # legend
-        if isinstance(legend_position, str) and legend_position:
-            lp = legend_position.lower().split('.')
-            if not lp[0] in ['top', 'bottom', 'left', 'right']:
-                return (image_data, stats)
-            if len(lp) < 2 or not lp[1] in ['in', 'inside', 'out', 'outside']:
-                lpl = 'o'
-            else:
-                lpl = lp[1][0]
-            #fcol_keys = [self._featk for k in sorted([k for k in fcols.keys()])]
-            
         return (image_data, stats)
 
     # image heatmaps
@@ -657,6 +682,7 @@ class Study(object):
         image_extra:str = None,
         image_sel:Union[list,None] = None,
         features:Union[str,list] = 'all',
+        exemplar_features:Union[str,list] = 'exemplar.$_id$.feature',
         users:Union[str,list] = 'all',
         max_raters:int = None,
         min_raters:int = None,
@@ -664,10 +690,13 @@ class Study(object):
         alpha_scale:str = None,
         underlay_gray:bool = None,
         seg_outline:bool = None,
+        resize_output:Union[int,Tuple] = 1024,
+        legend_position:str = 'southeast',
         ):
 
-        # IMPORT DONE HERE TO SAVE TIME ON MODULE INIT
-        from .imfunc import write_image
+        # IMPORTS DONE HERE TO SAVE TIME ON MODULE INIT
+        import numpy
+        import imfunc
 
         if target_folder is None or target_folder == '':
             target_folder = os.getcwd()
@@ -688,15 +717,75 @@ class Study(object):
             images = self.images
         num_images = len(images)
         all_stats = dict()
+        if isinstance(exemplar_features, str):
+            if exemplar_features in self.meta_data:
+                ef_list = [None] * num_images
+                for (idx, image) in enumerate(images):
+                    ef_list[idx] = func.getxattr(self.meta_data,
+                        func.parse_expr(exemplar_features, image))
+                exemplar_features = ef_list
+            else:
+                all_feats = self.feature_list()
+                if exemplar_features in all_feats:
+                    exemplar_features = [exemplar_features] * num_images
+            if isinstance(exemplar_features, str):
+                raise ValueError('Invalid exemplar feature (as string).')
+        elif not isinstance(exemplar_features, list) or len(exemplar_features) != num_images:
+            if not exemplar_features is None:
+                raise ValueError('Invalid exemplar feature list.')
         for (idx, image) in enumerate(images):
             func.print_progress(idx, num_images, 'Creating heatmaps:', image['name'])
             try:
-                (image_data, stats) = self.image_heatmap(image['_id'],
+                image_obj = self._api.image(image['_id'])
+                image_obj.load_image_data()
+                image_plain = image_obj.data
+                if image_plain.ndim < 3:
+                    im_shape = image_plain.shape
+                    image_plain = numpy.repeat(image_plain.reshape(
+                        (im_shape[0], im_shape[1], 1,)), 3, axis=2)
+                else:
+                    image_plain = image_plain[:,:,0:3]
+                image_plain = imfunc.image_resample(image_plain, resize_output)
+                q_shape = image_plain.shape
+                full_y = q_shape[0] * 2
+                full_x = q_shape[1] * 2
+                (image_feats, stats) = self.image_heatmap(image['_id'],
                     features=features, users=users, max_raters=max_raters,
                     min_raters=min_raters, mix_colors=mix_colors,
                     alpha_scale=alpha_scale, underlay_gray=underlay_gray,
                     seg_outline=seg_outline)
-                write_image(image_data, target_folder + image['name'] + image_ext)
+                image_feats = imfunc.image_resample(image_feats, resize_output)
+                if exemplar_features and exemplar_features[idx]:
+                    image_exem = self.image_heatmap(image['_id'],
+                    features=exemplar_features[idx], users=users,
+                    mix_colors=mix_colors, alpha_scale=alpha_scale,
+                    underlay_gray=underlay_gray, seg_outline=seg_outline)
+                    image_exem = imfunc.image_resample(image_exem, resize_output)
+                else:
+                    image_exem = numpy.asarray([255,255,255],
+                        dtype=numpy.uint8).reshape((1,1,3,))
+                
+                # legend
+                if (isinstance(legend_position, str) and legend_position.lower() in
+                    ['ne', 'northeast', 'nw', 'northwest', 'se', 'southeast', 'sw', 'southwest']):
+                    lp = legend_position.lower()
+                    if len(lp) > 2:
+                        lp = lp[0] + lp[5]
+                else:
+                    lp = 'se'
+                image_leg_text = self._api.feature_legend()
+                
+                # stitch images together
+                image_out = numpy.zeros(full_x * full_y * 3, dtype=numpy.uint8).reshape(
+                    (full_y, full_x, 3,))
+                image_out[:,:,:] = 255
+                if lp == 'se':
+                    image_out[0:fully, 0:fullx, :] = image_plain
+                    image_out[fully:, 0:fullx, :] = image_feats
+                    image_out[0:fully, fullx:, :] = image_exem
+                    image_out[fully:, fullx:, :] = image_legend
+                    
+                imfunc.write_image(image_out, target_folder + image['name'] + image_ext)
                 all_stats[image['name']] = stats
             except:
                 func.print_progress(num_images, num_images, 'Error')

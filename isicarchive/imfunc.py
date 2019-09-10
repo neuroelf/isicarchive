@@ -613,7 +613,11 @@ def image_resample(image:numpy.ndarray, new_shape:tuple) -> numpy.ndarray:
     im_shape = image.shape
     if len(im_shape) < 2:
         raise ValueError('Invalid image array.')
-    if isinstance(new_shape, float) and new_shape > 0.0 and new_shape <= 8.0:
+    if isinstance(new_shape, int) and new_shape > 1:
+        max_shape = max(im_shape)
+        sf = float(new_shape) / float(max_shape)
+        new_shape = (int(sf * float(im_shape[0])), int(sf * float(im_shape[1])))
+    elif isinstance(new_shape, float) and new_shape > 0.0 and new_shape <= 8.0:
         new_shape = (int(new_shape * float(im_shape[0])),
             int(new_shape * float(im_shape[1])))
     if not isinstance(new_shape, tuple) or len(new_shape) != 2:
