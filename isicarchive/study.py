@@ -593,23 +593,27 @@ class Study(object):
             ftl = []
             spstats = dict()
             for f in fs:
-                ftl.append(f[1])
                 if f[1] in ft:
                     ft[f[1]].append(f[2])
                 else:
+                    ftl.append(f[1])
                     ft[f[1]] = [f[2]]
-            ftl = '+'.join(sorted(ftl))
+            ftl = sorted(ftl)
             colors = []
             alpha = []
-            for [f, fa] in ft.items():
+            ftfl = []
+            for f in ftl:
+                fa = ft[f]
                 spstats[f] = fa
                 if not min_raters is None and len(fa) < min_raters:
                     continue
+                ftfl.append(f + '#' + str(len(fa)))
                 colors.append(fcols[f])
                 av = float(len(fa)) / max_raters
                 if alpha_scale == 'sqrt':
                     av = numpy.sqrt(av)
                 alpha.append(av)
+            ftfl = '+'.join(ftfl)
             r = 0.0
             g = 0.0
             b = 0.0
@@ -624,7 +628,7 @@ class Study(object):
             if mix_colors and len(colors) > 1:
                 colors = mix_color
                 alpha = mix_alpha
-            stats['featcols'][ftl] = [colors, alpha]
+            stats['featcols'][ftfl] = [colors, alpha]
             stats['sp'][idx] = spstats
             spk = '+'.join(sorted([k for k in spstats.keys()]))
             if not spk in stats['feat']:

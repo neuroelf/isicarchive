@@ -2063,6 +2063,14 @@ class IsicApi(object):
             else:
                 yield study
 
+    # superpixel colors (pass-through)
+    def superpixel_colors(self,
+        **kwargs) -> Any:
+        try:
+            return func.superpixel_colors(**kwargs)
+        except:
+            raise
+
     # write a CSV file
     def write_csv(self, csv_filename:str, content:Any):
         if isinstance(content, str):
