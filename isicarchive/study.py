@@ -23,6 +23,7 @@ import copy
 import datetime
 import glob
 import os
+import re
 from typing import Any, Tuple, Union
 import warnings
 
@@ -630,7 +631,7 @@ class Study(object):
                 alpha = mix_alpha
             stats['featcols'][ftfl] = [colors, alpha]
             stats['sp'][idx] = spstats
-            spk = '+'.join(sorted([k for k in spstats.keys()]))
+            spk = '+'.join(sorted(list(spstats.keys())))
             if not spk in stats['feat']:
                 stats['feat'][spk] = []
             stats['feat'][spk].append(idx)
@@ -643,7 +644,19 @@ class Study(object):
         featc = sorted([k for k in stats['feat'].keys()])
         for feat in featc:
             stats['featnum'][feat] = len(stats['feat'][feat])
-            
+        featcols = dict()
+        fnum_p = re.compile(r'\#\d+')
+        for (f, fd) in stats['featcols'].items():
+            fr = fnum_p.sub('', f)
+            fda = sum(fd[1])
+            if not fr in featcols:
+                featcols[fr] = [fda, fd]
+            elif fda > featcols[fr][0]:
+                featcols[fr] = [fda, fd]
+        stats['featcols'] = dict()
+        for f in sorted(list(featcols.keys())):
+            stats['featcols'][f] = featcols[f][1]
+
         # resize image
         if isinstance(resize_output, tuple):
             if len(resize_output) == 1:
