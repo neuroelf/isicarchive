@@ -9,11 +9,12 @@ Created on Fri Aug 30 11:01:59 2019
 #from matplotlib import pyplot
 #import numpy
 
+import os
 from isicarchive.api import IsicApi
 
 username = 'weberj3@mskcc.org'
-doc_folder = 'C:\\Users\\weberj3\\Documents\\'
-cache_folder = doc_folder + 'ISIC'
+doc_folder = 'Z:\\10.Imaging Informatics\\'
+cache_folder = doc_folder + 'ISIC' + os.sep + 'cache' + os.sep
 debug = True
 
 api = IsicApi(username, cache_folder=cache_folder, debug=debug)
@@ -22,9 +23,9 @@ api = IsicApi(username, cache_folder=cache_folder, debug=debug)
 #od = api.read_csv(doc_folder + 'test.csv', 'list_of_dicts')
 #api.write_csv(doc_folder + 'test_od.csv', od)
 
-from isicarchive import func
-seg_list = [v for v in api.segmentation_cache.values()]
-all_ks = func.getxkeys(seg_list)
+#from isicarchive import func
+#seg_list = [v for v in api.segmentation_cache.values()]
+#all_ks = func.getxkeys(seg_list)
 
 #api = IsicApi(username, cache_folder=cache_folder, debug=debug)
 #image = api.image('ISIC_0000000')
@@ -40,8 +41,19 @@ all_ks = func.getxkeys(seg_list)
 
 #api = IsicApi(username='weberj3@mskcc.org', cache_folder='C:\\Users\\weberj3\\Documents\\ISIC', debug=True)
 
-#studies = api.study()
-#study = api.study('EASY_STUDY_4')
+study_folder = doc_folder + 'EASY' + os.sep + 'PILOT' + os.sep
+if not os.path.exists(study_folder):
+    os.mkdir(study_folder)
+study = api.study('ISIC Annotation Study - All Features', exemplar=study_folder + 'pilot.csv')
+
+study.load_annotations()
+study.select_annotations(features='Vessels : Arborizing', images=study.images[4]['_id'])
+
+a = [a for a in study.annotation_selection.values()]
+
+a[0].load_data(load_masks=True)
+a[0].load_data(load_masks=True)
+
 #study.load_annotations()
 #image = api.image(study.images[0])
 #image.load_image_data()

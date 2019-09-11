@@ -139,6 +139,7 @@ class Study(object):
         self._obj_images = dict()
         # still needs timezone information!!
         self.annotations = []
+        self.annotation_selection = dict()
         self.created = datetime.datetime.now().strftime(
             '%Y-%m-%dT%H:%M:%S.%f+00:00')
         self.creator = {'_id': '000000000000000000000000'}
@@ -150,6 +151,7 @@ class Study(object):
         self.loaded_features = dict()
         self.loaded_features_in = dict()
         self.meta_data = dict()
+        self.markups = dict()
         self.name = name if name else ''
         self.participation_requests = []
         self.questions = []
@@ -372,9 +374,23 @@ class Study(object):
         image_clear_data:bool = False,
         image_clear_superpixels:bool = False,
         image_deref_in_api:bool = True,
+        clear_all:bool = False,
         ):
+        if clear_all:
+            clear_annotations = True
+            deref_annotations = True
+            deref_images = True
+            annotation_clear_features = True
+            annotation_clear_masks = True
+            annotation_deref_image = True
+            annotation_deref_in_api = True
+            image_clear_data = True
+            image_clear_raw_data = True
+            image_clear_superpixels = True
+            image_deref_in_api = True
         if clear_annotations:
             self._annotations = dict()
+            self.markups = dict()
         for anno_obj in self._obj_annotations.values():
             anno_obj.clear_data(
                 clear_features=annotation_clear_features,
@@ -816,7 +832,9 @@ class Study(object):
         return [image['name'] for image in self.images]
 
     # load annotations
-    def load_annotations(self):
+    def load_annotations(self,
+        save_failed:bool = False,
+        ):
         if (not self._api) or len(self._obj_annotations) == len(self.annotations):
             return
         study_anno_filename = self._api.cache_filename(self.id,
@@ -834,12 +852,26 @@ class Study(object):
             func.print_progress(idx, total, 'Loading annotations:')
             annotation = self.annotations[idx]
             annotation_id = annotation['_id']
+            if 'state' in annotation:
+                annotation_state = annotation['state']
+            else:
+                annotation_state = 'active'
+            if 'status' in annotation:
+                annotation_status = annotation['status']
+            else:
+                annotation_status = 'missing'
             if not annotation_id in self._obj_annotations:
                 if annotation_id in study_anno_data:
                     annotation = copy.copy(annotation)
                     annotation['features'] = study_anno_data[annotation_id]
                 try:
                     self.annotation(annotation)
+                    if annotation_state != 'complete':
+                        continue
+                    if annotation_status == 'missing':
+                        continue
+                    if (not save_failed) and annotation_status != 'ok':
+                        continue
                     annotation_obj = self._obj_annotations[annotation_id]
                     annotation_features = annotation_obj.features
                     for key, val in annotation_obj.markups.items():
@@ -858,6 +890,7 @@ class Study(object):
             if os.path.exists(study_anno_filename):
                 os.remove(study_anno_filename)
             func.gzip_save_var(study_anno_filename, study_anno_data)
+        self.select_annotations()
 
     # load images
     def load_images(self,
@@ -1023,6 +1056,139 @@ class Study(object):
         else:
             k = meta_key
         self.meta_data[k] = meta_data
+
+    # select annotations
+    def select_annotations(self,
+        annotation_state:Union[str,list] = 'complete',
+        annotation_status:Union[str,list] = 'ok',
+        features:Union[str,list] = 'all',
+        images:Union[str,list] = 'all',
+        users:Union[str,list] = 'all',
+        user_completion:int = 0,
+        superpixels:Union[str,int,list] = 'all',
+        ):
+        if isinstance(annotation_state, str):
+            annotation_state = set([annotation_state])
+        elif not isinstance(annotation_state, list):
+            raise ValueError('Parameter annotation_state must be string or list.')
+        else:
+            annotation_state = set(annotation_state)
+        if isinstance(annotation_status, str):
+            annotation_status = set([annotation_status])
+        elif not isinstance(annotation_status, list):
+            raise ValueError('Parameter annotation_status must be string or list.')
+        else:
+            annotation_status = set(annotation_status)
+        study_features = sorted([f['id'] for f in self.features])
+        if isinstance(features, str):
+            if features == 'all':
+                features = study_features
+            else:
+                features = [features]
+        elif not isinstance(features, list):
+            raise ValueError('Parameter features must be string or list.')
+        features = set(features)
+        for f in list(features):
+            if not f in study_features:
+                features.remove(f)
+        if isinstance(images, str):
+            if images == 'all':
+                images = sorted(list(set([a['image']['_id'] for a in self.annotations])))
+            else:
+                images = [images]
+        elif not isinstance(images, list):
+            raise ValueError('Parameter images must be string or list.')
+        images = images[:]
+        for ii in range(len(images)):
+            if not func.could_be_mongo_object_id(images[ii]):
+                try:
+                    images[ii] = self._api.images[images[ii]]
+                except:
+                    raise ValueError('Image ' + images[ii] + ' not found.')
+        images = set(images)
+        if isinstance(users, str):
+            if users == 'all':
+                users = sorted(list(set([a['user']['_id'] for a in self.annotations])))
+                if isinstance(user_completion, int) and user_completion > 0:
+                    for u in users[:]:
+                        if (not u in self.user_completion or
+                            self.user_completion[u] < user_completion):
+                            users.remove(u)
+            else:
+                users = [users]
+        elif not isinstance(users, list):
+            raise ValueError('Parameter users must be string or list.')
+        study_users = {u['_id'] for u in self.users}
+        study_user_logins = {u['login']: u['_id'] for u in self.users}
+        study_user_lnames = {u['lastName']: u['_id'] for u in self.users}
+        for ui in range(len(users)):
+            u = users[ui]
+            if u in study_user_logins:
+                users[ui] = study_user_logins[u]
+            elif u in study_user_lnames:
+                users[ui] = study_user_lnames[u]
+            elif not u in study_users:
+                raise ValueError('User with ID ' + u + ' not found.')
+        users = set(users)
+        if isinstance(superpixels, str):
+            if superpixels == 'all':
+                superpixels = False
+            else:
+                raise ValueError('Invalid superpixels parameter value.')
+        elif isinstance(superpixels, int):
+            superpixels = [superpixels]
+        elif not isinstance(superpixels, list):
+            raise ValueError('Parameter superpixels must be ''all'', int, or list.')
+        if superpixels:
+            superpixels = set(superpixels)
+        self.annotation_selection = dict()
+        self.markups = dict()
+        self.markups['image.user.feature'] = dict()
+        for (a_id, a_obj) in self._obj_annotations.items():
+            if not a_obj.state in annotation_state:
+                continue
+            if not a_obj.status in annotation_status:
+                continue
+            feat = a_obj.features
+            img = a_obj.image['_id']
+            if not img in images:
+                continue
+            user = a_obj.user['_id']
+            if not user in users:
+                continue
+            for (fkey, fdet) in feat.items():
+                if not fkey in features:
+                    continue
+                if superpixels:
+                    sset = {s for s in fdet['idx']}
+                    if len(sset.intersection(superpixels)) == 0:
+                        continue
+                self.annotation_selection[a_id] = a_obj
+                if not fkey in self.markups:
+                    self.markups[fkey] = dict()
+                if not img in self.markups:
+                    self.markups[img] = dict()
+                if not user in self.markups:
+                    self.markups[user] = dict()
+                if not fkey in self.markups[img]:
+                    self.markups[img][fkey] = dict()
+                if not fkey in self.markups[user]:
+                    self.markups[user][fkey] = dict()
+                if not img in self.markups[fkey]:
+                    self.markups[fkey][img] = dict()
+                if not img in self.markups[user]:
+                    self.markups[user][img] = dict()
+                if not user in self.markups[fkey]:
+                    self.markups[fkey][user] = dict()
+                if not user in self.markups[img]:
+                    self.markups[img][user] = dict()
+                self.markups[fkey][img][user] = fdet
+                self.markups[fkey][user][img] = fdet
+                self.markups[img][fkey][user] = fdet
+                self.markups[img][user][fkey] = fdet
+                self.markups[user][fkey][img] = fdet
+                self.markups[user][img][fkey] = fdet
+                self.markups['image.user.feature'][img + '.' + user + '.' + fkey] = fdet
 
     # show annotations (grid)
     def show_annotations(self,

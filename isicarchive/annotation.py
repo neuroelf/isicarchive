@@ -21,6 +21,7 @@ __version__ = '0.4.8'
 
 # imports (needed for majority of functions)
 import datetime
+import os
 from typing import Any
 import warnings
 
@@ -233,7 +234,7 @@ class Annotation(object):
 
     # clear data
     def clear_data(self,
-        clear_features:bool = True,
+        clear_features:bool = False,
         clear_masks:bool = True,
         deref_image:bool = False):
         if deref_image:
@@ -272,14 +273,29 @@ class Annotation(object):
                         lambda v: v > 0, feat_lst)]
                     self.features[key]['idx'] = feat_idx
                     self.features[key]['num'] = len(feat_idx)
-                if not load_masks:
+                if not load_masks or key in self.masks:
                     continue
-                feat_req = self._api.get('annotation/' + self.id +
-                        '/' + feat_uri + '/mask', parse_json=False)
-                if not feat_req.ok:
-                    raise ValueError('Error loading feature mask ' + key)
-                self.features[key]['msk'] = feat_req.content
-                self.masks[key] = imageio.imread(feat_req.content)
+                cache_filename = self._api.cache_filename(self.id,
+                    'afmsk', 'png', self._api._feature_filepart[key])
+                if cache_filename and os.path.exists(cache_filename):
+                    try:
+                        self.masks[key] = imageio.imread(cache_filename)
+                    except Exception as e:
+                        warnings.warn('Error loading feature mask: ' + str(e))
+                        os.remove(cache_filename)
+                if not key in self.masks:
+                    feat_req = self._api.get('annotation/' + self.id +
+                            '/' + feat_uri + '/mask', parse_json=False)
+                    if not feat_req.ok:
+                        raise ValueError('Error loading feature mask ' + key)
+                    self.features[key]['msk'] = feat_req.content
+                    self.masks[key] = imageio.imread(feat_req.content)
+                    if cache_filename:
+                        try:
+                            with open(cache_filename, 'wb') as cache_file:
+                                cache_file.write(self.features[key]['msk'])
+                        except Exception as e:
+                            warnings.warn('Error writing feature mask: ' + str(e))
         except Exception as e:
             warnings.warn('Error loading annotation: ' + str(e))
 
@@ -290,6 +306,7 @@ class Annotation(object):
         other_feature:str,
         measure:str = 'dice',
         smcc_fwhm:float = 0.05,
+        cc_within_segmask:bool = True,
         ) -> float:
 
         # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
@@ -318,6 +335,10 @@ class Annotation(object):
         if self.image['_id'] == other.image['_id'] and measure == 'dice':
             return imfunc.superpixel_dice(self.features[feature]['idx'],
                 other.features[other_feature]['idx'])
+
+        # ANOTHER IMPORT DONE HERE AS IT'S NOT NEEDED OTHERWISE
+        import numpy
+
         if not self._image_obj:
             if self._api and self.image_id in self._api._image_objs:
                 self._image_obj = self._api._image_objs[self.image_id]
@@ -344,6 +365,26 @@ class Annotation(object):
         oimeta = oimage.meta['acquisition']
         simage_shape = (simeta['pixelsY'], simeta['pixelsX'])
         oimage_shape = (oimeta['pixelsY'], oimeta['pixelsX'])
+        if cc_within_segmask:
+            try:
+                simage.load_segmentation()
+                seg_obj = simage._segmentation
+                seg_obj.load_mask_data()
+                simage_mask = seg_obj.mask
+            except:
+                warnings.warn('Segmentation mask not available for source image.')
+                cc_within_segmask = False
+            if simage.id == oimage.id:
+                oimage_mask = simage_mask
+            else:
+                try:
+                    oimage.load_segmentation()
+                    seg_obj = oimage._segmentation
+                    seg_obj.load_mask_data()
+                    oimage_mask = seg_obj.mask
+                except:
+                    warnings.warn('Segmentation mask not available for other image.')
+                    cc_within_segmask = False
         if simage_shape != oimage_shape:
             if simage_shape[0] <= oimage_shape[0] and simage_shape[1] <= oimage_shape[1]:
                 target = 's'
@@ -356,19 +397,27 @@ class Annotation(object):
             if target == 's':
                 sdata = self.masks[feature]
                 odata = imfunc.image_resample(other.masks[other_feature], simage_shape)
+                if cc_within_segmask:
+                    oimage_mask = imfunc.image_resample(oimage_mask, simage_shape)
             else:
                 sdata = imfunc.image_resample(self.masks[feature], oimage_shape)
                 odata = other.masks[other_feature]
+                if cc_within_segmask:
+                    simage_mask = imfunc.image_resample(simage_mask, oimage_shape)
         else:
             sdata = self.masks[feature]
             odata = other.masks[other_feature]
+        if cc_within_segmask:
+            simage_mask = numpy.logical_and(simage_mask > 0, oimage_mask > 0)
+        else:
+            simage_mask = None
         if measure == 'dice':
-            return imfunc.image_dice(sdata, odata)
+            return imfunc.image_dice(sdata, odata, simage_mask)
         elif measure == 'cc':
-            return imfunc.image_corr(sdata, odata)
+            return imfunc.image_corr(sdata, odata, simage_mask)
         else:
             return imfunc.image_corr(imfunc.image_smooth_fft(sdata, smcc_fwhm),
-                imfunc.image_smooth_fft(odata, smcc_fwhm))
+                imfunc.image_smooth_fft(odata, smcc_fwhm), simage_mask)
 
     # show image in notebook
     def show_in_notebook(self,

@@ -415,14 +415,31 @@ def image_compose(
     return out
 
 # image correlation (pixel values)
-def image_corr(im1:numpy.ndarray, im2:numpy.ndarray) -> float:
+def image_corr(
+    im1:numpy.ndarray,
+    im2:numpy.ndarray,
+    immask:numpy.ndarray = None,
+    ) -> float:
     if im1.size != im2.size:
         raise ValueError('Images must match in size.')
-    cc = numpy.corrcoef(im1.reshape(im1.size), im2.reshape(im2.size))
+    if immask is None:
+        cc = numpy.corrcoef(im1.reshape(im1.size), im2.reshape(im2.size))
+    else:
+        if immask.size != im1.size:
+            raise ValueError('Image mask must match in size.')
+        im1 = numpy.reshape(im1, im1.size)
+        im2 = numpy.reshape(im2, im1.size)
+        immask = numpy.reshape(immask, im1.size)
+        if immask.dtype != numpy.bool:
+            immask = (immask > 0)
+        cc = numpy.corrcoef(im1[immask], im2[immask])
     return cc[0,1]
 
 # Dice coeffient
-def image_dice(im1:numpy.ndarray, im2:numpy.ndarray) -> float:
+def image_dice(
+    im1:numpy.ndarray,
+    im2:numpy.ndarray,
+    immask:numpy.ndarray) -> float:
     if im1.shape != im2.shape:
         if len(im1.shape) > 2:
             if im1.shape[2] != 1:
@@ -434,8 +451,17 @@ def image_dice(im1:numpy.ndarray, im2:numpy.ndarray) -> float:
             im1 = image_resample(im1, ISIC_DICE_SHAPE)
         if (im2.shape[0], im2.shape[1]) != ISIC_DICE_SHAPE:
             im2 = image_resample(im2, ISIC_DICE_SHAPE)
-    im1 = (im1.reshape(im1.size) > 0)
-    im2 = (im2.reshape(im2.size) > 0)
+    if immask is None:
+        im1 = (im1.reshape(im1.size) > 0)
+        im2 = (im2.reshape(im2.size) > 0)
+    else:
+        if immask.size != im1.size:
+            immask = image_resample(numpy.uint8(255) * immask.astype(numpy.uint8),
+                (im1.shape[0], im1.shape[1])) >= 128
+        im1 = numpy.reshape(im1, im1.size)
+        im2 = numpy.reshape(im2, im1.size)
+        im1 = im1[immask]
+        im2 = im2[immask]
     s1 = numpy.sum(im1)
     s2 = numpy.sum(im2)
     return 2 * numpy.sum(numpy.logical_and(im1, im2)) / (s1 + s2)
@@ -1125,7 +1151,10 @@ def write_image(
             raise
     with BytesIO() as buffer:
         try:
-            imwrite(buffer, image, imformat)
+            if imformat == 'jpg':
+                imwrite(buffer, image, imformat, quality=jpg_quality)
+            else:
+                imwrite(buffer, image, imformat)
         except:
             raise
         buffer_data = buffer.getvalue()

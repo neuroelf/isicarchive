@@ -390,6 +390,7 @@ class IsicApi(object):
         }
         self._features = master_features
         self._feature_colors = dict()
+        self._feature_filepart = dict()
         self._fonts = dict()
         self._hostname = hostname
         self._image_cache_last = '0' * 24
@@ -416,12 +417,32 @@ class IsicApi(object):
         if cache_folder and os.path.exists(cache_folder):
             if os.path.isdir(cache_folder):
                 try:
+                    
+                    # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
+                    import glob
+                    import re
+
+                    find_id = re.compile(r'_([0-9a-f]{24})[_\.]')
                     self._temp_file = tempfile.TemporaryFile(dir=cache_folder)
                     self._cache_folder = cache_folder
                     for sf in '0123456789abcdef':
                         cs_folder = cache_folder + os.sep + sf
                         if not os.path.exists(cs_folder):
                             os.mkdir(cs_folder)
+                        for ssf in '0123456789abcdef':
+                            cs_sfolder = cs_folder + os.sep + ssf
+                            if not os.path.exists(cs_sfolder):
+                                os.mkdir(cs_sfolder)
+                    for sf in '0123456789abcdef':
+                        cs_folder = cache_folder + os.sep + sf
+                        cache_files = glob.glob(cs_folder + os.sep + '*.*')
+                        for cf in list(cache_files):
+                            cfile = os.path.basename(cf)
+                            cid = find_id.search(cfile)
+                            if cid:
+                                cid = cid.group(1)
+                                os.replace(cf, cache_folder + os.sep +
+                                    cid[-2] + os.sep + cid[-1] + os.sep + cfile)
                 except:
                     self._cache_folder = None
                     warnings.warn('Error creating a file in ' + cache_folder)
@@ -474,6 +495,7 @@ class IsicApi(object):
         for item in master_features:
             if 'color' in item:
                 self._feature_colors[item['id']] = item['color']
+            self._feature_filepart[item['id']] = func.letters_only(item['abbreviation'])
         for item in master_features:
             if 'color' in item:
                 icol = item['color']
@@ -705,8 +727,9 @@ class IsicApi(object):
             extra += '_' + self._user_short
         
         # concatenate items
-        return (self._cache_folder +
-            os.sep + oid[-1] + os.sep + otype + '_' + oid + extra + oext)
+        o_folder = self._cache_folder + os.sep + oid[-2] + os.sep + oid[-1] + os.sep
+        o_file = o_folder + otype + '_' + oid + extra + oext
+        return o_file
 
     # cache image information
     def _cache_images(self, from_list:dict):

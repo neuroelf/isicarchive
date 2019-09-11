@@ -241,6 +241,18 @@ class Sampler(object):
                             ksk = ksk[kc[1]:-kc[1]]
                         k = [ksk, kc[1]]
                         self._kernels[fms] = k
+            elif len(k) > 5 and k[0:5] == 'gauss':
+                try:
+                    fwhm = 0.1 * float(int(0.5 + 10 * float(k[5:])))
+                    fms = 'g_{0:.1f}'.format(fwhm)
+                    if fms in self._kernels:
+                        k = self._kernels[fms]
+                    else:
+                        sk = _gauss_kernel(fwhm * float(1024))
+                        k = [sk, 1024]
+                        self._kernels[fms] = k
+                except:
+                    raise ValueError('Invalid gaussian kernel requested.')
             elif not k in self._kernels:
                 raise ValueError('Kernel ' + k + ' not available.')
             else:

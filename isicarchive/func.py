@@ -447,16 +447,34 @@ def gzip_save_var(gzip_file:str, save_var:Any) -> bool:
     -------
     success : bool
         True (otherwise raises exception!)
+    
+    The function initially saves the content under a different name, and
+    then renames the temporary filename to its final destination using
+    ```os.replace()```.
     """
-    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+
+    # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
     from gzip import GzipFile
+    import os
+    tmp_gz = gzip_file + '.tmp.gz'
     try:
         json_bytes = (json.dumps(save_var) + "\n").encode('utf-8')
-        with GzipFile(gzip_file, 'w') as gzip_out:
+        with GzipFile(tmp_gz, 'w') as gzip_out:
             gzip_out.write(json_bytes)
-        return True
     except:
         raise
+    try:
+        os.replace(tmp_gz, gzip_file)
+    except:
+        raise
+    return True
+
+# letters only
+def letters_only(word:str, lower_case:bool = True):
+    lo = ''.join([l for l in word if l.lower() in 'abcdefghijklmnopqrstuvwxyz'])
+    if lower_case:
+        lo = lo.lower()
+    return lo
 
 # pretty print objects (shared implementation)
 def object_pretty(
