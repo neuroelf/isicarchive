@@ -145,6 +145,7 @@ class Study(object):
         self.creator = {'_id': '000000000000000000000000'}
         self.description = description if description else ''
         self.features = []
+        self.heatmap_stats = None
         self.id = ''
         self.images = []
         self.image_features = dict()
@@ -426,6 +427,7 @@ class Study(object):
     # image heatmap
     def image_heatmap(self,
         image_name:str,
+        annotation_status:Union[str,list] = 'ok',
         features:Union[str,list] = 'all',
         users:Union[str,list] = 'all',
         max_raters:int = None,
@@ -512,12 +514,27 @@ class Study(object):
             except:
                 pass
             raise
-        annotations = func.select_from(self.annotations,
-            [['image._id', '==', image_id], ['markups.%%', '~', ':']])
+        if isinstance(annotation_status, str):
+            annotation_status = [annotation_status]
+        elif not isinstance(annotation_status, list):
+            raise ValueError('Invalid annotation_status parameter.')
+        annotations = func.select_from(self.annotations, [
+            ['image._id', '==', image_id],
+            ['markups.%%', '~', ':'],
+            ['status', 'in', annotation_status]])
         all_features = False
         if isinstance(features, str):
             if features == 'all':
                 all_features = True
+            elif features and features[0] == '~':
+                feature = features[1:].lower()
+                study_features = sorted([f['id'] for f in self.features])
+                features = []
+                for f in study_features:
+                    if feature in f.lower():
+                        features.append(f)
+                if not features:
+                    raise ValueError('Feature not found.')
             else:
                 features = [features]
         if isinstance(features, list):
@@ -715,7 +732,7 @@ class Study(object):
         image_extra:str = None,
         image_sel:Union[list,None] = None,
         features:Union[str,list] = 'all',
-        exemplar_features:Union[str,list] = 'exemplar.$_id$.feature',
+        exemplar_features:Union[str,list] = 'exemplar.$name$',
         users:Union[str,list] = 'all',
         max_raters:int = None,
         min_raters:int = None,
@@ -724,12 +741,12 @@ class Study(object):
         underlay_gray:bool = None,
         seg_outline:bool = None,
         resize_output:Union[int,Tuple] = 1024,
-        legend_position:str = 'southeast',
+        legend_position:str = 'northwest',
         ):
 
         # IMPORTS DONE HERE TO SAVE TIME ON MODULE INIT
         import numpy
-        import imfunc
+        from . import imfunc
 
         if target_folder is None or target_folder == '':
             target_folder = os.getcwd()
@@ -751,16 +768,19 @@ class Study(object):
         num_images = len(images)
         all_stats = dict()
         if isinstance(exemplar_features, str):
-            if exemplar_features in self.meta_data:
+            exemplar_key = exemplar_features.partition('.')
+            if '$' in exemplar_features and exemplar_key[0] in self.meta_data:
                 ef_list = [None] * num_images
                 for (idx, image) in enumerate(images):
                     ef_list[idx] = func.getxattr(self.meta_data,
-                        func.parse_expr(exemplar_features, image))
+                        func.parse_expr(exemplar_key[2], image))
                 exemplar_features = ef_list
             else:
                 all_feats = self.feature_list()
                 if exemplar_features in all_feats:
                     exemplar_features = [exemplar_features] * num_images
+                else:
+                    exemplar_features = None
             if isinstance(exemplar_features, str):
                 raise ValueError('Invalid exemplar feature (as string).')
         elif not isinstance(exemplar_features, list) or len(exemplar_features) != num_images:
@@ -778,27 +798,43 @@ class Study(object):
                         (im_shape[0], im_shape[1], 1,)), 3, axis=2)
                 else:
                     image_plain = image_plain[:,:,0:3]
-                image_plain = imfunc.image_resample(image_plain, resize_output)
+                if not resize_output is None:
+                    image_plain = imfunc.image_resample(image_plain, resize_output)
                 q_shape = image_plain.shape
-                full_y = q_shape[0] * 2
-                full_x = q_shape[1] * 2
+                half_y = q_shape[0]
+                full_y = half_y * 2
+                half_x = q_shape[1]
+                full_x = half_x * 2
                 (image_feats, stats) = self.image_heatmap(image['_id'],
                     features=features, users=users, max_raters=max_raters,
                     min_raters=min_raters, mix_colors=mix_colors,
                     alpha_scale=alpha_scale, underlay_gray=underlay_gray,
                     seg_outline=seg_outline)
-                image_feats = imfunc.image_resample(image_feats, resize_output)
+                if not resize_output is None:
+                    image_feats = imfunc.image_resample(image_feats, resize_output)
                 if exemplar_features and exemplar_features[idx]:
                     image_exem = self.image_heatmap(image['_id'],
                     features=exemplar_features[idx], users=users,
                     mix_colors=mix_colors, alpha_scale=alpha_scale,
                     underlay_gray=underlay_gray, seg_outline=seg_outline)
-                    image_exem = imfunc.image_resample(image_exem, resize_output)
+                    if not resize_output is None:
+                        image_exem = imfunc.image_resample(image_exem, resize_output)
                 else:
                     image_exem = numpy.asarray([255,255,255],
                         dtype=numpy.uint8).reshape((1,1,3,))
                 
                 # legend
+                stat_cols = stats['featcols']
+                flabels = list(stat_cols.keys())
+                fcolors = [stat_cols[label][0] for label in flabels]
+                falphas = [stat_cols[label][1] for label in flabels]
+                image_leg_text = self._api.feature_legend(flabels, fcolors, falphas)
+                leg_shape = image_leg_text.shape
+                if leg_shape[0] > q_shape[0] or leg_shape[1] > q_shape[1]:
+                    rs_factor = min(float(q_shape[0]) / float(leg_shape[0]),
+                        float(q_shape[1]) / float(leg_shape[1]))
+                    image_leg_text = imfunc.image_resample(image_leg_text, rs_factor)
+                    leg_shape = image_leg_text.shape
                 if (isinstance(legend_position, str) and legend_position.lower() in
                     ['ne', 'northeast', 'nw', 'northwest', 'se', 'southeast', 'sw', 'southwest']):
                     lp = legend_position.lower()
@@ -806,17 +842,24 @@ class Study(object):
                         lp = lp[0] + lp[5]
                 else:
                     lp = 'se'
-                image_leg_text = self._api.feature_legend()
+                lfromy = 0
+                lfromx = 0
+                if lp[0] == 's':
+                    lfromy = q_shape[0] - leg_shape[0]
+                if lp[1] == 'e':
+                    lfromx = q_shape[1] - leg_shape[1]
+                ltoy = lfromy + leg_shape[0]
+                ltox = lfromx + leg_shape[1]
                 
                 # stitch images together
                 image_out = numpy.zeros(full_x * full_y * 3, dtype=numpy.uint8).reshape(
                     (full_y, full_x, 3,))
                 image_out[:,:,:] = 255
                 if lp == 'se':
-                    image_out[0:fully, 0:fullx, :] = image_plain
-                    image_out[fully:, 0:fullx, :] = image_feats
-                    image_out[0:fully, fullx:, :] = image_exem
-                    image_out[fully:, fullx:, :] = image_legend
+                    image_out[0:half_y, 0:half_x, :] = image_plain
+                    image_out[half_y:, 0:half_x, :] = image_feats
+                    image_out[lfromy:ltoy, half_x+lfromx:half_x+ltox, :] = image_leg_text
+                    image_out[half_y:, half_x:, :] = image_exem
                     
                 imfunc.write_image(image_out, target_folder + image['name'] + image_ext)
                 all_stats[image['name']] = stats
@@ -825,6 +868,7 @@ class Study(object):
                 raise
         func.print_progress(num_images, num_images, 'Creating heatmaps:')
         func.gzip_save_var(target_folder + 'heatmap_stats.json.gz', all_stats)
+        self.heatmap_stats = all_stats
         return all_stats
 
     # image names
@@ -986,8 +1030,24 @@ class Study(object):
         meta_key:str = None,
         list_to_dict:bool = False,
         dict_key:str = '_id',
-        extract_key:str = None,
+        extract_key:Union[str,list] = None,
         ):
+        temp_filename = ''
+        if (isinstance(meta_file, str) and len(meta_file) > 7 and
+            meta_file[0:7].lower() in ['http://', 'https:/']):
+            try:
+                import tempfile
+                meta_cont = self._api.get_url(meta_file)
+                suffix = meta_file.rpartition('.')
+                if len(meta_cont) > 0:
+                    temp_file = tempfile.mkstemp(suffix='.'+suffix[2])
+                    temp_filename = temp_file[1]
+                    temp_file = os.fdopen(temp_file[0], 'w+b')
+                    temp_file.write(meta_cont)
+                    temp_file.close()
+                    meta_file = temp_filename
+            except:
+                raise RuntimeError('Error downloading from URL.')
         if not os.path.exists(meta_file):
             warnings.warn('File ' + meta_file + ' not found.')
             return
@@ -996,6 +1056,8 @@ class Study(object):
             meta_format = '.'.join(finfo[1:])
         elif not isinstance(meta_format, str) or len(meta_format) < 3:
             warnings.warn('Invalid meta_format parameter.')
+            if temp_filename:
+                os.remove(temp_filename)
             return
         fmt = meta_format.lower()
         if fmt[0] == '.':
@@ -1005,13 +1067,19 @@ class Study(object):
                 meta_data = func.read_csv(meta_file, out_format='list_of_dicts')
                 if not isinstance(meta_data, list) or len(meta_data) < 1:
                     warnings.warn('No content in file.')
+                    if temp_filename:
+                        os.remove(temp_filename)
                     return
             except:
+                if temp_filename:
+                    os.remove(temp_filename)
                 raise
         elif fmt == 'json.gz':
             try:
                 meta_data = func.gzip_load_var(meta_file)
             except:
+                if temp_filename:
+                    os.remove(temp_filename)
                 raise
         elif fmt == 'json':
             from json import loads as json_loads
@@ -1019,9 +1087,15 @@ class Study(object):
                 with open(meta_file, 'r') as json_file:
                     meta_data = json_loads(json_file.read())
             except:
+                if temp_filename:
+                    os.remove(temp_filename)
                 raise
         else:
+            if temp_filename:
+                os.remove(temp_filename)
             raise ValueError('Invalid format ' + meta_format + '.')
+        if temp_filename:
+            os.remove(temp_filename)
         if list_to_dict and isinstance(meta_data, list) and len(meta_data) > 0:
             lmd = len(meta_data)
             if not isinstance(meta_data[0], dict):
@@ -1041,16 +1115,23 @@ class Study(object):
                     meta_dict[func.getxattr(item, dict_key)] = item
                 meta_data = meta_dict
         if not extract_key is None:
+            if isinstance(extract_key, str):
+                extract_key = [extract_key]
+            elif not isinstance(extract_key, list):
+                raise ValueError('Invalid extract_key parameter.')
             if isinstance(meta_data, list):
-                extract_data = [None] * len(meta_data)
-                for (idx, item) in enumerate(meta_data):
-                    extract_data[idx] = func.getxattr(item, extract_key)
-                meta_data = extract_data
+                for k in extract_key:
+                    extract_data = [None] * len(meta_data)
+                    for (idx, item) in enumerate(meta_data):
+                        extract_data[idx] = func.getxattr(item, k)
+                    self.meta_data[k] = extract_data
             elif isinstance(meta_data, dict):
-                extract_data = dict()
-                for (key, item) in meta_data.items():
-                    extract_data[key] = func.getxattr(item, extract_key)
-                meta_data = extract_data
+                for k in extract_key:
+                    extract_data = dict()
+                    for (key, item) in meta_data.items():
+                        extract_data[key] = func.getxattr(item, k)
+                    self.meta_data[k] = extract_data
+            return
         if meta_key is None or meta_key == '':
             k = finfo[0]
         else:
@@ -1099,10 +1180,11 @@ class Study(object):
         elif not isinstance(images, list):
             raise ValueError('Parameter images must be string or list.')
         images = images[:]
+        study_image_names = {i['name']:i['_id'] for i in self.images}
         for ii in range(len(images)):
             if not func.could_be_mongo_object_id(images[ii]):
                 try:
-                    images[ii] = self._api.images[images[ii]]
+                    images[ii] = study_image_names[images[ii]]
                 except:
                     raise ValueError('Image ' + images[ii] + ' not found.')
         images = set(images)

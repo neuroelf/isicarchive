@@ -404,6 +404,7 @@ class IsicApi(object):
         self._temp_file = None
         self._user_short = None
         self.datasets = dict()
+        self.features = {f['id']: f for f in master_features}
         self.image_cache = dict()
         self.image_segmentations = dict()
         self.image_selection = None
@@ -1190,11 +1191,12 @@ class IsicApi(object):
     # feature legend
     def feature_legend(self,
         features:list,
-        features_alpha:list,
-        fsize:float = 48.0,
+        feature_colors:list,
+        feature_alphas:list,
+        fsize:float = 40.0,
         fcolor:tuple = (0,0,0),
         bcolor:tuple = (255,255,255),
-        patch_size:tuple = (40,60),
+        patch_size:tuple = (32,48),
         patch_frame:int = 1,
         align:str = 'left',
         padding:int = 2,
@@ -1203,9 +1205,28 @@ class IsicApi(object):
         frame_width:int = 2,
         ):
 
-        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
         import numpy
+        from .imfunc import color_superpixels
 
+        if not isinstance(features, list):
+            if isinstance(features, str):
+                features = [features]
+            else:
+                raise ValueError('Invalid features parameter.')
+        features = features[:]
+        for (idx, f) in enumerate(features):
+            if not '+' in f:
+                continue
+            f = f.split('+')
+            for (fidx, sf) in enumerate(f):
+                if sf in self.features:
+                    f[fidx] = self.features[sf]['abbreviation']
+            features[idx] = '(' + ' + '.join(f) + ')'
+        if not isinstance(feature_colors, list):
+            raise ValueError('Invalid feature_colors parameter.')
+        if not isinstance(feature_alphas, list):
+            feature_alphas = [feature_alphas]
         try:
             columns = max(1, int(columns))
         except:
@@ -1219,17 +1240,9 @@ class IsicApi(object):
         try:
             f_image = self.set_text_in_image(None,
                 features, fsize=fsize, fcolor=fcolor, bcolor=bcolor,
-                align=align, padding=0)
+                align=align, padding=0, frame_width=0)
         except:
             raise
-        if not isinstance(features, list):
-            if isinstance(features, str):
-                features = [features]
-                num_features = 1
-            else:
-                raise ValueError('Invalid features list.')
-        if not isinstance(features_alpha, list):
-            features_alpha = [1.0] * num_features
         t_image = f_image[4]
         t_shape = t_image.shape
         sfromx = 0
@@ -1239,48 +1252,81 @@ class IsicApi(object):
         if num_lines > 1:
             lh = yfroms[1] - yfroms[0]
         else:
-            lh = t_shape[0] - 2 * padding
+            lh = t_shape[0]
         patchy = min(patchy, lh - 4)
         pfromy = (lh - patchy) // 2
         out_lines = num_lines // columns
         if (out_lines * columns) < num_lines:
             out_lines += 1
         if out_lines < num_lines:
-            outy = yfroms[outy+1] + yfroms[0]
+            outy = yfroms[out_lines]
         else:
             outy = t_shape[0]
+        if not isinstance(frame_width, int):
+            frame_width = 2
+        else:
+            frame_width = min(8, max(0, frame_width))
+        outy += 2 * frame_width + 2 * padding
         pf_padding = int(2.5 + 0.25 * fsize)
         col_width = (patchx + pf_padding + stox + padding)
-        outx = col_width * columns + padding
+        outx = col_width * columns + padding + 2 * frame_width
         o_image = numpy.zeros(outy * outx * 3, dtype=numpy.uint8).reshape(
             (outy, outx, 3,))
         o_image[:,:,0] = bcolor[0]
         o_image[:,:,1] = bcolor[1]
         o_image[:,:,2] = bcolor[2]
+        if frame_width > 0:
+            if not isinstance(frame_color, tuple) or len(frame_color) != 3:
+                frame_color = (0,0,0)
+            frame_color = list(frame_color)
+            if not isinstance(frame_color[0], int):
+                frame_color[0] = 0
+            else:
+                frame_color[0] = min(255, max(0, frame_color[0]))
+            if not isinstance(frame_color[1], int):
+                frame_color[1] = 0
+            else:
+                frame_color[1] = min(255, max(0, frame_color[1]))
+            if not isinstance(frame_color[2], int):
+                frame_color[2] = 0
+            else:
+                frame_color[2] = min(255, max(0, frame_color[2]))
+            o_image[0:frame_width,:,0] = frame_color[0]
+            o_image[0:frame_width,:,1] = frame_color[1]
+            o_image[0:frame_width,:,2] = frame_color[2]
+            o_image[-frame_width:,:,0] = frame_color[0]
+            o_image[-frame_width:,:,1] = frame_color[1]
+            o_image[-frame_width:,:,2] = frame_color[2]
+            o_image[:,0:frame_width,0] = frame_color[0]
+            o_image[:,0:frame_width,1] = frame_color[1]
+            o_image[:,0:frame_width,2] = frame_color[2]
+            o_image[:,-frame_width:,0] = frame_color[0]
+            o_image[:,-frame_width:,1] = frame_color[1]
+            o_image[:,-frame_width:,2] = frame_color[2]
+        patch_image = numpy.zeros(patchy * patchx * 3, dtype=numpy.uint8).reshape(
+            (patchy, patchx, 3,))
+        patch_map = numpy.zeros(patchy * patchx + 1, dtype=numpy.int32).reshape(
+            (1, patchy * patchx + 1,))
+        patch_map[0,0:-1] = numpy.arange(0, patchy*patchx, dtype=numpy.int32)
+        patch_map[0,-1] = patchy * patchx
         for l in range(num_lines):
             c = l // out_lines
             ol = l - c * out_lines
             sfromy = yfroms[l]
             stoy = sfromy + lh
-            tfromy = padding + ol * lh
+            tfromy = frame_width + padding + ol * lh - 1
             ttoy= tfromy + lh
-            tfromx = c * col_width + padding + patchx + pf_padding
+            tfromx = frame_width + c * col_width + padding + patchx + pf_padding
             ttox = tfromx + stox
             o_image[tfromy:ttoy, tfromx:ttox, :] = t_image[sfromy:stoy, sfromx:stox, :]
-            f_alpha = features_alpha[l]
-            f_name = features[l].split('(')
-            f_color = self.feature_color(f_name[0].strip())
-            i_alpha = 1.0 - f_alpha
-            p_color = (int(i_alpha * float(bcolor[0]) + f_alpha * float(f_color[0])),
-                int(i_alpha * float(bcolor[1]) + f_alpha * float(f_color[1])),
-                int(i_alpha * float(bcolor[2]) + f_alpha * float(f_color[2])))
-            tfromy = tfromy + pfromy
+            patch_image[:,:,:] = 128
+            color_superpixels(patch_image, [0], patch_map, [feature_colors[l]],
+                [feature_alphas[l]])
+            tfromy = tfromy + pfromy + 1
             ttoy = tfromy + patchy
             tfromx -= patchx + pf_padding
             ttox = tfromx + patchx
-            o_image[tfromy:ttoy,tfromx:ttox,0] = p_color[0]
-            o_image[tfromy:ttoy,tfromx:ttox,1] = p_color[1]
-            o_image[tfromy:ttoy,tfromx:ttox,2] = p_color[2]
+            o_image[tfromy:ttoy,tfromx:ttox,:] = patch_image
             if patch_frame > 0:
                 o_image[tfromy:tfromy+patch_frame,tfromx:ttox,0] = fcolor[0]
                 o_image[tfromy:tfromy+patch_frame,tfromx:ttox,1] = fcolor[1]
@@ -1314,6 +1360,15 @@ class IsicApi(object):
                 func.gzip_save_var(cache_filename, self._feature_colors)
             except:
                 pass
+
+    # feature synonyms
+    def feature_synonyms(self, feature:str) -> list:
+        if not feature in self.features:
+            return []
+        elif 'synonyms' in self.features[feature]:
+            return sorted(self.features[feature]['synonyms'])
+        else:
+            return [feature]
 
     # pass through to _get(self._base_url + auth_token + params)
     def get(self,
@@ -1372,6 +1427,64 @@ class IsicApi(object):
                 return req
         except:
             warnings.warn('Error retrieving information from ' + endpoint)
+        return None
+
+    # pass through to _get(self._base_url + auth_token + params)
+    def get_url(self,
+        url:str = None,
+        params:dict = None,
+        parse_json:bool = False,
+        save_as:str = None,
+        ) -> Any:
+        if (not isinstance(url, str) or len(url) < 8 or
+            not url[0:7].lower() in ['https:/', 'http://']):
+            raise ValueError('Invalid URL.')
+        url_parts = url.rpartition('/')
+        if save_as:
+            parse_json = False
+        if self._debug:
+            if params is None:
+                pstr = ''
+            else:
+                pstr = ' with params: ' + str(params)
+            if save_as:
+                print('Requesting ' + url + pstr + ' -> ' + save_as)
+            else:
+                print('Requesting ' + url + pstr)
+        try:
+            if parse_json:
+                req = _get(url_parts[0], url_parts[2], None, params)
+                req_ok = req.ok
+                if not req_ok:
+                    if self._debug:
+                        print('Error occurred: ' + str(req.status_code))
+                    try:
+                        req = req.json()
+                    except:
+                        req = {'status': req.status_code, 'message': req.text}
+                else:
+                    req = req.json()
+                if self._debug and req_ok:
+                    if isinstance(req, list):
+                        print('Retrieved list with ' + str(len(req)) + ' items.')
+                    elif isinstance(req, dict):
+                        print('Retrieved dict with ' + str(len(req.keys())) + ' keys.')
+                    else:
+                        print('Retrieved value: ' + str(req))
+                return req
+            else:
+                req = _get(url_parts[0], url_parts[2], None, params, save_as)
+                if self._debug:
+                    if req.ok:
+                        print('Retrieved ' + str(len(req.content)) + ' bytes of content.')
+                    else:
+                        print('Error occurred: ' + str(req.status_code))
+                if not save_as:
+                    return req.content
+                else:
+                    return req
+        except:
+            warnings.warn('Error retrieving information from ' + url)
         return None
 
     # image endpoint
@@ -1914,6 +2027,8 @@ class IsicApi(object):
             fsize = fsize * float(imshape[0])
         else:
             fsize = float(fsize)
+        if isinstance(text, list):
+            text = '\n'.join(text)
         [inset_image, inset_alpha, fromys] = font_obj.set_text(text, fsize,
             color=fcolor, bcolor=bcolor, align=align, invert=invert,
             outsize_x=0, outsize_y=0, padding=padding)

@@ -41,18 +41,25 @@ api = IsicApi(username, cache_folder=cache_folder, debug=debug)
 
 #api = IsicApi(username='weberj3@mskcc.org', cache_folder='C:\\Users\\weberj3\\Documents\\ISIC', debug=True)
 
+# load study
 study_folder = doc_folder + 'EASY' + os.sep + 'PILOT' + os.sep
 if not os.path.exists(study_folder):
     os.mkdir(study_folder)
 study = api.study('ISIC Annotation Study - All Features', exemplar=study_folder + 'pilot.csv')
 
+# load annotations
 study.load_annotations()
-study.select_annotations(features='Vessels : Arborizing', images=study.images[4]['_id'])
 
-a = [a for a in study.annotation_selection.values()]
+# load meta data
+meta_data_url = 'https://raw.githubusercontent.com/neuroelf/isicarchive/master/data/EASY_pilot_diagnoses.csv'
+study.load_meta_data(meta_data_url, extract_key=['diagnosis', 'exemplar'])
 
-a[0].load_data(load_masks=True)
-a[0].load_data(load_masks=True)
+# select only from users that completed the study
+completion = 140
+users = [u for (u, c) in study.user_completion.items() if c == completion]
+
+# produce heatmaps
+stats = study.image_heatmaps(study_folder, users=users)
 
 #study.load_annotations()
 #image = api.image(study.images[0])

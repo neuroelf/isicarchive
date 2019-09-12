@@ -456,7 +456,13 @@ def gzip_save_var(gzip_file:str, save_var:Any) -> bool:
     # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
     from gzip import GzipFile
     import os
-    tmp_gz = gzip_file + '.tmp.gz'
+    if len(gzip_file) < 3 or not '.' in gzip_file:
+        raise ValueError('Invalid filename.')
+    if gzip_file[-3:].lower() == '.gz':
+        tmp_gz = gzip_file.rpartition('.')[0] + '.tmp.gz'
+    else:
+        tmp_gz = gzip_file + '.tmp.gz'
+        gzip_file = gzip_file + '.gz'
     try:
         json_bytes = (json.dumps(save_var) + "\n").encode('utf-8')
         with GzipFile(tmp_gz, 'w') as gzip_out:
