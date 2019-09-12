@@ -129,6 +129,8 @@ def color_superpixels(
     if isinstance(alpha, list):
         if len(alpha) != numsp:
             raise ValueError('alpha list must match number of superpixels')
+    sp_skip = 6.0 * numpy.trunc(0.75 + 0.25 * numpy.sqrt([
+        im_shape[0] * im_shape[1] / spmap.shape[0]]))[0]
     
     # for each superpixel (index)
     for idx in range(numsp):
@@ -180,7 +182,7 @@ def color_superpixels(
             sppidxy = sppidx // num_cols
             float_num = float(num_colors)
             spcidx = numpy.trunc(0.5 + (sppidxx + sppidxy).astype(numpy.float) *
-                (float_num / 24.0)).astype(numpy.int32) % num_colors
+                (float_num / sp_skip)).astype(numpy.int32) % num_colors
             for cc in range(num_colors):
                 spcsel = spcidx == cc
                 spcidxxy = sppidxx[spcsel] + sppidxy[spcsel] * num_cols

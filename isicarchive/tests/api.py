@@ -52,8 +52,8 @@ study.load_annotations()
 
 # load meta data
 meta_data_url = 'https://raw.githubusercontent.com/neuroelf/isicarchive/master/data/EASY_pilot_diagnoses.csv'
-study.load_meta_data(meta_data_url, extract_key=['diagnosis', 'exemplar'])
-
+study.load_meta_data(meta_data_url, list_to_dict=True,
+    dict_key='name', extract_key=['diagnosis', 'exemplar'])
 # select only from users that completed the study
 completion = 140
 users = [u for (u, c) in study.user_completion.items() if c == completion]

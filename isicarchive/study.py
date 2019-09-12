@@ -773,7 +773,7 @@ class Study(object):
                 ef_list = [None] * num_images
                 for (idx, image) in enumerate(images):
                     ef_list[idx] = func.getxattr(self.meta_data,
-                        func.parse_expr(exemplar_key[2], image))
+                        func.parse_expr(exemplar_features, image))
                 exemplar_features = ef_list
             else:
                 all_feats = self.feature_list()
@@ -816,7 +816,7 @@ class Study(object):
                     image_exem = self.image_heatmap(image['_id'],
                     features=exemplar_features[idx], users=users,
                     mix_colors=mix_colors, alpha_scale=alpha_scale,
-                    underlay_gray=underlay_gray, seg_outline=seg_outline)
+                    underlay_gray=underlay_gray, seg_outline=seg_outline)[0]
                     if not resize_output is None:
                         image_exem = imfunc.image_resample(image_exem, resize_output)
                 else:
@@ -855,11 +855,10 @@ class Study(object):
                 image_out = numpy.zeros(full_x * full_y * 3, dtype=numpy.uint8).reshape(
                     (full_y, full_x, 3,))
                 image_out[:,:,:] = 255
-                if lp == 'se':
-                    image_out[0:half_y, 0:half_x, :] = image_plain
-                    image_out[half_y:, 0:half_x, :] = image_feats
-                    image_out[lfromy:ltoy, half_x+lfromx:half_x+ltox, :] = image_leg_text
-                    image_out[half_y:, half_x:, :] = image_exem
+                image_out[0:half_y, 0:half_x, :] = image_feats
+                image_out[half_y:, 0:half_x, :] = image_plain
+                image_out[lfromy:ltoy, half_x+lfromx:half_x+ltox, :] = image_leg_text
+                image_out[half_y:, half_x:, :] = image_exem
                     
                 imfunc.write_image(image_out, target_folder + image['name'] + image_ext)
                 all_stats[image['name']] = stats
