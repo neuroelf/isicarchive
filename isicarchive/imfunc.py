@@ -214,6 +214,7 @@ def display_image(
     library:str = 'matplotlib',
     ipython_as_object:bool = False,
     mpl_axes:object = None,
+    **kwargs,
     ) -> Optional[object]:
     """
     Display image in a Jupyter notebook; supports filenames, bytes, arrays
@@ -299,14 +300,17 @@ def display_image(
     else:
         # IMPORT DONE HERE TO SAVE TIME BETWEEN LIBRARY CHOICES
         import matplotlib
-        matplotlib.use('nbAgg')
         import matplotlib.pyplot as mpl_pyplot
         try:
             display_width = image_width / ISIC_FUNC_PPI
             display_height = image_height / ISIC_FUNC_PPI
             if mpl_axes is None:
-                mpl_pyplot.figure(figsize=(display_width, display_height))
-                ax_img = mpl_pyplot.imshow(image_data)
+                if 'figsize' in kwargs:
+                    mpl_pyplot.figure(figsize=kwargs['figsize'])
+                else:
+                    mpl_pyplot.figure(figsize=(display_width, display_height))
+                ax_img = mpl_pyplot.imshow(image_data,
+                    interpolation='hanning')
                 ax_img.axes.set_axis_off()
                 mpl_pyplot.show()
             else:

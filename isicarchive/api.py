@@ -1739,6 +1739,16 @@ class IsicApi(object):
         except:
             raise
 
+    # read image (from file or URL)
+    def read_image(self, image_file:str = None) -> Any:
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        import imageio
+        try:
+            return imageio.imread(image_file)
+        except:
+            raise
+
     # resample image
     def resample_image(self,
         image_data:Any,
@@ -2095,13 +2105,14 @@ class IsicApi(object):
         max_size:int = None,
         library:str = 'matplotlib',
         call_display:bool = True,
+        **kwargs,
         ) -> object:
 
         # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
         from .imfunc import display_image
         try:
             return display_image(image_data, max_size=max_size,
-                ipython_as_object=(not call_display), library=library)
+                ipython_as_object=(not call_display), library=library, **kwargs)
         except Exception as e:
             warnings.warn('show_in_notebook(...) failed: ' + str(e))
 
