@@ -393,6 +393,20 @@ support and code is being provided by
 [Prof. David Gutman, MD, PhD](https://winshipcancer.emory.edu/bios/faculty/gutman-david.html).
 
 ### History
+- 9/12/2019
+  - study.image_heatmaps(...) now adds legends and exemplar feature to montage
+  - all features now carry a valid synonyms list (with self as sole entry, if necessary)
+- 9/11/2019
+  - changed cache to two-level strategy, which allows all ISIC images to be stored
+- 9/10/2019
+  - preparation for extended heatmaps (montage of original and heatmaps)
+- 9/9/2019
+  - more work on CSV support, extracting data from read CSV files
+- 9/6/2019
+  - initial support for CSV input and output
+- 9/5/2019
+  - added meta data collection and extraction methods for image and study
+  - rewrote Sampler class to be more succinct (and JIT compatible)
 - 9/4/2019
   - added ```font.py``` (Font class) and code to add correctly set text to images (in ```IsicApi```)
 - 9/3/2019
