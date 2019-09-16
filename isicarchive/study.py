@@ -1216,6 +1216,7 @@ class Study(object):
         overlap_stats = dict()
         for (idx, image) in enumerate(images):
             func.print_progress(idx, num_images, 'Computing overlap:', image['name'])
+            amasks = dict()
             try:
                 image_obj = self._api.image(image['_id'])
                 overlap_stats[image_obj.name] = dict()
@@ -1240,6 +1241,7 @@ class Study(object):
                         image_mask[sppidx] = True
                     image_mask.shape = im_shape
                     for a1 in self.annotation_selection.values():
+                        a1u = a1.user_id
                         for (f1name, f1cont) in a1.features.items():
                             f1mask = numpy.zeros(numspps, dtype=numpy.uint8)
                             for spidx in f1cont['idx']:
@@ -1247,18 +1249,20 @@ class Study(object):
                                 f1mask[sppidx] = 255
                             f1mask.shape = im_shape
                             f1mask = imfunc.image_smooth_fft(f1mask, smcc_fwhm)
-                            a1.masks[f1name] = f1mask
+                            amasks[a1u + '_' + f1name] = f1mask
                 for a1 in self.annotation_selection.values():
                     a1id = a1.id
+                    a1u = a1.user_id
                     for (f1name, f1cont) in a1.features.items():
                         f1parts = f1name.split(' : ')
                         f1idx = feature_dict[f1name]
                         c1idx = category_dict[f1parts[0]]
                         if compute_smcc:
-                            f1mask = a1.masks[f1name]
+                            f1mask = amasks[a1u + '_' + f1name]
                         for a2 in self.annotation_selection.values():
                             if a2.id == a1id:
                                 continue
+                            a2u = a2.user_id
                             for (f2name, f2cont) in a2.features.items():
                                 f2parts = f2name.split(' : ')
                                 f2idx = feature_dict[f2name]
@@ -1269,7 +1273,7 @@ class Study(object):
                                 featcat_spdice[f1idx][c2idx].append(f1f2_dice)
                                 category_spdice[c1idx][c2idx].append(f1f2_dice)
                                 if compute_smcc:
-                                    f2mask = a2.masks[f2name]
+                                    f2mask = amasks[a2u + '_' + f2name]
                                     f1f2_smcc = imfunc.image_corr(
                                         f1mask, f2mask, image_mask)
                                     feature_smcc[f1idx][f2idx].append(f1f2_smcc)
@@ -1277,8 +1281,10 @@ class Study(object):
                                     category_smcc[c1idx][c2idx].append(f1f2_smcc)
             except:
                 pass
-            for a1 in self.annotation_selection.values():
-                a1.clear_data(clear_masks=True)
+            try:
+                image_obj.clear_data()
+            except:
+                pass
         func.print_progress(num_images, num_images, 'Computing overlap:')
         feature_dicestats = numpy.zeros((num_features, num_features,2,))
         feature_dicestats.fill(numpy.nan)

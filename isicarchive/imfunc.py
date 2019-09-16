@@ -434,9 +434,6 @@ def image_corr(
         if immask.size != im1.size:
             immask = image_resample(numpy.uint8(255) * immask.astype(numpy.uint8),
                 (im1.shape[0], im1.shape[1])) >= 128
-        im1 = numpy.reshape(im1, im1.size)
-        im2 = numpy.reshape(im2, im1.size)
-        immask = numpy.reshape(immask, im1.size)
         if immask.dtype != numpy.bool:
             immask = (immask > 0)
         cc = numpy.corrcoef(im1[immask], im2[immask])
@@ -921,6 +918,19 @@ def segmentation_outline(
 
 # superpixel Dice
 def superpixel_dice(list1:numpy.ndarray, list2:numpy.ndarray) -> float:
+    """
+    Return the DICE coefficient for two superpixel lists.
+
+    Parameters
+    ----------
+    list1, list2 : list
+        List(s) of superpixels from which to compute DICE coefficient
+    
+    Returns
+    -------
+    dice : float
+        DICE coefficient
+    """
     intersect = numpy.intersect1d(list1, list2)
     return 2.0 * float(intersect.size) / float(len(list1) + len(list2))
 
