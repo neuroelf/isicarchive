@@ -439,9 +439,11 @@ class Study(object):
         resize_output:Tuple = None,
         ) -> Any:
 
-        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
-        from . import imfunc
+        # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
         import numpy
+        from . import imfunc
+        from .sampler import Sampler
+        smp = Sampler()
 
         if mix_colors is None:
             mix_colors = True
@@ -694,10 +696,12 @@ class Study(object):
         if isinstance(resize_output, tuple):
             if len(resize_output) == 1:
                 if isinstance(resize_output, float):
-                    image_data = imfunc.image_resample(image_data, resize_output)
+                    image_data = smp.sample_grid(image_data, resize_output,
+                        out_type='uint8')
                 elif isinstance(resize_output, int):
                     resize_output = float(resize_output) / float(max(im_shape))
-                    imfunc.image_resample(image_data, resize_output)
+                    smp.sample_grid(image_data, resize_output,
+                        out_type='uint8')
                 else:
                     raise ValueError('Invalid resize_output parameter.')
             elif len(resize_output) == 2:
@@ -722,7 +726,7 @@ class Study(object):
                         size_x = int(0.5 + float(im_shape[1]) * float(size_y) / float(im_shape[0]))
                     elif size_y is None:
                         size_y = int(0.5 + float(im_shape[0]) * float(size_x) / float(im_shape[1]))
-                    imfunc.image_resample(image_data, (size_y, size_x))
+                    smp.sample_grid(image_data, (size_y, size_x), out_type='uint8')
         return (image_data, stats)
 
     # image heatmaps
@@ -748,6 +752,8 @@ class Study(object):
         # IMPORTS DONE HERE TO SAVE TIME ON MODULE INIT
         import numpy
         from . import imfunc
+        from .sampler import Sampler
+        smp = Sampler()
 
         if target_folder is None or target_folder == '':
             target_folder = os.getcwd()
@@ -804,7 +810,8 @@ class Study(object):
                 else:
                     image_plain = image_plain[:,:,0:3]
                 if not resize_output is None:
-                    image_plain = imfunc.image_resample(image_plain, resize_output)
+                    image_plain = smp.sample_grid(image_plain, resize_output,
+                        out_type = 'uint8')
                 q_shape = image_plain.shape
                 half_y = q_shape[0]
                 full_y = half_y * 2
@@ -816,14 +823,16 @@ class Study(object):
                     alpha_scale=alpha_scale, underlay_gray=underlay_gray,
                     seg_outline=seg_outline)
                 if not resize_output is None:
-                    image_feats = imfunc.image_resample(image_feats, resize_output)
+                    image_feats = smp.sample_grid(image_feats, resize_output,
+                        out_type = 'uint8')
                 if exemplar_features and exemplar_features[idx]:
                     image_exem = self.image_heatmap(image['_id'],
                     features=exemplar_features[idx], users=users,
                     mix_colors=mix_colors, alpha_scale=alpha_scale,
                     underlay_gray=underlay_gray, seg_outline=seg_outline)[0]
                     if not resize_output is None:
-                        image_exem = imfunc.image_resample(image_exem, resize_output)
+                        image_exem = smp.sample_grid(image_exem, resize_output,
+                            out_type = 'uint8')
                 else:
                     image_exem = numpy.asarray([255,255,255],
                         dtype=numpy.uint8).reshape((1,1,3,))
@@ -839,7 +848,8 @@ class Study(object):
                 if leg_shape[0] > q_shape[0] or leg_shape[1] > q_shape[1]:
                     rs_factor = min(float(q_shape[0]) / float(leg_shape[0]),
                         float(q_shape[1]) / float(leg_shape[1]))
-                    image_leg_text = imfunc.image_resample(image_leg_text, rs_factor)
+                    image_leg_text = smp.sample_grid(image_leg_text, rs_factor,
+                        out_type = 'uint8')
                     leg_shape = image_leg_text.shape
                 if (isinstance(legend_position, str) and legend_position.lower() in
                     ['ne', 'northeast', 'nw', 'northwest', 'se', 'southeast', 'sw', 'southwest']):
@@ -1143,6 +1153,183 @@ class Study(object):
             k = meta_key
         self.meta_data[k] = meta_data
 
+    # overlap statistics
+    def overlap_stats(self,
+        annotation_state:Union[str,list] = 'complete',
+        annotation_status:Union[str,list] = 'ok',
+        image_sel:Union[list,None] = None,
+        features:Union[str,list] = 'all',
+        users:Union[str,list] = 'all',
+        compute_smcc:bool = True,
+        smcc_fwhm:float = 0.05,
+        ) -> Tuple:
+
+        # IMPORTS DONE HERE TO SAVE TIME ON MODULE INIT
+        import numpy
+        from . import imfunc
+
+        if not image_sel is None:
+            try:
+                images = func.select_from(self.images, image_sel)
+                if len(images) == 0:
+                    warnings.warn('No images selected.')
+                    return
+            except:
+                raise
+        else:
+            images = self.images
+        num_images = len(images)
+        self.select_annotations(
+            annotation_state=annotation_state,
+            annotation_status=annotation_status,
+            features=features, users=users)
+        feature_dict = dict()
+        category_dict = dict()
+        for a in self.annotation_selection.values():
+            for f in a.features.keys():
+                feature_dict[f] = True
+                fparts = f.split(' : ')
+                category_dict[fparts[0]] = True
+        feature_list = sorted(feature_dict.keys())
+        category_list = sorted(category_dict.keys())
+        feature_dict = dict()
+        category_dict = dict()
+        for (idx, f) in enumerate(feature_list):
+            feature_dict[f] = idx
+        for (idx, f) in enumerate(category_list):
+            category_dict[f] = idx
+        num_features = len(feature_list)
+        num_categories = len(category_list)
+        feature_spdice = [[[] for f2 in range(num_features)]
+            for f in range(num_features)]
+        featcat_spdice = [[[] for f2 in range(num_categories)]
+            for f in range(num_features)]
+        category_spdice = [[[] for f2 in range(num_categories)]
+            for f in range(num_categories)]
+        if compute_smcc:
+            feature_smcc = [[[] for f2 in range(num_features)]
+                for f in range(num_features)]
+            featcat_smcc = [[[] for f2 in range(num_categories)]
+                for f in range(num_features)]
+            category_smcc = [[[] for f2 in range(num_categories)]
+                for f in range(num_categories)]
+        overlap_stats = dict()
+        for (idx, image) in enumerate(images):
+            func.print_progress(idx, num_images, 'Computing overlap:', image['name'])
+            try:
+                image_obj = self._api.image(image['_id'])
+                overlap_stats[image_obj.name] = dict()
+                if compute_smcc:
+                    image_obj.load_superpixels()
+                    image_obj.map_superpixels()
+                    im_shape = image_obj.superpixels['shp']
+                    numspps = im_shape[0] * im_shape[1]
+                sp_all = set()
+                for a in self.select_annotations(
+                    annotation_state=annotation_state,
+                    annotation_status=annotation_status,
+                    features=features, images=[image_obj.id], users=users).values():
+                    for fcont in a.features.values():
+                        sp_all.update(fcont['idx'])
+                sp_list = list(sp_all)
+                if compute_smcc:
+                    spmap = image_obj.superpixels['map']
+                    image_mask = numpy.zeros(numspps, dtype=numpy.bool)
+                    for spidx in sp_list:
+                        sppidx = spmap[spidx, 0:spmap[spidx,-1]]
+                        image_mask[sppidx] = True
+                    image_mask.shape = im_shape
+                    for a1 in self.annotation_selection.values():
+                        for (f1name, f1cont) in a1.features.items():
+                            f1mask = numpy.zeros(numspps, dtype=numpy.uint8)
+                            for spidx in f1cont['idx']:
+                                sppidx = spmap[spidx, 0:spmap[spidx,-1]]
+                                f1mask[sppidx] = 255
+                            f1mask.shape = im_shape
+                            f1mask = imfunc.image_smooth_fft(f1mask, smcc_fwhm)
+                            a1.masks[f1name] = f1mask
+                for a1 in self.annotation_selection.values():
+                    a1id = a1.id
+                    for (f1name, f1cont) in a1.features.items():
+                        f1parts = f1name.split(' : ')
+                        f1idx = feature_dict[f1name]
+                        c1idx = category_dict[f1parts[0]]
+                        if compute_smcc:
+                            f1mask = a1.masks[f1name]
+                        for a2 in self.annotation_selection.values():
+                            if a2.id == a1id:
+                                continue
+                            for (f2name, f2cont) in a2.features.items():
+                                f2parts = f2name.split(' : ')
+                                f2idx = feature_dict[f2name]
+                                c2idx = category_dict[f2parts[0]]
+                                f1f2_dice = imfunc.superpixel_dice(
+                                    f1cont['idx'], f2cont['idx'])
+                                feature_spdice[f1idx][f2idx].append(f1f2_dice)
+                                featcat_spdice[f1idx][c2idx].append(f1f2_dice)
+                                category_spdice[c1idx][c2idx].append(f1f2_dice)
+                                if compute_smcc:
+                                    f2mask = a2.masks[f2name]
+                                    f1f2_smcc = imfunc.image_corr(
+                                        f1mask, f2mask, image_mask)
+                                    feature_smcc[f1idx][f2idx].append(f1f2_smcc)
+                                    featcat_smcc[f1idx][c2idx].append(f1f2_smcc)
+                                    category_smcc[c1idx][c2idx].append(f1f2_smcc)
+            except:
+                pass
+            for a1 in self.annotation_selection.values():
+                a1.clear_data(clear_masks=True)
+        func.print_progress(num_images, num_images, 'Computing overlap:')
+        feature_dicestats = numpy.zeros((num_features, num_features,2,))
+        feature_dicestats.fill(numpy.nan)
+        featcat_dicestats = numpy.zeros((num_features, num_categories,2,))
+        featcat_dicestats.fill(numpy.nan)
+        category_dicestats = numpy.zeros((num_categories, num_categories,2,))
+        category_dicestats.fill(numpy.nan)
+        if compute_smcc:
+            feature_smccstats = numpy.zeros((num_features, num_features,2,))
+            feature_smccstats.fill(numpy.nan)
+            featcat_smccstats = numpy.zeros((num_features, num_categories,2,))
+            featcat_smccstats.fill(numpy.nan)
+            category_smccstats = numpy.zeros((num_categories, num_categories,2,))
+            category_smccstats.fill(numpy.nan)
+        for f1 in range(num_features):
+            for f2 in range(num_features):
+                if feature_spdice[f1][f2]:
+                    feature_dicestats[f1,f2,0] = numpy.median(feature_spdice[f1][f2])
+                    feature_dicestats[f1,f2,1] = numpy.std(feature_spdice[f1][f2])
+                    if compute_smcc:
+                        feature_smccstats[f1,f2,0] = numpy.median(feature_smcc[f1][f2])
+                        feature_smccstats[f1,f2,1] = numpy.std(feature_smcc[f1][f2])
+            for c2 in range(num_categories):
+                if featcat_spdice[f1][c2]:
+                    featcat_dicestats[f1,c2,0] = numpy.median(featcat_spdice[f1][c2])
+                    featcat_dicestats[f1,c2,1] = numpy.std(featcat_spdice[f1][c2])
+                    if compute_smcc:
+                        featcat_smccstats[f1,c2,0] = numpy.median(featcat_smcc[f1][c2])
+                        featcat_smccstats[f1,c2,1] = numpy.std(featcat_smcc[f1][c2])
+        for c1 in range(num_categories):
+            for c2 in range(num_categories):
+                if category_spdice[c1][c2]:
+                    category_dicestats[c1,c2,0] = numpy.median(category_spdice[c1][c2])
+                    category_dicestats[c1,c2,1] = numpy.std(category_spdice[c1][c2])
+                    if compute_smcc:
+                        category_smccstats[c1,c2,0] = numpy.median(category_smcc[c1][c2])
+                        category_smccstats[c1,c2,1] = numpy.std(category_smcc[c1][c2])
+        if compute_smcc:
+            return (overlap_stats, feature_list, category_list,
+                feature_spdice, feature_dicestats,
+                featcat_spdice, featcat_dicestats,
+                category_spdice, category_dicestats,
+                feature_smcc, feature_smccstats,
+                featcat_smcc, featcat_smccstats,
+                category_smcc, category_smccstats)
+        else:
+            return (overlap_stats, feature_list, category_list,
+                feature_spdice, feature_dicestats,
+                featcat_spdice, featcat_dicestats,
+                category_spdice, category_dicestats)
+
     # select annotations
     def select_annotations(self,
         annotation_state:Union[str,list] = 'complete',
@@ -1276,6 +1463,7 @@ class Study(object):
                 self.markups[user][fkey][img] = fdet
                 self.markups[user][img][fkey] = fdet
                 self.markups['image.user.feature'][img + '.' + user + '.' + fkey] = fdet
+        return self.annotation_selection
 
     # show annotations (grid)
     def show_annotations(self,

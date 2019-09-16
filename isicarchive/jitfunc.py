@@ -39,6 +39,53 @@ def conv_kernel(fwhm:numpy.float32 = 2.0) -> numpy.ndarray:
     k = k[k >= 0.00000001]
     return (k / numpy.sum(k)).astype(numpy.float32)
 
+# image convolution (cheap!)
+@jit('f4[:,:](f4[:,:],f4[:])', nopython=True)
+def image_conv_float(
+    data:numpy.ndarray,
+    kernel:numpy.ndarray,
+    ) -> numpy.ndarray:
+    if (kernel.size) == 1:
+        kernel = conv_kernel(kernel[0])
+    if (kernel.size % 2) != 1:
+        raise ValueError('Parameter kernel must have odd length of elements.')
+    s = numpy.sum(kernel)
+    if s <= 0.0:
+        raise ValueError('Parameter kernel must have a positive sum.')
+    if s < 0.999999 or s > 1.000001:
+        kernel = kernel / s
+    ds0 = data.shape[0]
+    ds1 = data.shape[1]
+    kh = kernel.size // 2
+    temp = numpy.zeros(data.size, dtype=numpy.float32).reshape(data.shape)
+    tempv = numpy.zeros(ds0, dtype=numpy.float32)
+    for c in prange(ds0): #pylint: disable=not-an-iterable
+        col = temp[c,:]
+        colv = 0.0
+        for k in range(kernel.size):
+            dc = c + k - kh
+            if dc < 0 or dc >= ds0:
+                continue
+            colv += kernel[k]
+            col += kernel[k] * data[dc,:]
+        temp[c,:] = col
+        tempv[c] = colv
+    temp = numpy.true_divide(temp, tempv.reshape((ds0,1,)))
+    out = numpy.zeros(data.size, dtype=numpy.float32).reshape(data.shape)
+    tempv = numpy.zeros(ds1, dtype=numpy.float32)
+    for c in prange(ds1): #pylint: disable=not-an-iterable
+        col = out[:,c]
+        colv = 0.0
+        for k in range(kernel.size):
+            dc = c + k - kh
+            if dc < 0 or dc >= ds1:
+                continue
+            colv += kernel[k]
+            col += kernel[k] * temp[:,dc]
+        out[:,c] = col
+        tempv[c] = colv
+    return numpy.true_divide(out, tempv.reshape((1,ds1,)))
+
 # image mixing
 @jit('u1[:,:](u1[:,:],u1[:,:],optional(f4[:]))', nopython=True)
 def image_mix(
@@ -129,53 +176,6 @@ def image_mix(
                         ia * numpy.float32(i1[p,2]) + 
                         a * numpy.float32(i2[p,2]))
     return oi
-
-# image convolution (cheap!)
-@jit('f4[:,:](f4[:,:],f4[:])', nopython=True)
-def image_conv_float(
-    data:numpy.ndarray,
-    kernel:numpy.ndarray,
-    ) -> numpy.ndarray:
-    if (kernel.size) == 1:
-        kernel = conv_kernel(kernel[0])
-    if (kernel.size % 2) != 1:
-        raise ValueError('Parameter kernel must have odd length of elements.')
-    s = numpy.sum(kernel)
-    if s <= 0.0:
-        raise ValueError('Parameter kernel must have a positive sum.')
-    if s < 0.999999 or s > 1.000001:
-        kernel = kernel / s
-    ds0 = data.shape[0]
-    ds1 = data.shape[1]
-    kh = kernel.size // 2
-    temp = numpy.zeros(data.size, dtype=numpy.float32).reshape(data.shape)
-    tempv = numpy.zeros(ds0, dtype=numpy.float32)
-    for c in prange(ds0): #pylint: disable=not-an-iterable
-        col = temp[c,:]
-        colv = 0.0
-        for k in range(kernel.size):
-            dc = c + k - kh
-            if dc < 0 or dc >= ds0:
-                continue
-            colv += kernel[k]
-            col += kernel[k] * data[dc,:]
-        temp[c,:] = col
-        tempv[c] = colv
-    temp = numpy.true_divide(temp, tempv.reshape((ds0,1,)))
-    out = numpy.zeros(data.size, dtype=numpy.float32).reshape(data.shape)
-    tempv = numpy.zeros(ds1, dtype=numpy.float32)
-    for c in prange(ds1): #pylint: disable=not-an-iterable
-        col = out[:,c]
-        colv = 0.0
-        for k in range(kernel.size):
-            dc = c + k - kh
-            if dc < 0 or dc >= ds1:
-                continue
-            colv += kernel[k]
-            col += kernel[k] * temp[:,dc]
-        out[:,c] = col
-        tempv[c] = colv
-    return numpy.true_divide(out, tempv.reshape((1,ds1,)))
 
 # image resampling (cheap!)
 @jit('u1[:,:,:](u1[:,:,:],i4,i4)', nopython=True)

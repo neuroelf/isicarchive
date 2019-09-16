@@ -432,7 +432,8 @@ def image_corr(
         cc = numpy.corrcoef(im1.reshape(im1.size), im2.reshape(im2.size))
     else:
         if immask.size != im1.size:
-            raise ValueError('Image mask must match in size.')
+            immask = image_resample(numpy.uint8(255) * immask.astype(numpy.uint8),
+                (im1.shape[0], im1.shape[1])) >= 128
         im1 = numpy.reshape(im1, im1.size)
         im2 = numpy.reshape(im2, im1.size)
         immask = numpy.reshape(immask, im1.size)
@@ -464,10 +465,8 @@ def image_dice(
         if immask.size != im1.size:
             immask = image_resample(numpy.uint8(255) * immask.astype(numpy.uint8),
                 (im1.shape[0], im1.shape[1])) >= 128
-        im1 = numpy.reshape(im1, im1.size)
-        im2 = numpy.reshape(im2, im1.size)
-        im1 = im1[immask]
-        im2 = im2[immask]
+        im1 = (im1[immask] > 0)
+        im2 = (im2[immask] > 0)
     s1 = numpy.sum(im1)
     s2 = numpy.sum(im2)
     return 2 * numpy.sum(numpy.logical_and(im1, im2)) / (s1 + s2)

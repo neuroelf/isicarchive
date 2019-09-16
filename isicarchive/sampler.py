@@ -182,18 +182,20 @@ class Sampler(object):
     # sample 2D grid
     def sample_grid(self,
         a:numpy.ndarray,
-        s:Union[numpy.ndarray,list,tuple,float],
-        k:Union[str,tuple] = 'cubic',
+        s:Union[numpy.ndarray,list,tuple,int,float],
+        k:Union[str,tuple] = 'resample',
         out_type:str = 'float64',
         ) -> numpy.ndarray:
         if not isinstance(a, numpy.ndarray):
             raise ValueError('Invalid array a to sample.')
         ad = a.ndim
         ash = a.shape
+        if isinstance(s, int):
+            s = float(s) / float(max(ash[0], ash[1]))
         if isinstance(s, float):
             sf = s
             s = []
-            for d in range(ad):
+            for d in range(min(2,ad)):
                 s.append(int(sf * (float(ash[d]) + 0.5)))
         if isinstance(s, numpy.ndarray):
             if s.ndim != 2 or s.shape[0] != 3 or s.shape[1] > ad:
