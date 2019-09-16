@@ -398,6 +398,28 @@ class Image(object):
         except Exception as e:
             warnings.warn('Error mapping superpixels: ' + str(e))
 
+    # mark superpixels
+    def mark_superpixels(self, edge_width:int = 1, color:list = [0,0,0]):
+        if self.data is None:
+            self.load_image_data()
+        if self.superpixels['map'] is None:
+            self.map_superpixels()
+        outlines = self.superpixel_outlines('coords')
+        image_data = self.data
+        im_shape = image_data.shape
+        if len(im_shape) > 2:
+            p = im_shape[2]
+        else:
+            p = 1
+        image_data = image_data.reshape((im_shape[0] * im_shape[1], p,))
+        image_x = self.data.shape[1]
+        for sppcrd in outlines.values():
+            sppcrd = image_x * sppcrd[:,0] + sppcrd[:,1]
+            image_data[sppcrd, 0] = color[0]
+            image_data[sppcrd, 1] = color[1]
+            image_data[sppcrd, 2] = color[2]
+        self.data = image_data.reshape(im_shape)
+
     # create a meta-information dict with all kinds of information
     def meta_info(self,
         data_info:bool = True,
