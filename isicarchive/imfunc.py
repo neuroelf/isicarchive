@@ -672,7 +672,30 @@ def image_resample(image:numpy.ndarray, new_shape:tuple) -> numpy.ndarray:
     if rs_shape[2] == 1:
         rs_image.shape = (rs_shape[0], rs_shape[1])
     return rs_image
-    
+
+# rotate image (90 degrees left, right; or 180 degrees)
+def image_rotate(image:numpy.ndarray, how:str = None) -> numpy.ndarray:
+    if not how or not isinstance(how, str) or not how[0].lower() in 'flr':
+        return image
+    im_shape = image.shape
+    has_planes = (len(im_shape) > 2)
+    how = how[0].lower()
+    if how == 'f':
+        if has_planes:
+            return image[::-1, ::-1, :]
+        else:
+            return image[::-1, ::-1]
+    elif how == 'r':
+        if has_planes:
+            return numpy.transpose(image, (1, 0, 2,))[:, ::-1, :]
+        else:
+            return numpy.transpose(image, (1, 0,))[:, ::-1]
+    else:
+        if has_planes:
+            return numpy.transpose(image, (1, 0, 2,))[::-1, :, :]
+        else:
+            return numpy.transpose(image, (1, 0,))[::-1, :]
+
 # smooth image using fft
 def image_smooth_fft(image:numpy.ndarray, fwhm:float) -> numpy.ndarray:
 

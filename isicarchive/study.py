@@ -1160,7 +1160,7 @@ class Study(object):
         image_sel:Union[list,None] = None,
         features:Union[str,list] = 'all',
         users:Union[str,list] = 'all',
-        compute_smcc:bool = True,
+        compute_smcc:bool = False,
         smcc_fwhm:float = 0.05,
         ) -> Tuple:
 
