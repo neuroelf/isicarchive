@@ -405,7 +405,7 @@ class Image(object):
         if self.superpixels['map'] is None:
             self.map_superpixels()
         outlines = self.superpixel_outlines('coords')
-        image_data = self.data
+        image_data = self.data.copy()
         im_shape = image_data.shape
         if len(im_shape) > 2:
             p = im_shape[2]
