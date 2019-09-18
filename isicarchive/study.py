@@ -67,6 +67,12 @@ _repr_pretty_list = [
     'questions',
     'users',
 ]
+_test_cache_exts = [
+    '.jpg',
+    '.bmp',
+    '.png',
+    '.tif',
+]
 
 class Study(object):
     """
@@ -319,13 +325,23 @@ class Study(object):
         for count in range(total):
             image_info = self.images[count]
             image_id = image_info['_id']
+            image_name = image_info['name']
+            spimg_filename = self._api.cache_filename(
+                image_id, 'spimg', '.png')
+            load_superpixels = not os.path.exists(spimg_filename)
+            if not load_superpixels:
+                load_image_data = True
+                for te in _test_cache_exts:
+                    if os.path.exists(self._api.cache_filename(
+                        image_id, 'image', te, image_name)):
+                        load_image_data = False
+                        break
+                if not load_image_data:
+                    continue
             image_filename = self._api.cache_filename(
                 image_id, 'image', '.*', '*')
             image_list = glob.glob(image_filename)
             load_image_data = not image_list
-            spimg_filename = self._api.cache_filename(
-                image_id, 'spimg', '.png')
-            load_superpixels = not os.path.exists(spimg_filename)
             if not (load_image_data or load_superpixels):
                 continue
             func.print_progress(count, total, 'Caching image data:')
