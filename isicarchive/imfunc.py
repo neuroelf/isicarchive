@@ -492,7 +492,7 @@ def image_gray(image:numpy.ndarray, rgb_format:bool = True) -> numpy.ndarray:
 def image_mark_border(
     image:numpy.ndarray,
     content:Union[str,bytes],
-    cthresh:int = 32,
+    cthresh:int = 48,
     ) -> numpy.ndarray:
     """
     Mark image border with content (encoded)
@@ -500,7 +500,7 @@ def image_mark_border(
     Parameters
     ----------
     image : ndarray
-        Regular image, outside border edge length must at least be 2660 pixels!
+        Regular image, outside border edge length must at least be 2800 pixels!
     content : str or bytes array
         Content to be encoded into the image border, longest length 200!
     
@@ -513,8 +513,8 @@ def image_mark_border(
     def mark_pix(image, shape, side, slen, scrd, v, w, t):
         it = 255 - t
         if side == 0 or side == 2:
-            yf = int(float(scrd) * float(shape[0]) / float(slen))
-            yt = int(0.001 + float(scrd+1) * float(shape[0]) / float(slen))
+            yf = 2*w + int(float(scrd) * float(shape[0]) / float(slen))
+            yt = 2*w + int(0.001 + float(scrd+1) * float(shape[0]) / float(slen))
             if side == 0:
                 xf = 0
                 xt = 2*w
@@ -522,14 +522,15 @@ def image_mark_border(
                 xf = shape[1] - 2*w
                 xt = shape[1]
         else:
-            xf = int(float(scrd) * float(shape[1]) / float(slen))
-            xt = int(0.001 + float(scrd+1) * float(shape[1]) / float(slen))
+            xf = 2*w + int(float(scrd) * float(shape[1]) / float(slen))
+            xt = 2*w + int(0.001 + float(scrd+1) * float(shape[1]) / float(slen))
             if side == 1:
                 yf = 0
                 yt = 2*w
             else:
                 yf = shape[0] - 2*w
                 yt = shape[0]
+        print([yf,yt,xf,xt])
         if len(shape) > 2 and shape[2] == 3:
             m0 = numpy.mean(image[yf:yt,xf:xt,0])
             m1 = numpy.mean(image[yf:yt,xf:xt,1])
@@ -652,7 +653,7 @@ def image_mark_border(
                     image[yf+w:yt,xf:xt].astype(numpy.float) + m0_on))
     def mark_word(image, shape, side, slen, scrd, v, w, t):
         for i in range(10):
-            mark_pix(image, shape, side, 10*slen, 10*scrd+i, v[i], w, t)
+            mark_pix(image, shape, side, 12*slen, 12*scrd+i, v[i], w, t)
 
     # IMPORT DONE HERE TO SAVE TIME DURING MODULE INIT
     from .reedsolo import RSCodec
@@ -661,11 +662,13 @@ def image_mark_border(
     im_shape = image.shape
     im_y = im_shape[0]
     im_x = im_shape[1]
-    if ((im_x // 10) + (im_y // 10)) < 132:
+    num_pix = 1 + int(float(max(im_y, im_x)) / 576.0)
+    im_y -= 4*num_pix
+    im_x -= 4*num_pix
+    if ((im_x // 12) + (im_y // 12)) < 132:
         raise ValueError('Image too small to encode data.')
     num_fld_y = int(132.0 * float(im_y) / float(im_y + im_x))
     num_fld_x = 132 - num_fld_y
-    num_pix = 1 + int(float(max(im_y, im_x)) / 432.0)
     if not isinstance(content, str) and not isinstance(content, bytes):
         raise ValueError('Invalid content (type).')
     if len(content) > 200:
@@ -681,38 +684,41 @@ def image_mark_border(
     sm3 = r.value_to_bits(3)
     lm0 = r.value_to_bits(num_fld_y)
     lm1 = r.value_to_bits(num_fld_x)
-    mark_word(ri, im_shape, 3, num_fld_x, 0, sm3, num_pix, cthresh)
-    mark_word(ri, im_shape, 3, num_fld_x, 1, lm1, num_pix, cthresh)
-    mark_word(ri, im_shape, 3, num_fld_x, num_fld_x-2, lm1, num_pix, cthresh)
-    mark_word(ri, im_shape, 3, num_fld_x, num_fld_x-1, sm3[::-1], num_pix, cthresh)
-    mark_word(ri, im_shape, 2, num_fld_y, 0, sm2, num_pix, cthresh)
-    mark_word(ri, im_shape, 2, num_fld_y, 1, lm0, num_pix, cthresh)
-    mark_word(ri, im_shape, 2, num_fld_y, num_fld_y-2, lm0, num_pix, cthresh)
-    mark_word(ri, im_shape, 2, num_fld_y, num_fld_y-1, sm2[::-1], num_pix, cthresh)
-    mark_word(ri, im_shape, 1, num_fld_x, 0, sm1, num_pix, cthresh)
-    mark_word(ri, im_shape, 1, num_fld_x, 1, lm1, num_pix, cthresh)
-    mark_word(ri, im_shape, 1, num_fld_x, num_fld_x-2, lm1, num_pix, cthresh)
-    mark_word(ri, im_shape, 1, num_fld_x, num_fld_x-1, sm1[::-1], num_pix, cthresh)
-    mark_word(ri, im_shape, 0, num_fld_y, 0, sm0, num_pix, cthresh)
-    mark_word(ri, im_shape, 0, num_fld_y, 1, lm0, num_pix, cthresh)
-    mark_word(ri, im_shape, 0, num_fld_y, num_fld_y-2, lm0, num_pix, cthresh)
-    mark_word(ri, im_shape, 0, num_fld_y, num_fld_y-1, sm0[::-1], num_pix, cthresh)
+    len_y = float(num_fld_y) + 0.5
+    len_x = float(num_fld_x) + 0.5
+    mark_word(ri, im_shape, 3, len_x, 0, sm3, num_pix, cthresh)
+    mark_word(ri, im_shape, 3, len_x, 1, lm1, num_pix, cthresh)
+    mark_word(ri, im_shape, 3, len_x, num_fld_x-2, lm1[::-1], num_pix, cthresh)
+    mark_word(ri, im_shape, 3, len_x, num_fld_x-1, sm3[::-1], num_pix, cthresh)
+    mark_word(ri, im_shape, 2, len_y, 0, sm2, num_pix, cthresh)
+    mark_word(ri, im_shape, 2, len_y, 1, lm0, num_pix, cthresh)
+    mark_word(ri, im_shape, 2, len_y, num_fld_y-2, lm0[::-1], num_pix, cthresh)
+    mark_word(ri, im_shape, 2, len_y, num_fld_y-1, sm2[::-1], num_pix, cthresh)
+    mark_word(ri, im_shape, 1, len_x, 0, sm1, num_pix, cthresh)
+    mark_word(ri, im_shape, 1, len_x, 1, lm1, num_pix, cthresh)
+    mark_word(ri, im_shape, 1, len_x, num_fld_x-2, lm1[::-1], num_pix, cthresh)
+    mark_word(ri, im_shape, 1, len_x, num_fld_x-1, sm1[::-1], num_pix, cthresh)
+    mark_word(ri, im_shape, 0, len_y, 0, sm0, num_pix, cthresh)
+    mark_word(ri, im_shape, 0, len_y, 1, lm0, num_pix, cthresh)
+    mark_word(ri, im_shape, 0, len_y, num_fld_y-2, lm0[::-1], num_pix, cthresh)
+    mark_word(ri, im_shape, 0, len_y, num_fld_y-1, sm0[::-1], num_pix, cthresh)
 
     # add code words
     wy = num_fld_y - 4
     wx = num_fld_x - 4
     wf = 0
     for wi in range(wf, wf+wy):
-        mark_word(ri, im_shape, 0, num_fld_y, wi+2-wf, b[wi-wf], num_pix, cthresh)
+        mark_word(ri, im_shape, 0, len_y, wi+2-wf, b[wi], num_pix, cthresh)
     wf += wy
     for wi in range(wf, wf+wx):
-        mark_word(ri, im_shape, 1, num_fld_x, wi+2-wf, b[wi-wf], num_pix, cthresh)
+        mark_word(ri, im_shape, 1, len_x, wi+2-wf, b[wi], num_pix, cthresh)
     wf += wx
     for wi in range(wf, wf+wy):
-        mark_word(ri, im_shape, 2, num_fld_y, wi+2-wf, b[wi-wf], num_pix, cthresh)
+        mark_word(ri, im_shape, 2, len_y, wi+2-wf, b[wi], num_pix, cthresh)
     wf += wy
     for wi in range(wf, wf+wx):
-        mark_word(ri, im_shape, 3, num_fld_x, wi+2-wf, b[wi-wf], num_pix, cthresh)
+        mark_word(ri, im_shape, 3, len_x, wi+2-wf, b[wi], num_pix, cthresh)
+    print(wi)
     return ri
 
 # image mixing (python portion)
