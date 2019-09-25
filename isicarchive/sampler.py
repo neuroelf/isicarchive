@@ -251,6 +251,11 @@ class Sampler(object):
                         k = self._kernels[fms]
                     else:
                         sk = _gauss_kernel(fwhm * float(1024))
+                        skr = (sk.size - 1) // 2048
+                        skr = 2048 * skr + 1
+                        skd = (sk.size - skr) // 2
+                        sk = sk[skd:skr+skd]
+                        sk = sk / numpy.sum(sk)
                         k = [sk, 1024]
                         self._kernels[fms] = k
                 except:

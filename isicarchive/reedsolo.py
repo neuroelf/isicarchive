@@ -269,30 +269,33 @@ class RSCodec(object):
     def __init__(self, nsym=10):
         self.nsym = nsym
 
-    def encode(self, data):
+    def encode(self, data, chunk_size:int = None):
         if isinstance(data, str):
             data = bytearray(data, "utf-8")
-        chunk_size = 255 - self.nsym
+        if chunk_size is None:
+            chunk_size = 255 - self.nsym
         enc = bytearray()
         for i in range(0, len(data), chunk_size):
             chunk = data[i:i+chunk_size]
             enc.extend(rs_encode_msg(chunk, self.nsym))
         return enc
     
-    def encode_to_bits(self, data):
-        enc = self.encode(data)
+    def encode_to_bits(self, data, chunk_size:int = None):
+        enc = self.encode(data, chunk_size)
         return [bit_field[e] for e in enc]
     
-    def decode(self, data):
+    def decode(self, data, chunk_size:int = None):
+        if chunk_size is None:
+            chunk_size = 255
         if isinstance(data, str):
             data = bytearray(data, "utf-8")
         dec = bytearray()
-        for i in range(0, len(data), 255):
-            chunk = data[i:i+255]
+        for i in range(0, len(data), chunk_size):
+            chunk = data[i:i+chunk_size]
             dec.extend(rs_correct_msg(chunk, self.nsym))
         return dec
     
-    def decode_bit_field(self, data):
+    def decode_bit_field(self, data, chunk_size:int = None):
         if not isinstance(data, list):
             raise ValueError('Invalid bit-field, must be list.')
         enc = bytearray(len(data))
@@ -302,7 +305,7 @@ class RSCodec(object):
             except:
                 pass
         try:
-            return self.decode(enc)
+            return self.decode(enc, chunk_size)
         except:
             raise
     

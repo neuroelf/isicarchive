@@ -492,7 +492,10 @@ def image_gray(image:numpy.ndarray, rgb_format:bool = True) -> numpy.ndarray:
 def image_mark_border(
     image:numpy.ndarray,
     content:Union[str,bytes],
-    cthresh:int = 48,
+    color_diff:int = 24,
+    ecc_redundancy_level:float = 0.5,
+    pix_width:int = 3,
+    border_expand:bool = True,
     ) -> numpy.ndarray:
     """
     Mark image border with content (encoded)
@@ -500,13 +503,23 @@ def image_mark_border(
     Parameters
     ----------
     image : ndarray
-        Regular image, outside border edge length must at least be 2800 pixels!
+        RGB or grayscale (uint8) image array
     content : str or bytes array
-        Content to be encoded into the image border, longest length 200!
-    
+        Content to be encoded into the image border, if too long for
+        selected scheme, warning will be printed and fitting scheme
+        selected, if possible (max length=1023 bytes)
+    color_diff : int
+        Amount by which pixel brightness will differ to signify 0 and 1
+    ecc_redundancy_level : float
+        Amount of payload bytes that can be missing/damaged
+    pix_width:int
+        Number of pixels (in each dimension) to use for a marker
+    border_expand : bool
+        If True (default) expand border by number of pixels
+
     Returns
     -------
-    image : ndarray
+    marked : ndarray
         Image with content encoded into border
     """
 
@@ -657,33 +670,124 @@ def image_mark_border(
 
     # IMPORT DONE HERE TO SAVE TIME DURING MODULE INIT
     from .reedsolo import RSCodec
+    from .sampler import Sampler
 
     # get some numbers, encode message, copy image
-    im_shape = image.shape
-    im_y = im_shape[0]
-    im_x = im_shape[1]
-    num_pix = 1 + int(float(max(im_y, im_x)) / 576.0)
-    im_y -= 4*num_pix
-    im_x -= 4*num_pix
-    if ((im_x // 12) + (im_y // 12)) < 132:
-        raise ValueError('Image too small to encode data.')
-    num_fld_y = int(132.0 * float(im_y) / float(im_y + im_x))
-    num_fld_x = 132 - num_fld_y
     if not isinstance(content, str) and not isinstance(content, bytes):
         raise ValueError('Invalid content (type).')
-    if len(content) > 200:
+    if not isinstance(pix_width, int) or pix_width < 1:
+        raise ValueError('Invalid pix_width parameter.')
+    im_shape = image.shape
+    im_rgb = (len(im_shape) > 2 and im_shape[2] > 2)
+    im_y = im_shape[0]
+    im_x = im_shape[1]
+    if border_expand:
+        if im_rgb:
+            marked = numpy.zeros(
+                (im_y + 2 * pix_width, im_x + 2 * pix_width, im_shape[2],),
+                dtype=numpy.uint8)
+            marked[0:pix_width,pix_width:im_x+pix_width,:] = image[:pix_width,:,:]
+            marked[pix_width:im_y+pix_width,0:pix_width,:] = image[:,:pix_width,:]
+            marked[pix_width:im_y+pix_width,pix_width:im_x+pix_width,:] = image
+            marked[im_y+pix_width:,pix_width:im_x+pix_width,:] = image[-pix_width:,:,:]
+            marked[pix_width:im_y+pix_width,im_x+pix_width:,:] = image[:,-pix_width:,:]
+            marked[:pix_width,:pix_width,:] = numpy.trunc(0.5 * (
+                marked[:pix_width,pix_width:pix_width+pix_width,:].astype(numpy.float32) +
+                marked[pix_width:pix_width+pix_width,:pix_width,:].astype(numpy.float32)))
+            marked[-pix_width:,:pix_width,:] = numpy.trunc(0.5 * (
+                marked[-2*pix_width:-pix_width,:pix_width,:].astype(numpy.float32) +
+                marked[-pix_width:,pix_width:pix_width+pix_width,:].astype(numpy.float32)))
+            marked[:pix_width,-pix_width:,:] = numpy.trunc(0.5 * (
+                marked[:pix_width,-2*pix_width:-pix_width,:].astype(numpy.float32) +
+                marked[pix_width:pix_width+pix_width,-pix_width:,:].astype(numpy.float32)))
+            marked[-pix_width:,-pix_width:,:] = numpy.trunc(0.5 * (
+                marked[-2*pix_width:-pix_width,-pix_width:,:].astype(numpy.float32) +
+                marked[-pix_width:,-2*pix_width:-pix_width,:].astype(numpy.float32)))
+        else:
+            marked[0:pix_width,pix_width:im_x+pix_width] = image[:pix_width,:]
+            marked[pix_width:im_y+pix_width,0:pix_width] = image[:,:pix_width]
+            marked[pix_width:im_y+pix_width,pix_width:im_x+pix_width] = image
+            marked[im_y+pix_width:,pix_width:im_x+pix_width] = image[-pix_width:,:]
+            marked[pix_width:im_y+pix_width,im_x+pix_width:] = image[:,-pix_width:]
+            marked[:pix_width,:pix_width] = numpy.trunc(0.5 * (
+                marked[:pix_width,pix_width:pix_width+pix_width].astype(numpy.float32) +
+                marked[pix_width:pix_width+pix_width,:pix_width].astype(numpy.float32)))
+            marked[-pix_width:,:pix_width] = numpy.trunc(0.5 * (
+                marked[-2*pix_width:-pix_width,:pix_width].astype(numpy.float32) +
+                marked[-pix_width:,pix_width:pix_width+pix_width].astype(numpy.float32)))
+            marked[:pix_width,-pix_width:] = numpy.trunc(0.5 * (
+                marked[:pix_width,-2*pix_width:-pix_width].astype(numpy.float32) +
+                marked[pix_width:pix_width+pix_width,-pix_width:].astype(numpy.float32)))
+            marked[-pix_width:,-pix_width:] = numpy.trunc(0.5 * (
+                marked[-2*pix_width:-pix_width,-pix_width:].astype(numpy.float32) +
+                marked[-pix_width:,-2*pix_width:-pix_width].astype(numpy.float32)))
+        im_shape = marked.shape
+    else:
+        marked = image.copy()
+    s = Sampler()
+    if im_rgb:
+        marked[0:pix_width,:,:] = s.sample_grid(marked[0:pix_width,:,:],
+            [list(range(pix_width)), list(range(im_shape[1]))],
+            'gauss' + str(24 * pix_width), out_type='uint8')
+        marked[:,0:pix_width,:] = s.sample_grid(marked[:,0:pix_width,:],
+            [list(range(im_shape[0])), list(range(pix_width))],
+            'gauss' + str(24 * pix_width), out_type='uint8')
+        marked[-pix_width:,:,:] = s.sample_grid(marked[-pix_width:,:,:],
+            [list(range(pix_width)), list(range(im_shape[1]))],
+            'gauss' + str(24 * pix_width), out_type='uint8')
+        marked[:,-pix_width:,:] = s.sample_grid(marked[:,-pix_width:,:],
+            [list(range(im_shape[0])), list(range(pix_width))],
+            'gauss' + str(24 * pix_width), out_type='uint8')
+    else:
+        marked[0:pix_width,:] = s.sample_grid(marked[0:pix_width,:],
+            [list(range(pix_width)), list(range(im_shape[1]))],
+            'gauss' + str(24 * pix_width), out_type='uint8')
+        marked[:,0:pix_width] = s.sample_grid(marked[:,0:pix_width],
+            [list(range(im_shape[0])), list(range(pix_width))],
+            'gauss' + str(24 * pix_width), out_type='uint8')
+        marked[-pix_width:,:] = s.sample_grid(marked[-pix_width:,:],
+            [list(range(pix_width)), list(range(im_shape[1]))],
+            'gauss' + str(24 * pix_width), out_type='uint8')
+        marked[:,-pix_width:] = s.sample_grid(marked[:,-pix_width:],
+            [list(range(im_shape[0])), list(range(pix_width))],
+            'gauss' + str(24 * pix_width), out_type='uint8')
+    im_y = im_shape[0] - 2 * pix_width 
+    im_x = im_shape[1] - 2 * pix_width
+    num_wrd_y = im_y // (pix_width * 12)
+    num_wrd_x = im_x // (pix_width * 12)
+    capacity = 2 * (num_wrd_y + num_wrd_x) - 33
+    if isinstance(content, str):
+        content = content.encode('utf-8')
+    clen = len(content)
+    if clen > 1023:
         raise ValueError('Content too long.')
-    r = RSCodec(248-len(content))
-    b = r.encode_to_bits(content)
-    ri = image.copy()
+    slen = int(0.95 + float(clen) * 2.0 * ecc_redundancy_level)
+    mlen = clen + slen
+    if mlen <= 255:
+        cchunks = clen
+        nchunks = 1
+    else:
+        nchunks = 1 + (mlen - 1) // 255
+        cchunks = 1 + (clen - 1) // nchunks
+        slen = int(0.95 + float(cchunks) * 2.0 * ecc_redundancy_level)
+        if (cchunks + slen) > 255:
+            nchunks += 1
+            cchunks = 1 + (clen - 1) // nchunks
+            slen = int(0.95 + float(cchunks) * 2.0 * ecc_redundancy_level)
+    r = RSCodec(slen)
+    b = r.encode_to_bits(content, cchunks)
+    if capacity < len(b):
+        raise ValueError('Content too long to encode.')
 
     # mark image with side markers
-    sm0 = r.value_to_bits(0)
-    sm1 = r.value_to_bits(1)
-    sm2 = r.value_to_bits(2)
-    sm3 = r.value_to_bits(3)
-    lm0 = r.value_to_bits(num_fld_y)
-    lm1 = r.value_to_bits(num_fld_x)
+    sm0 = r.value_to_bits(0 + 16 * nchunks)
+    sm1 = r.value_to_bits(1 + 16 * nchunks)
+    sm2 = r.value_to_bits(2 + 16 * nchunks)
+    sm3 = r.value_to_bits(3 + 16 * nchunks)
+    cl0 = r.value_to_bits(cchunks)
+    sl0 = r.value_to_bits(slen)
+    lm0 = r.value_to_bits(num_wrd_y)
+    lm1 = r.value_to_bits(num_wrd_x)
     len_y = float(num_fld_y) + 0.5
     len_x = float(num_fld_x) + 0.5
     mark_word(ri, im_shape, 3, len_x, 0, sm3, num_pix, cthresh)
