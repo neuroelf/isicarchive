@@ -1533,7 +1533,7 @@ class IsicApi(object):
                     object_id = self.images[name]
                 else:
                     object_id = self.get('image', params={'name': name})
-                    if isinstance(object_id, list):
+                    if isinstance(object_id, list) and object_id:
                         object_id = object_id[0]
                     if '_id' in object_id:
                         object_id = object_id['_id']

@@ -523,151 +523,6 @@ def image_mark_border(
         Image with content encoded into border
     """
 
-    def mark_pix(image, shape, side, slen, scrd, v, w, t):
-        it = 255 - t
-        if side == 0 or side == 2:
-            yf = 2*w + int(float(scrd) * float(shape[0]) / float(slen))
-            yt = 2*w + int(0.001 + float(scrd+1) * float(shape[0]) / float(slen))
-            if side == 0:
-                xf = 0
-                xt = 2*w
-            else:
-                xf = shape[1] - 2*w
-                xt = shape[1]
-        else:
-            xf = 2*w + int(float(scrd) * float(shape[1]) / float(slen))
-            xt = 2*w + int(0.001 + float(scrd+1) * float(shape[1]) / float(slen))
-            if side == 1:
-                yf = 0
-                yt = 2*w
-            else:
-                yf = shape[0] - 2*w
-                yt = shape[0]
-        print([yf,yt,xf,xt])
-        if len(shape) > 2 and shape[2] == 3:
-            m0 = numpy.mean(image[yf:yt,xf:xt,0])
-            m1 = numpy.mean(image[yf:yt,xf:xt,1])
-            m2 = numpy.mean(image[yf:yt,xf:xt,2])
-            if m0 >= t and m0 <= it:
-                m0_on = t
-                m0_off = 0 - t
-            elif m0 < t:
-                m0_on = 2 * t - m0
-                m0_off = - m0
-            else:
-                m0_on = it - m0
-                m0_off = 2 * t - m0_on
-            if m1 >= t and m1 <= it:
-                m1_on = t
-                m1_off = 0 - t
-            elif m1 < t:
-                m1_on = 2 * t - m1
-                m1_off = - m1
-            else:
-                m1_on = it - m1
-                m1_off = 2 * t - m1_on
-            if m2 >= t and m2 <= it:
-                m2_on = t
-                m2_off = 0 - t
-            elif m2 < t:
-                m2_on = 2 * t - m2
-                m2_off = - m2
-            else:
-                m2_on = it - m2
-                m2_off = 2 * t - m2_on
-            if v > 0:
-                (m0_off, m0_on) = (m0_on, m0_off)
-                (m1_off, m1_on) = (m1_on, m1_off)
-                (m2_off, m2_on) = (m2_on, m2_off)
-            if side == 0:
-                image[yf:yt,xf:xf+w,0] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf:xf+w,0].astype(numpy.float) + m0_on))
-                image[yf:yt,xf+w:xt,0] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf+w:xt,0].astype(numpy.float) + m0_off))
-                image[yf:yt,xf:xf+w,1] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf:xf+w,1].astype(numpy.float) + m1_on))
-                image[yf:yt,xf+w:xt,1] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf+w:xt,1].astype(numpy.float) + m1_off))
-                image[yf:yt,xf:xf+w,2] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf:xf+w,2].astype(numpy.float) + m2_on))
-                image[yf:yt,xf+w:xt,2] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf+w:xt,2].astype(numpy.float) + m2_off))
-            elif side == 1:
-                image[yf:yf+w,xf:xt,0] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yf+w,xf:xt,0].astype(numpy.float) + m0_on))
-                image[yf+w:yt,xf:xt,0] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf+w:yt,xf:xt,0].astype(numpy.float) + m0_off))
-                image[yf:yf+w,xf:xt,1] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yf+w,xf:xt,1].astype(numpy.float) + m1_on))
-                image[yf+w:yt,xf:xt,1] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf+w:yt,xf:xt,1].astype(numpy.float) + m1_off))
-                image[yf:yf+w,xf:xt,2] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yf+w,xf:xt,2].astype(numpy.float) + m2_on))
-                image[yf+w:yt,xf:xt,2] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf+w:yt,xf:xt,2].astype(numpy.float) + m2_off))
-            elif side == 2:
-                image[yf:yt,xf:xf+w,0] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf:xf+w,0].astype(numpy.float) + m0_off))
-                image[yf:yt,xf+w:xt,0] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf+w:xt,0].astype(numpy.float) + m0_on))
-                image[yf:yt,xf:xf+w,1] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf:xf+w,1].astype(numpy.float) + m1_off))
-                image[yf:yt,xf+w:xt,1] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf+w:xt,1].astype(numpy.float) + m1_on))
-                image[yf:yt,xf:xf+w,2] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf:xf+w,2].astype(numpy.float) + m2_off))
-                image[yf:yt,xf+w:xt,2] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf+w:xt,2].astype(numpy.float) + m2_on))
-            else:
-                image[yf:yf+w,xf:xt,0] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yf+w,xf:xt,0].astype(numpy.float) + m0_off))
-                image[yf+w:yt,xf:xt,0] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf+w:yt,xf:xt,0].astype(numpy.float) + m0_on))
-                image[yf:yf+w,xf:xt,1] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yf+w,xf:xt,1].astype(numpy.float) + m1_off))
-                image[yf+w:yt,xf:xt,1] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf+w:yt,xf:xt,1].astype(numpy.float) + m1_on))
-                image[yf:yf+w,xf:xt,2] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yf+w,xf:xt,2].astype(numpy.float) + m2_off))
-                image[yf+w:yt,xf:xt,2] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf+w:yt,xf:xt,2].astype(numpy.float) + m2_on))
-        else:
-            m0 = numpy.uint8(numpy.mean(image[yf:yt,xf:xt]))
-            if m0 >= t and m0 <= it:
-                m0_on = t
-                m0_off = 0 - t
-            elif m0 < t:
-                m0_on = 2 * t - m0
-                m0_off = - m0
-            else:
-                m0_on = it - m0
-                m0_off = 2 * t - m0_on
-            if v > 0:
-                (m0_off, m0_on) = (m0_on, m0_off)
-            if side == 0:
-                image[yf:yt,xf:xf+w] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf:xf+w].astype(numpy.float) + m0_on))
-                image[yf:yt,xf+w:xt] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf+w:xt].astype(numpy.float) + m0_off))
-            elif side == 1:
-                image[yf:yf+w,xf:xt] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yf+w,xf:xt].astype(numpy.float) + m0_on))
-                image[yf+w:yt,xf:xt] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf+w:yt,xf:xt].astype(numpy.float) + m0_off))
-            elif side == 2:
-                image[yf:yt,xf:xf+w] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf:xf+w].astype(numpy.float) + m0_off))
-                image[yf:yt,xf+w:xt] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yt,xf+w:xt].astype(numpy.float) + m0_on))
-            else:
-                image[yf:yf+w,xf:xt] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf:yf+w,xf:xt].astype(numpy.float) + m0_off))
-                image[yf+w:yt,xf:xt] = numpy.maximum(0.0, numpy.minimum(255.0,
-                    image[yf+w:yt,xf:xt].astype(numpy.float) + m0_on))
-    def mark_word(image, shape, side, slen, scrd, v, w, t):
-        for i in range(10):
-            mark_pix(image, shape, side, 12*slen, 12*scrd+i, v[i], w, t)
-
     # IMPORT DONE HERE TO SAVE TIME DURING MODULE INIT
     from .reedsolo import RSCodec
     from .sampler import Sampler
@@ -753,9 +608,9 @@ def image_mark_border(
             'gauss' + str(24 * pix_width), out_type='uint8')
     im_y = im_shape[0] - 2 * pix_width 
     im_x = im_shape[1] - 2 * pix_width
-    num_wrd_y = im_y // (pix_width * 12)
-    num_wrd_x = im_x // (pix_width * 12)
-    capacity = 2 * (num_wrd_y + num_wrd_x) - 33
+    num_wrd_y = min(255, im_y // (pix_width * 24))
+    num_wrd_x = min(255, im_x // (pix_width * 24))
+    capacity = 4 * (num_wrd_y + num_wrd_x - 8)
     if isinstance(content, str):
         content = content.encode('utf-8')
     clen = len(content)
@@ -774,56 +629,159 @@ def image_mark_border(
             nchunks += 1
             cchunks = 1 + (clen - 1) // nchunks
             slen = int(0.95 + float(cchunks) * 2.0 * ecc_redundancy_level)
+    if nchunks > 16:
+        raise ValueError('ECC factor too high.')
     r = RSCodec(slen)
     b = r.encode_to_bits(content, cchunks)
     if capacity < len(b):
         raise ValueError('Content too long to encode.')
+    if len(b) < capacity:
+        b0 = b[:]
+        while len(b) < capacity:
+            b.extend([r.value_to_bits(257)])
+            b.extend(b0)
 
     # mark image with side markers
-    sm0 = r.value_to_bits(0 + 16 * nchunks)
-    sm1 = r.value_to_bits(1 + 16 * nchunks)
-    sm2 = r.value_to_bits(2 + 16 * nchunks)
-    sm3 = r.value_to_bits(3 + 16 * nchunks)
-    cl0 = r.value_to_bits(cchunks)
-    sl0 = r.value_to_bits(slen)
-    lm0 = r.value_to_bits(num_wrd_y)
-    lm1 = r.value_to_bits(num_wrd_x)
-    len_y = float(num_fld_y) + 0.5
-    len_x = float(num_fld_x) + 0.5
-    mark_word(ri, im_shape, 3, len_x, 0, sm3, num_pix, cthresh)
-    mark_word(ri, im_shape, 3, len_x, 1, lm1, num_pix, cthresh)
-    mark_word(ri, im_shape, 3, len_x, num_fld_x-2, lm1[::-1], num_pix, cthresh)
-    mark_word(ri, im_shape, 3, len_x, num_fld_x-1, sm3[::-1], num_pix, cthresh)
-    mark_word(ri, im_shape, 2, len_y, 0, sm2, num_pix, cthresh)
-    mark_word(ri, im_shape, 2, len_y, 1, lm0, num_pix, cthresh)
-    mark_word(ri, im_shape, 2, len_y, num_fld_y-2, lm0[::-1], num_pix, cthresh)
-    mark_word(ri, im_shape, 2, len_y, num_fld_y-1, sm2[::-1], num_pix, cthresh)
-    mark_word(ri, im_shape, 1, len_x, 0, sm1, num_pix, cthresh)
-    mark_word(ri, im_shape, 1, len_x, 1, lm1, num_pix, cthresh)
-    mark_word(ri, im_shape, 1, len_x, num_fld_x-2, lm1[::-1], num_pix, cthresh)
-    mark_word(ri, im_shape, 1, len_x, num_fld_x-1, sm1[::-1], num_pix, cthresh)
-    mark_word(ri, im_shape, 0, len_y, 0, sm0, num_pix, cthresh)
-    mark_word(ri, im_shape, 0, len_y, 1, lm0, num_pix, cthresh)
-    mark_word(ri, im_shape, 0, len_y, num_fld_y-2, lm0[::-1], num_pix, cthresh)
-    mark_word(ri, im_shape, 0, len_y, num_fld_y-1, sm0[::-1], num_pix, cthresh)
+    bnum = clen // 256
+    boff = 4 * (nchunks - 1) + 64 * bnum
+    sm0 = r.value_to_bits(0 + boff)
+    sm1 = r.value_to_bits(1 + boff)
+    sm2 = r.value_to_bits(2 + boff)
+    sm3 = r.value_to_bits(3 + boff)
+    wm0 = r.value_to_bits(num_wrd_y)
+    wm1 = r.value_to_bits(num_wrd_x)
+    sm = [[sm0,wm0], [sm0,wm0], [sm1,wm1], [sm1,wm1],
+        [sm2,wm0], [sm2,wm0], [sm3,wm1], [sm3,wm1]]
+    for cidx in range(8):
+        sm[cidx].extend([r.value_to_bits(clen % 256), r.value_to_bits(slen)])
+    nwyr = num_wrd_y - 4
+    nwxr = num_wrd_x - 4
+    nwyc = float(nwyr)
+    nwxc = float(nwxr)
+    nwy = 0.5 * nwxc
+    nwx = 0.5 * nwyc
+    lidx = 0
+    while nwyr > 0 or nwxr > 0:
+        if nwy <= nwx:
+            sm[0].append(b[lidx])
+            lidx += 1
+            sm[1].append(b[lidx])
+            lidx += 1
+            sm[4].append(b[lidx])
+            lidx += 1
+            sm[5].append(b[lidx])
+            lidx += 1
+            nwy += nwxc
+            nwyr -= 1
+        else:
+            sm[2].append(b[lidx])
+            lidx += 1
+            sm[3].append(b[lidx])
+            lidx += 1
+            sm[6].append(b[lidx])
+            lidx += 1
+            sm[7].append(b[lidx])
+            lidx += 1
+            nwx += nwyc
+            nwxr -= 1
+    image_mark_pix(marked, 0, pix_width, 0, color_diff, False)
+    image_mark_pix(marked, 0, pix_width, im_shape[0]-pix_width, color_diff, False)
+    image_mark_pix(marked, 2, pix_width, 0, color_diff, False)
+    image_mark_pix(marked, 2, pix_width, im_shape[0]-pix_width, color_diff, False)
+    for cidx in range(8):
+        side = cidx // 2
+        if (side % 2) == 0:
+            num_wrd = num_wrd_y
+        else:
+            num_wrd = num_wrd_x
+        for widx in range(num_wrd):
+            word = sm[cidx][widx]
+            if (cidx % 2) == 0:
+                wcrd = widx
+            else:
+                wcrd = num_wrd + widx
+            image_mark_word(marked, side, pix_width, num_wrd, wcrd, color_diff, word)
+    return marked
 
-    # add code words
-    wy = num_fld_y - 4
-    wx = num_fld_x - 4
-    wf = 0
-    for wi in range(wf, wf+wy):
-        mark_word(ri, im_shape, 0, len_y, wi+2-wf, b[wi], num_pix, cthresh)
-    wf += wy
-    for wi in range(wf, wf+wx):
-        mark_word(ri, im_shape, 1, len_x, wi+2-wf, b[wi], num_pix, cthresh)
-    wf += wx
-    for wi in range(wf, wf+wy):
-        mark_word(ri, im_shape, 2, len_y, wi+2-wf, b[wi], num_pix, cthresh)
-    wf += wy
-    for wi in range(wf, wf+wx):
-        mark_word(ri, im_shape, 3, len_x, wi+2-wf, b[wi], num_pix, cthresh)
-    print(wi)
-    return ri
+# mark pixel in image (color darker or brighter)
+def image_mark_pix(image, side, pix_width, pcrd, value, brighter):
+    shape = image.shape
+    it = 255 - value
+    darker = not brighter
+    if side == 0 or side == 2:
+        yf = pcrd
+        yt = pcrd + pix_width
+        if side == 0:
+            xf = 0
+            xt = pix_width
+        else:
+            xf = shape[1] - pix_width
+            xt = shape[1]
+    else:
+        xf = pcrd
+        xt = pcrd + pix_width
+        if side == 1:
+            yf = 0
+            yt = pix_width
+        else:
+            yf = shape[0] - pix_width
+            yt = shape[0]
+    v0 = value
+    if len(shape) > 2 and shape[2] == 3:
+        v2 = v1 = v0
+        m0 = numpy.mean(image[yf:yt,xf:xt,0])
+        m1 = numpy.mean(image[yf:yt,xf:xt,1])
+        m2 = numpy.mean(image[yf:yt,xf:xt,2])
+        if darker and m0 > it:
+            v0 += m0 - it
+        elif brighter and m0 < value:
+            v0 += value - m0
+        if darker and m1 > it:
+            v1 += m1 - it
+        elif brighter and m1 < value:
+            v1 += value - m1
+        if darker and m2 > it:
+            v2 += m2 - it
+        elif brighter and m2 < value:
+            v2 += value - m2
+        if darker:
+            (v0, v1, v2) = (-v0, -v1, -v2)
+        image[yf:yt,xf:xt,0] = numpy.maximum(0.0, numpy.minimum(255.0,
+            image[yf:yt,xf:xt,0].astype(numpy.float) + v0))
+        image[yf:yt,xf:xt,1] = numpy.maximum(0.0, numpy.minimum(255.0,
+            image[yf:yt,xf:xt,1].astype(numpy.float) + v1))
+        image[yf:yt,xf:xt,2] = numpy.maximum(0.0, numpy.minimum(255.0,
+            image[yf:yt,xf:xt,2].astype(numpy.float) + v2))
+    else:
+        m0 = numpy.mean(image[yf:yt,xf:xt])
+        if darker and m0 > it:
+            v0 += m0 - it
+        elif brighter and m0 < value:
+            v0 += value - m0
+        if darker:
+            v0 = -v0
+        image[yf:yt,xf:xt] = numpy.maximum(0.0, numpy.minimum(255.0,
+            image[yf:yt,xf:xt].astype(numpy.float) + v0))
+
+# mark word (of size 10 "pixels") in image
+def image_mark_word(image, side, pix_width, num_wrd, wcrd, value, word):
+    shape = image.shape
+    if side == 0 or side == 2:
+        slen = shape[0]
+    else:
+        slen = shape[1]
+    if wcrd < num_wrd:
+        scrd = pix_width * (1 + 12 * wcrd)
+        pix_add = pix_width
+    else:
+        scrd = slen - pix_width * (2 + 12 * (wcrd - num_wrd))
+        pix_add = -pix_width
+    for i in range(10):
+        image_mark_pix(image, side, pix_width, scrd, value, word[i] > 0)
+        scrd += pix_add
+    image_mark_pix(image, side, pix_width, scrd, 2*value, False)
+    scrd += pix_add
+    image_mark_pix(image, side, pix_width, scrd, 2*value, True)
 
 # image mixing (python portion)
 def image_mix(
