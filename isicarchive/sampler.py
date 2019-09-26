@@ -111,7 +111,7 @@ def _sample_values(
     k:numpy.ndarray,
     ks:int64) -> numpy.ndarray:
     nk = k.size - 1
-    kl = float(nk) / float(ks)
+    kl = float(nk) / float(2 * ks)
     if kl != numpy.trunc(kl):
         raise ValueError('Invalid kernel.')
     ikl = int(kl)
@@ -178,7 +178,117 @@ class Sampler(object):
                 ksin = (kc * ksin) * numpy.sin((math_pi / float(kc)) * k)
                 ksin[kc*ks] = 1.0
                 self._kernels['lanczos' + str(kc)] = [ksin, ks]
-        
+    
+    # sample values
+    def sample_values(self,
+        a:numpy.ndarray,
+        s:Union[numpy.ndarray,list,tuple,int,float],
+        k:Union[str,tuple] = 'resample',
+        out_type:str = 'float64',
+        ) -> numpy.ndarray:
+        if not isinstance(a, numpy.ndarray):
+            raise ValueError('Invalid array a to sample.')
+        ad = a.ndim
+        ash = a.shape
+        if isinstance(s, int):
+            s = float(s) / float(ash[0])
+        if isinstance(s, float):
+            s = [int(s * (float(ash[0]) + 0.5))]
+        if isinstance(s, numpy.ndarray):
+            if s.ndim != 1 or s.shape[0] != 3:
+                raise ValueError('Invalid sampling specification.')
+            s = numpy.arange(s[0], s[1], s[2]).astype(numpy.float64)
+        elif (not isinstance(s, list) and not isinstance(s, tuple)) or len(s) > 1:
+            raise ValueError('Invalid sampling specification.')
+        else:
+            s = s[0]
+            try:
+                if isinstance(s, int):
+                    sf = float(ash[0]) / float(s)
+                    s = numpy.arange(sf/2.0-0.5, float(ash[0])-0.5, sf)
+                elif not isinstance(s, numpy.ndarray):
+                    s = numpy.asarray(s).astype(numpy.float64)
+            except:
+                raise
+        if isinstance(k, str):
+            if k == 'resample':
+                fs = numpy.mean(numpy.diff(s))
+                fm = 0.1 * numpy.trunc(10.0 * fs)
+                if fm <= 1.0:
+                    k = self._kernels['cubic']
+                else:
+                    fms = 'rs_{0:.1f}'.format(fm)
+                    if fms in self._kernels:
+                        k = self._kernels[fms]
+                    else:
+                        kc = self._kernels['cubic']
+                        sk = _gauss_kernel(fm * float(kc[1])).astype(numpy.float64)
+                        skl = sk.size
+                        skr = (skl - 1) // (2 * kc[1])
+                        skr = 2 * kc[1] * skr + 1
+                        skd = (skl - skr) // 2
+                        sk = sk[skd:skr+skd]
+                        sk = sk / numpy.sum(sk)
+                        ksk = numpy.convolve(kc[0], sk)
+                        while numpy.sum(ksk[0:kc[1]]) < 0.01:
+                            ksk = ksk[kc[1]:-kc[1]]
+                        k = [ksk, kc[1]]
+                        self._kernels[fms] = k
+            elif len(k) > 5 and k[0:5] == 'gauss':
+                try:
+                    fwhm = 0.1 * float(int(0.5 + 10 * float(k[5:])))
+                    fms = 'g_{0:.1f}'.format(fwhm)
+                    if fms in self._kernels:
+                        k = self._kernels[fms]
+                    else:
+                        sk = _gauss_kernel(fwhm * float(1024))
+                        skr = (sk.size - 1) // 2048
+                        skr = 2048 * skr + 1
+                        skd = (sk.size - skr) // 2
+                        sk = sk[skd:skr+skd]
+                        sk = sk / numpy.sum(sk)
+                        k = [sk, 1024]
+                        self._kernels[fms] = k
+                except:
+                    raise ValueError('Invalid gaussian kernel requested.')
+            elif not k in self._kernels:
+                raise ValueError('Kernel ' + k + ' not available.')
+            else:
+                k = self._kernels[k]
+        elif not isinstance(k, tuple) or len(k) != 2 or (
+            not isinstance(k[0], numpy.ndarray) or len(k[1]) != 1 or
+            (float(k[0].size - 1) % float(k[1])) != 0.0):
+            raise ValueError('Invalid kernel k.')
+        if ad == 1:
+            out = _sample_values(a, s, k[0], k[1])
+        else:
+            as0 = ash[0]
+            if ad > 3:
+                raise ValueError('Invalid data provided for column-based sampling.')
+            out = _sample_values(a[:,0].reshape(as0), s, k[0], k[1])
+            out.shape = (out.size,1,)
+            for d in range(1, ad):
+                out = numpy.repeat(out, ash[d], axis=d)
+            if ad == 2:
+                for d in range(1, ash[1]):
+                    out[:,d] = _sample_values(a[:,d].reshape(as0), s, k[0], k[1])
+            else:
+                for d1 in range(ash[1]):
+                    for d2 in range(ash[2]):
+                        out[:,d1,d2] = _sample_values(a[:,d1,d2].reshape(as0), s, k[0],k[1])
+        if out_type != 'float64':
+            if out_type == 'uint8':
+                out = numpy.minimum(numpy.maximum(out, 0.0), 255.0).astype(numpy.uint8)
+            elif out_type == 'float32':
+                out = out.astype(numpy.float32)
+            elif out_type == 'int16':
+                out = numpy.minimum(numpy.maximum(out, -32768.0), 32767.0).astype(numpy.int16)
+            elif out_type == 'int32':
+                out = out.astype(numpy.int32)
+            else:
+                warnings.warn('Output of type ' + out_type + ' not supported; returning float64.')
+        return out
+
     # sample 2D grid
     def sample_grid(self,
         a:numpy.ndarray,
@@ -207,12 +317,15 @@ class Sampler(object):
         elif (not isinstance(s, list) and not isinstance(s, tuple)) or len(s) > ad:
             raise ValueError('Invalid sampling specification.')
         else:
-            s = [v for v in s]
+            s = s[:]
             try:
                 for d in range(len(s)):
                     if isinstance(s[d], int):
                         sf = float(ash[d]) / float(s[d])
-                        s[d] = numpy.arange(sf-1.0, float(ash[d])-0.5, sf)
+                        s[d] = numpy.arange(sf/2.0-0.5, float(ash[d])-0.5, sf)
+                    elif isinstance(s[d], float):
+                        sf = 1.0 / s[d]
+                        s[d] = numpy.arange(sf/2.0-0.5, float(ash[d])-0.5, sf)
                     elif not isinstance(s[d], numpy.ndarray):
                         s[d] = numpy.asarray(s[d]).astype(numpy.float64)
             except:

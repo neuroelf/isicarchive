@@ -310,6 +310,13 @@ class RSCodec(object):
     
     def bits_to_value(self, bits):
         try:
-            return bit_decode[sum([v * (2 ** (9-k)) for (k,v) in enumervate(bits)])]
+            return bit_decode[sum([v * (2 ** (9-k)) for (k,v) in enumerate(bits)])]
+        except:
+            raise ValueError('Invalid bits list for decoding.')
+
+    def values_to_value(self, values, thresh:float = 0.0):
+        try:
+            return bit_decode[sum([(2 ** (9-k))
+                if v >= thresh else 0 for (k,v) in enumerate(values)])]
         except:
             raise ValueError('Invalid bits list for decoding.')

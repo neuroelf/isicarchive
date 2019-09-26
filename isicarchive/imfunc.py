@@ -207,18 +207,40 @@ def color_superpixels(
     return image
 
 # column period
-def column_period(c) -> int:
+def column_period(c,thresh:int=0):
     cc = numpy.zeros(c.size//2)
     for ck in range(1, cc.size):
         cc[ck] = numpy.corrcoef(c[:-ck],c[ck:])[0,1]
     cc[numpy.isnan(cc)] = 0.0
     ccc = numpy.zeros(cc.size//2)
-    for ck in range(2, ccc.size):
+    for ck in range(3, ccc.size):
         ccc[ck-1] = numpy.corrcoef(cc[1:-ck], cc[ck:-1])[0,1]
     ccc[numpy.isnan(ccc)] = -1.0
     ccs = numpy.argsort(-ccc)
-    if (ccs[0] // ccs[1]) == 0 or (ccs[1] // ccs[0]) == 0:
-        return int(min(ccs[0], ccs[1]))
+    ccsv = numpy.median(ccc[ccs[0:3]]) * 0.816
+    ccsl = numpy.sort(ccs[ccc[ccs]>=ccsv])
+    while thresh > 0 and len(ccsl) > 1 and ccsl[0] < thresh:
+        ccsl = ccsl[1:]
+    if len(ccsl) == 1:
+        return ccsl[0]
+    while len(ccsl) > 3 and ccsl[0] < ccsl[1] // 3:
+        ccsl = ccsl[1:]
+    ccsy = ccsl[-1]
+    ccsx = ccsl[0]
+    ccsr = ccsy % ccsx
+    if ccsr == 0:
+        return ccsx
+    if ccsx - ccsr < (ccsx // 4):
+        ccsr = ccsx - ccsr
+    if ccsr < (ccsx // 4) and ccsx >= 6 and len(ccsl) > 3:
+        ccst = ccsl.astype(numpy.float64) / float(ccsx)
+        ccsi = numpy.trunc(ccst + 0.5)
+        ccsd = float(ccsx) * (ccst - ccsi)
+        ccsx = float(ccsx) + numpy.sum(ccsd) / numpy.sum(ccsi)
+        return ccsx
+    while ccsy % ccsx != 0:
+        (ccsy, ccsx) = (ccsx, ccsy % ccsx)
+    return ccsx
 
 # display image
 def display_image(
@@ -506,10 +528,11 @@ def image_gray(image:numpy.ndarray, rgb_format:bool = True) -> numpy.ndarray:
 def image_mark_border(
     image:numpy.ndarray,
     content:Union[str,bytes],
-    color_diff:int = 24,
+    color_diff:int = 40,
     ecc_redundancy_level:float = 0.75,
     pix_width:int = 3,
     border_expand:bool = True,
+    border_color:list = [128,128,128],
     ) -> numpy.ndarray:
     """
     Mark image border with content (encoded)
@@ -544,6 +567,8 @@ def image_mark_border(
     # get some numbers, encode message, copy image
     if not isinstance(content, str) and not isinstance(content, bytes):
         raise ValueError('Invalid content (type).')
+    if not isinstance(color_diff, int) or color_diff < 32:
+        color_diff = 32
     if not isinstance(pix_width, int) or pix_width < 1:
         raise ValueError('Invalid pix_width parameter.')
     im_shape = image.shape
@@ -595,31 +620,53 @@ def image_mark_border(
         marked = image.copy()
     s = Sampler()
     if im_rgb:
-        marked[0:pix_width,:,:] = s.sample_grid(marked[0:pix_width,:,:],
-            [list(range(pix_width)), list(range(im_shape[1]))],
-            'gauss' + str(24 * pix_width), out_type='uint8')
-        marked[:,0:pix_width,:] = s.sample_grid(marked[:,0:pix_width,:],
-            [list(range(im_shape[0])), list(range(pix_width))],
-            'gauss' + str(24 * pix_width), out_type='uint8')
-        marked[-pix_width:,:,:] = s.sample_grid(marked[-pix_width:,:,:],
-            [list(range(pix_width)), list(range(im_shape[1]))],
-            'gauss' + str(24 * pix_width), out_type='uint8')
-        marked[:,-pix_width:,:] = s.sample_grid(marked[:,-pix_width:,:],
-            [list(range(im_shape[0])), list(range(pix_width))],
-            'gauss' + str(24 * pix_width), out_type='uint8')
+        if isinstance(border_color,list) and len(border_color) == 3:
+            marked[0:pix_width,:,0] = border_color[0]
+            marked[0:pix_width,:,1] = border_color[1]
+            marked[0:pix_width,:,2] = border_color[2]
+            marked[:,0:pix_width,0] = border_color[0]
+            marked[:,0:pix_width,1] = border_color[1]
+            marked[:,0:pix_width,2] = border_color[2]
+            marked[-pix_width:,:,0] = border_color[0]
+            marked[-pix_width:,:,1] = border_color[1]
+            marked[-pix_width:,:,2] = border_color[2]
+            marked[:,-pix_width:,0] = border_color[0]
+            marked[:,-pix_width:,1] = border_color[1]
+            marked[:,-pix_width:,2] = border_color[2]
+        else:
+            marked[0:pix_width,:,:] = s.sample_grid(marked[0:pix_width,:,:],
+                [list(range(pix_width)), list(range(im_shape[1]))],
+                'gauss' + str(24 * pix_width), out_type='uint8')
+            marked[:,0:pix_width,:] = s.sample_grid(marked[:,0:pix_width,:],
+                [list(range(im_shape[0])), list(range(pix_width))],
+                'gauss' + str(24 * pix_width), out_type='uint8')
+            marked[-pix_width:,:,:] = s.sample_grid(marked[-pix_width:,:,:],
+                [list(range(pix_width)), list(range(im_shape[1]))],
+                'gauss' + str(24 * pix_width), out_type='uint8')
+            marked[:,-pix_width:,:] = s.sample_grid(marked[:,-pix_width:,:],
+                [list(range(im_shape[0])), list(range(pix_width))],
+                'gauss' + str(24 * pix_width), out_type='uint8')
     else:
-        marked[0:pix_width,:] = s.sample_grid(marked[0:pix_width,:],
-            [list(range(pix_width)), list(range(im_shape[1]))],
-            'gauss' + str(24 * pix_width), out_type='uint8')
-        marked[:,0:pix_width] = s.sample_grid(marked[:,0:pix_width],
-            [list(range(im_shape[0])), list(range(pix_width))],
-            'gauss' + str(24 * pix_width), out_type='uint8')
-        marked[-pix_width:,:] = s.sample_grid(marked[-pix_width:,:],
-            [list(range(pix_width)), list(range(im_shape[1]))],
-            'gauss' + str(24 * pix_width), out_type='uint8')
-        marked[:,-pix_width:] = s.sample_grid(marked[:,-pix_width:],
-            [list(range(im_shape[0])), list(range(pix_width))],
-            'gauss' + str(24 * pix_width), out_type='uint8')
+        if isinstance(border_color, list) and len(border_color) == 1:
+            border_color = border_color[0]
+        if isinstance(border_color, int):
+            marked[0:pix_width,:] = border_color
+            marked[:,0:pix_width] = border_color
+            marked[-pix_width:,:] = border_color
+            marked[:,-pix_width:] = border_color
+        else:
+            marked[0:pix_width,:] = s.sample_grid(marked[0:pix_width,:],
+                [list(range(pix_width)), list(range(im_shape[1]))],
+                'gauss' + str(24 * pix_width), out_type='uint8')
+            marked[:,0:pix_width] = s.sample_grid(marked[:,0:pix_width],
+                [list(range(im_shape[0])), list(range(pix_width))],
+                'gauss' + str(24 * pix_width), out_type='uint8')
+            marked[-pix_width:,:] = s.sample_grid(marked[-pix_width:,:],
+                [list(range(pix_width)), list(range(im_shape[1]))],
+                'gauss' + str(24 * pix_width), out_type='uint8')
+            marked[:,-pix_width:] = s.sample_grid(marked[:,-pix_width:],
+                [list(range(im_shape[0])), list(range(pix_width))],
+                'gauss' + str(24 * pix_width), out_type='uint8')
     im_y = im_shape[0] - 2 * pix_width 
     im_x = im_shape[1] - 2 * pix_width
     num_wrd_y = min(255, im_y // (pix_width * 24))
@@ -643,21 +690,22 @@ def image_mark_border(
             nchunks += 1
             cchunks = 1 + (clen - 1) // nchunks
             slen = int(0.95 + float(cchunks) * 2.0 * ecc_redundancy_level)
-    if nchunks > 16:
+    if nchunks > 64:
         raise ValueError('ECC factor too high.')
     r = RSCodec(slen)
+    echunks = cchunks + slen
     b = r.encode_to_bits(content, cchunks)
     if capacity < len(b):
         raise ValueError('Content too long to encode.')
     if len(b) < capacity:
+        while len(b) % echunks != 0:
+            b.extend([r.value_to_bits(257)])
         b0 = b[:]
         while len(b) < capacity:
-            b.extend([r.value_to_bits(257)])
             b.extend(b0)
 
     # mark image with side markers
-    bnum = clen // 256
-    boff = 4 * (nchunks - 1) + 64 * bnum
+    boff = 4 * (nchunks - 1)
     sm0 = r.value_to_bits(0 + boff)
     sm1 = r.value_to_bits(1 + boff)
     sm2 = r.value_to_bits(2 + boff)
@@ -667,7 +715,7 @@ def image_mark_border(
     sm = [[sm0,wm0], [sm0,wm0], [sm1,wm1], [sm1,wm1],
         [sm2,wm0], [sm2,wm0], [sm3,wm1], [sm3,wm1]]
     for cidx in range(8):
-        sm[cidx].extend([r.value_to_bits(clen % 256), r.value_to_bits(slen)])
+        sm[cidx].extend([r.value_to_bits(cchunks), r.value_to_bits(slen)])
     nwyr = num_wrd_y - 4
     nwxr = num_wrd_x - 4
     nwyc = float(nwyr)
@@ -793,9 +841,9 @@ def image_mark_word(image, side, pix_width, num_wrd, wcrd, value, word):
     for i in range(10):
         image_mark_pixel(image, side, pix_width, scrd, value, word[i] > 0)
         scrd += pix_add
-    image_mark_pixel(image, side, pix_width, scrd, 2*value, False)
+    image_mark_pixel(image, side, pix_width, scrd, value*2, False)
     scrd += pix_add
-    image_mark_pixel(image, side, pix_width, scrd, 2*value, True)
+    image_mark_pixel(image, side, pix_width, scrd, value*2, True)
 
 # image mixing (python portion)
 def image_mix(
@@ -953,7 +1001,9 @@ def image_read_border(
     ) -> Any:
 
     # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    from isicarchive.reedsolo import RSCodec
     from isicarchive.sampler import Sampler
+    r = RSCodec(64) # needed for bit decoding
     s = Sampler()
 
     # guess pixel width
@@ -969,7 +1019,7 @@ def image_read_border(
         wlen = None
         cidx = 0
         while wlen is None:
-            wlen = column_period(image[:im_shapeh[0],cidx])
+            wlen = column_period(image[:im_shapeh[0],cidx],12)
             if not wlen is None:
                 break
             cidx += 1
@@ -981,14 +1031,20 @@ def image_read_border(
         if pix_width[pwi] >= 2.0:
             if numpy.corrcoef(image[:im_shapeh[0],0], image[:im_shapeh[0],1])[0,1] < 0.5:
                 raise RuntimeError('Column not duplicated as expected.')
-        if (pix_width[pwi] - float(int(pix_width[pwi]))) != 0.0:
-            xpix_width = float(int(2.0 * pix_width[pwi] + 0.5))
-            image = s.sample_grid(image, [xpix_width/pix_width[pwi],1.0])
-            pix_width[pwi] = xpix_width
+        if pwi < 2:
+            pwdiff = pix_width[pwi] - float(int(pix_width[pwi]))
+            if pwdiff != 0.0:
+                if pwdiff > 0.0 and pwdiff < 0.1:
+                    xpix_width = float(int(pix_width[pwi]))
+                else:
+                    xpix_width = float(int(2.0 * pix_width[pwi] + 0.5))
+                image = s.sample_grid(image, [xpix_width/pix_width[pwi],1.0])
+                pix_width[pwi] = xpix_width
         try:
             return image_read_border(image_rotate(image[:,cidx:], 'left'), output, pix_width)
         except:
             raise
+    pix_width = 0.1 * numpy.trunc(10.0 * pix_width + 0.5)
     if not numpy.all(pix_width == pix_width[0]):
         if pix_width[0] != pix_width[2] or pix_width[1] != pix_width[3]:
             raise RuntimeError('Invalid image detected.')
@@ -997,7 +1053,359 @@ def image_read_border(
         else:
             image = s.sample_grid(image, [pix_width[1] / pix_width[0], 1.0])
     
+    # get reference columns
+    pix_width = int(pix_width[0])
+    kspec = 'gauss' + str(pix_width*24)
+    if pix_width > 1:
+        c0_p = numpy.mean(image[pix_width:0-pix_width,:pix_width], axis=1)
+        c1_p = numpy.mean(image[:pix_width,pix_width:0-pix_width], axis=0)
+        c2_p = numpy.mean(image[pix_width:0-pix_width,0-pix_width:], axis=1)
+        c3_p = numpy.mean(image[0-pix_width:,pix_width:0-pix_width], axis=0)
+    else:
+        c0_p = image[1:-1,0]
+        c1_p = image[0,1:-1]
+        c2_p = image[1:-1,-1]
+        c3_p = image[-1,1:-1]
+    c0_p.shape = (c0_p.size)
+    c1_p.shape = (c1_p.size)
+    c2_p.shape = (c0_p.size)
+    c3_p.shape = (c1_p.size)
+    c0_n = c0_p[::-1]
+    c1_n = c1_p[::-1]
+    c2_n = c2_p[::-1]
+    c3_n = c3_p[::-1]
+    rc0_p = s.sample_values(c0_p, 1.0/pix_width, kspec)
+    rc0_n = s.sample_values(c0_n, 1.0/pix_width, kspec)
+    rc1_p = s.sample_values(c1_p, 1.0/pix_width, kspec)
+    rc1_n = s.sample_values(c1_n, 1.0/pix_width, kspec)
+    rc2_p = s.sample_values(c2_p, 1.0/pix_width, kspec)
+    rc2_n = s.sample_values(c2_n, 1.0/pix_width, kspec)
+    rc3_p = s.sample_values(c3_p, 1.0/pix_width, kspec)
+    rc3_n = s.sample_values(c3_n, 1.0/pix_width, kspec)
+    if pix_width > 1:
+        c0_p = s.sample_values(c0_p, 1.0/pix_width, 'resample')
+        c0_n = s.sample_values(c0_n, 1.0/pix_width, 'resample')
+        c1_p = s.sample_values(c1_p, 1.0/pix_width, 'resample')
+        c1_n = s.sample_values(c1_n, 1.0/pix_width, 'resample')
+        c2_p = s.sample_values(c2_p, 1.0/pix_width, 'resample')
+        c2_n = s.sample_values(c2_n, 1.0/pix_width, 'resample')
+        c3_p = s.sample_values(c3_p, 1.0/pix_width, 'resample')
+        c3_n = s.sample_values(c3_n, 1.0/pix_width, 'resample')
+
+    # subtract
+    c0_p = c0_p - rc0_p
+    c0_n = c0_n - rc0_n
+    c1_p = c1_p - rc1_p
+    c1_n = c1_n - rc1_n
+    c2_p = c2_p - rc2_p
+    c2_n = c2_n - rc2_n
+    c3_p = c3_p - rc3_p
+    c3_n = c3_n - rc3_n
+
+    # decode first values
+    c_values = []
+    try:
+        c_values.append(r.values_to_value(c0_p[:10]))
+    except:
+        c_values.append(None)
+    try:
+        c_values.append(r.values_to_value(c0_n[:10]))
+    except:
+        c_values.append(None)
+    try:
+        c_values.append(r.values_to_value(c1_p[:10]))
+    except:
+        c_values.append(None)
+    try:
+        c_values.append(r.values_to_value(c1_n[:10]))
+    except:
+        c_values.append(None)
+    try:
+        c_values.append(r.values_to_value(c2_p[:10]))
+    except:
+        c_values.append(None)
+    try:
+        c_values.append(r.values_to_value(c2_n[:10]))
+    except:
+        c_values.append(None)
+    try:
+        c_values.append(r.values_to_value(c3_p[:10]))
+    except:
+        c_values.append(None)
+    try:
+        c_values.append(r.values_to_value(c3_n[:10]))
+    except:
+        c_values.append(None)
+    c_xvals = [v // 4 for v in c_values if not v is None]
+    if len(c_xvals) < 4:
+        raise RuntimeError('Image quality too poor.')
+    if not all([v == c_xvals[0] for v in c_xvals]):
+        xval = float(numpy.median(numpy.asarray(c_xvals)))
+        if float(int(xval)) != xval:
+            raise RuntimeError('Image quality too poor.')
+        xval = int(xval)
+        if sum([xval != v for v in c_xvals]) > (1 + len(c_xvals) // 2):
+            raise RuntimeError('Image quality too poor.')
+        for (idx, v) in c_values:
+            if v is None:
+                continue
+            if (v // 4) != xval:
+                c_values[idx] = 4 * xval + v % 4
+    else:
+        xval = c_xvals[0]
+    while any([v is None for v in c_values]):
+        for (idx, v) in c_values:
+            nidx = (idx + 1) % 8
+            pidx = (idx + 7) % 8
+            if v is None:
+                if (idx % 2) == 0:
+                    if not c_values[nidx] is None:
+                        c_values[idx] = c_values[nidx]
+                    elif not c_values[pidx] is None:
+                        c_values[idx] = (4 * xval + (c_values[pidx] + 1) % 4)
+                else:
+                    if not c_values[pidx] is None:
+                        c_values[idx] = c_values[pidx]
+                    elif not c_values[nidx] is None:
+                        c_values[idx] = (4 * xval + (c_values[nidx] + 3) % 4)
+
+    # flip data into correct orientation
+    c_order = [v % 4 for v in c_values]
+    nchunks = 1 + xval
+    if c_order == [1, 1, 2, 2, 3, 3, 0, 0]:
+        (c0_p, c0_n, c1_p, c1_n, c2_p, c2_n, c3_p, c3_n) = (c1_n, c1_p, c2_p, c2_n, c3_n, c3_p, c0_p, c0_n)
+    elif c_order == [2, 2, 3, 3, 0, 0, 1, 1]:
+        (c0_p, c0_n, c1_p, c1_n, c2_p, c2_n, c3_p, c3_n) = (c2_n, c2_p, c3_n, c3_p, c0_n, c0_p, c1_n, c1_p)
+    elif c_order == [3, 3, 0, 0, 1, 1, 2, 2]:
+        (c0_p, c0_n, c1_p, c1_n, c2_p, c2_n, c3_p, c3_n) = (c3_p, c3_n, c0_n, c0_p, c1_p, c1_n, c2_n, c2_p)
+    elif c_order != [0, 0, 1, 1, 2, 2, 3, 3]:
+        raise RuntimeError('Invalid corner markers.')
+
+    # extract number of words
+    nwy = []
+    nwx = []
+    try:
+        nwy.append(r.values_to_value(c0_p[12:22]))
+    except:
+        pass
+    try:
+        nwy.append(r.values_to_value(c0_n[12:22]))
+    except:
+        pass
+    try:
+        nwy.append(r.values_to_value(c2_p[12:22]))
+    except:
+        pass
+    try:
+        nwy.append(r.values_to_value(c2_n[12:22]))
+    except:
+        pass
+    try:
+        nwx.append(r.values_to_value(c1_p[12:22]))
+    except:
+        pass
+    try:
+        nwx.append(r.values_to_value(c1_n[12:22]))
+    except:
+        pass
+    try:
+        nwx.append(r.values_to_value(c3_p[12:22]))
+    except:
+        pass
+    try:
+        nwx.append(r.values_to_value(c3_n[12:22]))
+    except:
+        pass
+    if len(nwy) == 0 or len(nwx) == 0:
+        raise RuntimeError('Error decoding number of words!')
+    if not all([v == nwy[0] for v in nwy]):
+        if len(nwy) == 2:
+            raise RuntimeError('Error decoding number of words!')
+        else:
+            nwy = float(numpy.median(numpy.asarray(nwy)))
+            if float(int(nwy)) != nwy:
+                raise RuntimeError('Error decoding number of words!')
+    else:
+        nwy = nwy[0]
+    if not all([v == nwx[0] for v in nwx]):
+        if len(nwx) == 2:
+            raise RuntimeError('Error decoding number of words!')
+        else:
+            nwx = float(numpy.median(numpy.asarray(nwx)))
+            if float(int(nwx)) != nwx:
+                raise RuntimeError('Error decoding number of words!')
+    else:
+        nwx = nwx[0]
+    
+    # extract content length and number of symbols
+    clen = []
+    nsym = []
+    try:
+        clen.append(r.values_to_value(c0_p[24:34]))
+    except:
+        pass
+    try:
+        nsym.append(r.values_to_value(c0_p[36:46]))
+    except:
+        pass
+    try:
+        clen.append(r.values_to_value(c0_n[24:34]))
+    except:
+        pass
+    try:
+        nsym.append(r.values_to_value(c0_n[36:46]))
+    except:
+        pass
+    try:
+        clen.append(r.values_to_value(c1_p[24:34]))
+    except:
+        pass
+    try:
+        nsym.append(r.values_to_value(c1_p[36:46]))
+    except:
+        pass
+    try:
+        clen.append(r.values_to_value(c1_n[24:34]))
+    except:
+        pass
+    try:
+        nsym.append(r.values_to_value(c1_n[36:46]))
+    except:
+        pass
+    try:
+        clen.append(r.values_to_value(c2_p[24:34]))
+    except:
+        pass
+    try:
+        nsym.append(r.values_to_value(c2_p[36:46]))
+    except:
+        pass
+    try:
+        clen.append(r.values_to_value(c2_n[24:34]))
+    except:
+        pass
+    try:
+        nsym.append(r.values_to_value(c2_n[36:46]))
+    except:
+        pass
+    try:
+        clen.append(r.values_to_value(c3_p[24:34]))
+    except:
+        pass
+    try:
+        nsym.append(r.values_to_value(c3_p[36:46]))
+    except:
+        pass
+    try:
+        clen.append(r.values_to_value(c3_n[24:34]))
+    except:
+        pass
+    try:
+        nsym.append(r.values_to_value(c3_n[36:46]))
+    except:
+        pass
+    if len(clen) == 0:
+        raise RuntimeError('Error decoding content length.')
+    if not all([v == clen[0] for v in clen]):
+        if len(clen) == 2:
+            raise RuntimeError('Error decoding content length.')
+        else:
+            clen = float(numpy.median(numpy.asarray(clen)))
+            if float(int(clen)) != clen:
+                raise RuntimeError('Error decoding content length.')
+        clen = int(clen)
+    else:
+        clen = clen[0]
+    if len(nsym) == 0:
+        raise RuntimeError('Error decoding number of ECC bytes.')
+    if not all([v == nsym[0] for v in nsym]):
+        if len(nsym) == 2:
+            raise RuntimeError('Error decoding number of ECC bytes.')
+        else:
+            nsym = float(numpy.median(numpy.asarray(nsym)))
+            if float(int(nsym)) != nsym:
+                raise RuntimeError('Error decoding number of ECC bytes.')
+        nsym = int(nsym)
+    else:
+        nsym = nsym[0]
+    
+    # get code words
+    r = RSCodec(nsym)
+    eclen = clen + nsym
+    chunks = [[None] * eclen for v in range(nchunks)]
+    cidx = 0
+    lidx = 0
+    nwyr = nwy - 4
+    nwxr = nwx - 4
+    nwyc = float(nwyr)
+    nwxc = float(nwxr)
+    nwy = 0.5 * nwxc
+    nwx = 0.5 * nwyc
+    yc = [c0_p[48:], c0_n[48:], c2_p[48:], c2_n[48:]]
+    xc = [c1_p[48:], c1_n[48:], c3_p[48:], c3_n[48:]]
+    ycidx = 0
+    xcidx = 0
+    yidx = 0
+    xidx = 0
+    while nwyr > 0 or nwxr > 0:
+        if nwy <= nwx:
+            try:
+                w = r.values_to_value(yc[ycidx][yidx:yidx+10])
+            except:
+                w = None
+            ycidx += 1
+            if ycidx > 3:
+                ycidx = 0
+                yidx += 12
+                nwy += nwxc
+                nwyr -= 1
+        else:
+            try:
+                w = r.values_to_value(xc[xcidx][xidx:xidx+10])
+            except:
+                w = None
+            xcidx += 1
+            if xcidx > 3:
+                xcidx = 0
+                xidx += 12
+                nwx += nwyc
+                nwxr -= 1
+        if not w is None:
+            if w == 257:
+                cidx = 0
+                lidx = 0
+                continue
+            if chunks[cidx][lidx] is None:
+                chunks[cidx][lidx] = w
+            elif isinstance(chunks[cidx][lidx], int):
+                chunks[cidx][lidx] = [chunks[cidx][lidx],w]
+            else:
+                chunks[cidx][lidx].append(w)
+        lidx += 1
+        if lidx >= eclen:
+            lidx = 0
+            cidx += 1
+            if cidx >= nchunks:
+                cidx = 0
     out = bytearray()
+    for cidx in range(nchunks):
+        for lidx in range(eclen):
+            if chunks[cidx][lidx] is None:
+                chunks[cidx][lidx] = 0
+            elif isinstance(chunks[cidx][lidx], list):
+                ll = chunks[cidx][lidx]
+                if all([v == ll[0] for v in ll]):
+                    ll = ll[0]
+                elif len(ll) > 2:
+                    ll = int(numpy.median(numpy.asarray(ll)))
+                else:
+                    ll = ll[0]
+                chunks[cidx][lidx] = ll
+        out.extend(bytearray(chunks[cidx]))
+    try:
+        out = r.decode(out, eclen)
+    except:
+        raise
     if isinstance(output, str) and output == 'str':
         out = out.decode('utf-8')
     return out
