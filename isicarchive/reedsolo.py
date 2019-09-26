@@ -49,23 +49,14 @@ but I'm only testing on 2.5-3.2.
     b'hello world'
 """
 
-try:
-    bytearray
-except NameError:
-    from array import array
-    def bytearray(obj = 0, encoding = "utf8"):
-        if isinstance(obj, str):
-            obj = [ord(ch) for ch in obj.encode("utf8")]
-        elif isinstance(obj, int):
-            obj = [0] * obj
-        return array("B", obj)
-
 
 class ReedSolomonError(Exception):
     pass
 
+
 def sa_in_la(sa, la):
     return any([sa == la[k:k+len(sa)] for k in range(len(la)-len(sa))])
+
 def t_code():
     c = [[
         int(r&512>0), int(r&256>0), int(r&128>0), int(r&64>0), int(r&32>0),
@@ -260,11 +251,13 @@ def rs_correct_msg(msg_in, nsym):
 #===================================================================================================
 class RSCodec(object):
     """
-    A Reed Solomon encoder/decoder. After initializing the object, use ``encode`` to encode a 
-    (byte)string to include the RS correction code, and pass such an encoded (byte)string to
-    ``decode`` to extract the original message (if the number of errors allows for correct decoding).
-    The ``nsym`` argument is the length of the correction code, and it determines the number of 
-    error bytes (if I understand this correctly, half of ``nsym`` is correctable)
+    A Reed Solomon encoder/decoder. After initializing the object, use
+    ``encode`` to encode a (byte)string to include the RS correction code,
+    and pass such an encoded (byte)string to ``decode`` to extract the
+    original message (if the number of errors allows for correct decoding).
+    The ``nsym`` argument is the length of the correction code, and it
+    determines the number of error bytes (if I understand this correctly,
+    half of ``nsym`` is correctable).
     """
     def __init__(self, nsym=10):
         self.nsym = nsym

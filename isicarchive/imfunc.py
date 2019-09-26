@@ -206,6 +206,20 @@ def color_superpixels(
         almap.shape = am_shape
     return image
 
+# column period
+def column_period(c) -> int:
+    cc = numpy.zeros(c.size//2)
+    for ck in range(1, cc.size):
+        cc[ck] = numpy.corrcoef(c[:-ck],c[ck:])[0,1]
+    cc[numpy.isnan(cc)] = 0.0
+    ccc = numpy.zeros(cc.size//2)
+    for ck in range(2, ccc.size):
+        ccc[ck-1] = numpy.corrcoef(cc[1:-ck], cc[ck:-1])[0,1]
+    ccc[numpy.isnan(ccc)] = -1.0
+    ccs = numpy.argsort(-ccc)
+    if (ccs[0] // ccs[1]) == 0 or (ccs[1] // ccs[0]) == 0:
+        return int(min(ccs[0], ccs[1]))
+
 # display image
 def display_image(
     image_data:Union[bytes, str, numpy.ndarray],
@@ -493,7 +507,7 @@ def image_mark_border(
     image:numpy.ndarray,
     content:Union[str,bytes],
     color_diff:int = 24,
-    ecc_redundancy_level:float = 0.5,
+    ecc_redundancy_level:float = 0.75,
     pix_width:int = 3,
     border_expand:bool = True,
     ) -> numpy.ndarray:
@@ -684,10 +698,10 @@ def image_mark_border(
             lidx += 1
             nwx += nwyc
             nwxr -= 1
-    image_mark_pix(marked, 0, pix_width, 0, color_diff, False)
-    image_mark_pix(marked, 0, pix_width, im_shape[0]-pix_width, color_diff, False)
-    image_mark_pix(marked, 2, pix_width, 0, color_diff, False)
-    image_mark_pix(marked, 2, pix_width, im_shape[0]-pix_width, color_diff, False)
+    image_mark_pixel(marked, 0, pix_width, 0, color_diff, False)
+    image_mark_pixel(marked, 0, pix_width, im_shape[0]-pix_width, color_diff, False)
+    image_mark_pixel(marked, 2, pix_width, 0, color_diff, False)
+    image_mark_pixel(marked, 2, pix_width, im_shape[0]-pix_width, color_diff, False)
     for cidx in range(8):
         side = cidx // 2
         if (side % 2) == 0:
@@ -704,7 +718,7 @@ def image_mark_border(
     return marked
 
 # mark pixel in image (color darker or brighter)
-def image_mark_pix(image, side, pix_width, pcrd, value, brighter):
+def image_mark_pixel(image, side, pix_width, pcrd, value, brighter):
     shape = image.shape
     it = 255 - value
     darker = not brighter
@@ -777,11 +791,11 @@ def image_mark_word(image, side, pix_width, num_wrd, wcrd, value, word):
         scrd = slen - pix_width * (2 + 12 * (wcrd - num_wrd))
         pix_add = -pix_width
     for i in range(10):
-        image_mark_pix(image, side, pix_width, scrd, value, word[i] > 0)
+        image_mark_pixel(image, side, pix_width, scrd, value, word[i] > 0)
         scrd += pix_add
-    image_mark_pix(image, side, pix_width, scrd, 2*value, False)
+    image_mark_pixel(image, side, pix_width, scrd, 2*value, False)
     scrd += pix_add
-    image_mark_pix(image, side, pix_width, scrd, 2*value, True)
+    image_mark_pixel(image, side, pix_width, scrd, 2*value, True)
 
 # image mixing (python portion)
 def image_mix(
@@ -930,6 +944,63 @@ def image_mix(
         if len(im1shape) == 3:
             immix.shape = (im1shape[0], im1shape[1], immix.shape[-1])
     return immix
+
+# read image border
+def image_read_border(
+    image:numpy.ndarray,
+    output:str = 'str',
+    pix_width:Union[None,numpy.ndarray] = None,
+    ) -> Any:
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    from isicarchive.sampler import Sampler
+    s = Sampler()
+
+    # guess pixel width
+    im_shape = image.shape
+    if len(im_shape) > 2:
+        image = numpy.trunc(numpy.mean(image, axis=2)).astype(numpy.uint8)
+    if pix_width is None:
+        pix_width = numpy.zeros(4)
+    pwi = numpy.where(pix_width == 0)[0]
+    if len(pwi) > 0:
+        pwi = pwi[0]
+        im_shapeh = (im_shape[0] // 2, im_shape[1] // 2)
+        wlen = None
+        cidx = 0
+        while wlen is None:
+            wlen = column_period(image[:im_shapeh[0],cidx])
+            if not wlen is None:
+                break
+            cidx += 1
+        if wlen is None:
+            raise RuntimeError('Column undetected.')
+        if cidx > 0:
+            image = image[:,cidx:]
+        pix_width[pwi] = float(wlen) / 12.0
+        if pix_width[pwi] >= 2.0:
+            if numpy.corrcoef(image[:im_shapeh[0],0], image[:im_shapeh[0],1])[0,1] < 0.5:
+                raise RuntimeError('Column not duplicated as expected.')
+        if (pix_width[pwi] - float(int(pix_width[pwi]))) != 0.0:
+            xpix_width = float(int(2.0 * pix_width[pwi] + 0.5))
+            image = s.sample_grid(image, [xpix_width/pix_width[pwi],1.0])
+            pix_width[pwi] = xpix_width
+        try:
+            return image_read_border(image_rotate(image[:,cidx:], 'left'), output, pix_width)
+        except:
+            raise
+    if not numpy.all(pix_width == pix_width[0]):
+        if pix_width[0] != pix_width[2] or pix_width[1] != pix_width[3]:
+            raise RuntimeError('Invalid image detected.')
+        if pix_width[0] > pix_width[1]:
+            image = s.sample_grid(image, [1.0, pix_width[0] / pix_width[1]])
+        else:
+            image = s.sample_grid(image, [pix_width[1] / pix_width[0], 1.0])
+    
+    out = bytearray()
+    if isinstance(output, str) and output == 'str':
+        out = out.decode('utf-8')
+    return out
 
 # image resampling (cheap!)
 def image_resample(image:numpy.ndarray, new_shape:tuple) -> numpy.ndarray:
