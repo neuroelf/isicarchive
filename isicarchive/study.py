@@ -948,6 +948,16 @@ class Study(object):
                     if (not save_failed) and annotation_status != 'ok':
                         continue
                     annotation_obj = self._obj_annotations[annotation_id]
+                    try:
+                        features = list(annotation_obj.features.values())
+                        if any([f['tarea'] is None for f in features]):
+                            annotation_obj.compute_areas()
+                    except:
+                        raise
+                    try:
+                        annotation_obj._image_obj.clear_data()
+                    except:
+                        pass
                     annotation_features = annotation_obj.features
                     for key, val in annotation_obj.markups.items():
                         if not val:

@@ -122,6 +122,8 @@ class Segmentation(object):
         self._raw_data = None
         self._sp_in_mask = None
         # still needs timezone information!!
+        self.area = 0
+        self.area_pct = 0.0
         self.created = datetime.datetime.now().strftime(
             '%Y-%m-%dT%H:%M:%S.%f+00:00')
         self.creator = {'_id': '000000000000000000000000'}
@@ -225,8 +227,9 @@ class Segmentation(object):
     # load mask data
     def load_mask_data(self, keep_raw_data:bool = False):
 
-        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
         import imageio
+        import numpy
 
         if not self._api:
             raise ValueError('Invalid segmentation object to load mask data for.')
@@ -241,6 +244,8 @@ class Segmentation(object):
                     if keep_raw_data:
                         self._raw_data = mask_raw
                     self.mask = imageio.imread(mask_raw)
+                    self.area = numpy.sum(self.mask > 0)
+                    self.area_pct = self.area / self.mask.size
                     return
                 except Exception as e:
                     warnings.warn('Error loading segmentation mask: ' + str(e))
@@ -254,6 +259,8 @@ class Segmentation(object):
                     if keep_raw_data:
                         self._raw_data = mask_raw
                     self.mask = imageio.imread(mask_raw)
+                    self.area = numpy.sum(self.mask > 0)
+                    self.area_pct = self.area / self.mask.size
                     if self._api._cache_folder:
                         if not self._image_obj is None and (len(self._image_obj.name) > 5):
                             extra = self._image_obj.name

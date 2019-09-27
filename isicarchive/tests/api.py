@@ -11,7 +11,7 @@ import os
 #%matplotlib inline
 #import imageio
 import numpy
-#from isicarchive import func
+from isicarchive import imfunc
 from isicarchive.api import IsicApi
 
 # function for mean and sample STD
@@ -38,18 +38,26 @@ debug = False
 # instantiate API object
 api = IsicApi(username, cache_folder=cache_folder, debug=debug)
 
+# load image
+image = api.image('ISIC_0016094')
+image.load_image_data()
+image.load_superpixels()
+image.map_superpixels()
+nei = imfunc.superpixel_neighbors(image.superpixels['idx'], image.superpixels['map'], 3)
+print(nei)
+
 # study folder
-study_folder = doc_folder + 'EASY' + os.sep + 'PILOT' + os.sep
+#study_folder = doc_folder + 'EASY' + os.sep + 'PILOT' + os.sep
 
 # load study and data
-study = api.study('ISIC Annotation Study - All Features')
-study.cache_image_data()
-study.load_annotations()
+#study = api.study('ISIC Annotation Study - All Features')
+#study.cache_image_data()
+#study.load_annotations()
 # load meta data
-meta_data_url = ('https://raw.githubusercontent.com/neuroelf/' +
-    'isicarchive/master/data/EASY_pilot_diagnoses.csv')
-study.load_meta_data(meta_data_url, list_to_dict=True,
-    dict_key='name', extract_key=['diagnosis', 'exemplar'])
+#meta_data_url = ('https://raw.githubusercontent.com/neuroelf/' +
+ #   'isicarchive/master/data/EASY_pilot_diagnoses.csv')
+#study.load_meta_data(meta_data_url, list_to_dict=True,
+#    dict_key='name', extract_key=['diagnosis', 'exemplar'])
 
 ## and create a dictionary mapping diagnosis to a list of images
 #diag_images = dict()
@@ -68,8 +76,8 @@ study.load_meta_data(meta_data_url, list_to_dict=True,
 #    exem_images[exemplar].append(name)
 
 # select only from users that completed the study
-num_images = len(study.images)
-users = [u for (u,c) in study.user_completion.items() if c==num_images]
+#num_images = len(study.images)
+#users = [u for (u,c) in study.user_completion.items() if c==num_images]
 
 ## create heatmaps with default settings (if not yet done)
 #study_stats_file = study_folder + 'heatmap_stats.json.gz'
@@ -91,4 +99,4 @@ users = [u for (u,c) in study.user_completion.items() if c==num_images]
 #    for feature in annotation.features:
 #        selected_features[feature] = True
 
-overlap_stats = study.overlap_stats(users=users)
+#overlap_stats = study.overlap_stats(users=users)

@@ -140,6 +140,7 @@ class Image(object):
             'max': 0,
             'shp': (0, 0),
             'spd': None,
+            'szp': None,
             'szs': None,
             'xyc': None,
         }
@@ -234,6 +235,7 @@ class Image(object):
                 'max': 0,
                 'shp': (0, 0),
                 'spd': None,
+                'szp': None,
                 'szs': None,
                 'xyc': None,
             }
@@ -371,11 +373,18 @@ class Image(object):
 
         if not self.superpixels['map'] is None:
             return
+        clear_seg = False
         try:
             if self.superpixels['idx'] is None:
                 self.load_superpixels()
             if self.superpixels['idx'] is None:
                 raise ValueError('Some problem occurred during load_superpixels().')
+            if self._segmentation is None:
+                try:
+                    clear_seg = True
+                    self.load_segmentation()
+                except:
+                    pass
         except Exception as e:
             warnings.warn('Error loading superpixels: ' + str(e))
             return
@@ -386,6 +395,11 @@ class Image(object):
             sp_shp = sp_map.shape
             self.superpixels['map'] = sp_map
             self.superpixels['szs'] = sp_map[:,-1].tolist()
+            if not self._segmentation is None and not self._segmentation.mask is None:
+                sim = self._segmentation.superpixels_in_mask()
+                a = self._segmentation.area
+                self.superpixels['szp'] = [
+                    p * s / a for (p,s) in zip(sim, self.superpixels['szs'])]
             self.superpixels['xyc'] = [None] * sp_shp[0]
             for spidx in range(sp_shp[0]):
                 splen = sp_map[spidx,-1]
@@ -397,6 +411,11 @@ class Image(object):
                     int(numpy.trunc(numpy.mean(spcry)) + 0.5)]
         except Exception as e:
             warnings.warn('Error mapping superpixels: ' + str(e))
+        if clear_seg:
+            try:
+                self._segmentation.clear_data()
+            except:
+                pass
 
     # mark superpixels
     def mark_superpixels(self, edge_width:int = 1, color:list = [0,0,0]):

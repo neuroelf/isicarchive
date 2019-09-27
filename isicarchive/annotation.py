@@ -244,6 +244,46 @@ class Annotation(object):
         if clear_masks:
             self.masks = dict()
 
+    # compute areas
+    def compute_areas(self):
+        if not self._in_archive or not self._api:
+            return
+        try:
+            if not self._image_obj:
+                try:
+                    self._image_obj = self._api.image(self.image_id)
+                except:
+                    raise
+            if self._image_obj.superpixels['szs'] is None:
+                try:
+                    self._image_obj.map_superpixels()
+                except:
+                    raise
+            spx = self._image_obj.superpixels
+            szs = spx['szs']
+            iarea = float(sum(szs))
+            if self._image_obj._segmentation is None:
+                try:
+                    self._image_obj.load_segmentation()
+                except:
+                    pass
+            try:
+                szp = spx['szp']
+                if szp is None:
+                    szp = [0.0] * len(szs)
+            except:
+                szp = [0.0] * len(szs)
+            for fcont in self.features.values():
+                idx = fcont['idx']
+                fcont['area'] = [szs[i] for i in idx]
+                fcont['area_pct'] = [szs[i] / iarea for i in idx]
+                fcont['area_mpct'] = [szp[i] for i in idx]
+                fcont['tarea'] = sum(fcont['area'])
+                fcont['tarea_pct'] = sum(fcont['area_pct'])
+                fcont['tarea_mpct'] = sum(fcont['area_mpct'])
+        except:
+            raise
+        
     # load data
     def load_data(self, load_masks:bool=False):
 
@@ -269,10 +309,16 @@ class Annotation(object):
                     feat_idx = [fidx for fidx in range(len(feat_lst))
                         if feat_lst[fidx] > 0]
                     self.features[key] = dict()
+                    self.features[key]['area'] = None
+                    self.features[key]['area_pct'] = None
+                    self.features[key]['area_mpct'] = None
+                    self.features[key]['idx'] = feat_idx
                     self.features[key]['lst'] = [v for v in filter(
                         lambda v: v > 0, feat_lst)]
-                    self.features[key]['idx'] = feat_idx
                     self.features[key]['num'] = len(feat_idx)
+                    self.features[key]['tarea'] = None
+                    self.features[key]['tarea_pct'] = None
+                    self.features[key]['tarea_mpct'] = None
                 if not load_masks or key in self.masks:
                     continue
                 cache_filename = self._api.cache_filename(self.id,
@@ -493,12 +539,7 @@ class Annotation(object):
                     self._image_obj = self._api.image(image_id,
                         load_image_data=True, load_superpixels=True)
                     image_odata = None
-                    image_osp = {
-                        'idx': None,
-                        'map': None,
-                        'max': 0,
-                        'shp': (0, 0),
-                    }
+                    image_osp = None
             else:
                 image_odata = self._image_obj.data
                 image_osp = self._image_obj.superpixels
@@ -514,8 +555,11 @@ class Annotation(object):
         except Exception as e:
             warnings.warn('Problem with associated image: ' + str(e))
             if not self._image_obj is None:
-                self._image_obj.data = image_odata
-                self._image_obj.superpixels = image_osp
+                if not image_osp is None:
+                    self._image_obj.data = image_odata
+                    self._image_obj.superpixels = image_osp
+                else:
+                    self._image_obj.clear_data()
             return
         if on_image:
             image_data = image_obj.data.copy()
@@ -537,8 +581,11 @@ class Annotation(object):
                 splist, image_spmap, color_spec[0], color_spec[1], spvals)
         image_data.shape = (image_height, image_width, planes)
         if not self._image_obj is None:
-            self._image_obj.data = image_odata
-            self._image_obj.superpixels = image_osp
+            if not image_osp is None:
+                self._image_obj.data = image_odata
+                self._image_obj.superpixels = image_osp
+            else:
+                self._image_obj.clear_data()
         if on_image:
             imformat = 'jpg'
         else:

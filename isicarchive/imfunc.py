@@ -1731,6 +1731,80 @@ def superpixel_dice(list1:numpy.ndarray, list2:numpy.ndarray) -> float:
     intersect = numpy.intersect1d(list1, list2)
     return 2.0 * float(intersect.size) / float(len(list1) + len(list2))
 
+# superpixel neighbors
+def superpixel_neighbors(
+    pixel_idx:numpy.ndarray,
+    pixel_map:numpy.ndarray = None,
+    up_to_degree:int = 1,
+    ) -> tuple:
+    """
+    Determine per-superpixel neighbors from (superpixel) image and map
+
+    Parameters
+    ----------
+    pixel_idx : ndarray
+        Mapped 2D array such that m[i,j] yields the superpixel index
+    pixel_map : ndarray
+        Mapped 2D array such that m[i,:m[i,-1]] yields the superpixels
+    up_to_degree : int
+        Defaults to 1, for higher number includes neighbors of neighbors
+    """
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    import scipy.ndimage as ndimage
+    from .jitfunc import superpixel_decode, superpixel_map
+
+    if len(pixel_idx.shape) > 2:
+        pixel_idx = superpixel_decode(pixel_idx)
+    im_shape = pixel_idx.shape
+    im_rows = im_shape[0]
+    im_cols = im_shape[1]
+    if pixel_map is None:
+        pixel_map = superpixel_map(pixel_idx)
+    pixel_idx = pixel_idx.reshape((pixel_idx.size,))
+    num_sp = pixel_map.shape[0]
+    if not isinstance(up_to_degree, int):
+        up_to_degree = 1
+    elif up_to_degree > 8:
+        up_to_degree = 8
+    elif up_to_degree < 1:
+        up_to_degree = 1
+    nei = [[[] for r in range(num_sp)] for d in range(up_to_degree)]
+    sfull = ndimage.generate_binary_structure(2,2)
+    for p in range(num_sp):
+        spc = pixel_map[p, :pixel_map[p,-1]]
+        spx = spc % im_cols
+        spy = spc // im_cols
+        spxmin = numpy.amin(spx) - 2
+        spx -= spxmin
+        spxmax = numpy.amax(spx) + 2
+        spymin = numpy.amin(spy) - 2
+        spy -= spymin
+        spymax = numpy.amax(spy) + 2
+        z = numpy.zeros(spymax * spxmax, dtype=numpy.bool)
+        z[spy * spxmax + spx] = True
+        z.shape = (spymax, spxmax,)
+        zd = ndimage.binary_dilation(z,sfull)
+        zc = numpy.where(zd)
+        zcy = zc[0] + spymin
+        zcx = zc[1] + spxmin
+        uxy = numpy.logical_and(
+            numpy.logical_and(zcy >= 0, zcy < im_rows),
+            numpy.logical_and(zcx >= 0, zcx < im_cols))
+        neis = numpy.unique(pixel_idx[zcy[uxy] * im_cols + zcx[uxy]])
+        nei[0][p] = neis[neis!=p]
+    for d in range(1, up_to_degree):
+        lnei = nei[0]
+        snei = nei[d-1]
+        tnei = nei[d]
+        for p in range(num_sp):
+            sneis = snei[p]
+            neis = lnei[sneis[0]]
+            for n in sneis[1:]:
+                neis = numpy.concatenate((neis,lnei[n]))
+            tnei[p] = numpy.unique(neis)
+    return nei
+
 # superpixel outlines (coordinates, image, or SVG/paths)
 def superpixel_outlines(
     pixel_map:numpy.ndarray,
