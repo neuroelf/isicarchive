@@ -22,7 +22,7 @@ __version__ = '0.4.8'
 import datetime
 import glob
 import os
-from typing import Any, Union
+from typing import Any, List, Union
 import warnings
 
 from . import func
@@ -537,6 +537,26 @@ class Image(object):
                 ipython_as_object=(not call_display), library=library)
         except Exception as e:
             warnings.warn('show_in_notebook(...) failed: ' + str(e))
+
+    # superpixel neighbors
+    def superpixel_neighbors(self,
+        up_to_degree:int = 1) -> List:
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        from .imfunc import superpixel_neighbors
+        
+        if self.superpixels['map'] is None:
+            try:
+                self.map_superpixels()
+                if self.superpixels['map'] is None:
+                    raise RuntimeError('Error mapping superpixels.')
+            except:
+                raise
+        try:
+            return superpixel_neighbors(self.superpixels['idx'],
+                self.superpixels['map'], up_to_degree)
+        except:
+            raise
 
     # superpixel outlines
     def superpixel_outlines(self,

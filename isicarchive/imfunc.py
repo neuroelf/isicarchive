@@ -480,7 +480,7 @@ def image_crop(
     image:numpy.ndarray,
     cropping:Any,
     padding:int = 0,
-    masking:Any = None,
+    masking:str = None,
     spmap:numpy.ndarray = None,
     spnei:List = None,
     spnei_degree:int = 1,
@@ -498,8 +498,9 @@ def image_crop(
         - int(S), superpixel index, requires spmap!
     padding : int
         Additional padding around cropping in pixels
-    masking : Any
-        Masking operation, too be implemented
+    masking : str
+        Masking operation, if requested, either of
+        'smoothnei' - smooth the neighboring region
     spmap : ndarray
         Superpixel mapping array
     spnei : list
@@ -517,8 +518,8 @@ def image_crop(
         y1 = min(im_shape[0], cropping[2]+padding)
         x1 = min(im_shape[1], cropping[2]+padding)
     elif isinstance(cropping, int) and cropping >= 0:
-        if not isinstance(spmap, numpy.ndarray):
-            raise('Missing spmap parameter.')
+        if spmap is None or not isinstance(spmap, numpy.ndarray):
+            raise ValueError('Missing spmap parameter.')
         spidx = cropping
         sppix = spmap[spidx,:spmap[spidx,-1]]
         sppiy = sppix // im_shape[1]
@@ -527,6 +528,9 @@ def image_crop(
         x0 = max(0, numpy.amin(sppix)-padding)
         y1 = min(im_shape[0], numpy.amax(sppiy)+padding)
         x1 = min(im_shape[1], numpy.amax(sppix)+padding)
+        yd = y1 - y0
+        xd = x1 - x0
+        dd = (yd + xd) // 2
         if isinstance(spnei, list):
             if len(spnei) > 8:
                 spnei = [spnei]
@@ -549,10 +553,28 @@ def image_crop(
                     x1 = max(x1, min(im_shape[1], numpy.amax(sppix)+padding))
             except:
                 raise
+            if isinstance(masking, str) and masking == 'smoothnei':
+                from isicarchive.sampler import Sampler
+                s = Sampler()
+                yd = y1 - y0
+                xd = x1 - x0
+                try:
+                    if len(im_shape) > 2:
+                        ci = image[y0:y1,x0:x1,:]
+                    else:
+                        ci = image[y0:y1,x0:x1]
+                    cim = numpy.zeros(yd * xd).reshape((yd,xd,))
+                    cim[yd//2, xd//2] = 1.0
+                    cims = s.sample_grid(cim, 1.0, 'gauss' + str(dd))
+                    cims /= numpy.amax(cims)
+                    cis = image_smooth_fft(ci, float(dd))
+                    return image_mix(cis, ci, cims)
+                except:
+                    raise
     if len(im_shape) > 2:
-        return image[y0:y1,x0:y1,:]
+        return image[y0:y1,x0:x1,:]
     else:
-        return image[y0:y1,x0:y1]
+        return image[y0:y1,x0:x1]
 
 # Dice coeffient
 def image_dice(
@@ -1579,10 +1601,13 @@ def image_smooth_fft(image:numpy.ndarray, fwhm:float) -> numpy.ndarray:
         ka = numpy.zeros(im_shape[0] * im_shape[1],
             dtype=numpy.float32).reshape((im_shape[0], im_shape[1],))
     kh = ki.shape[0] // 2
-    ka[0:kh+1,0:kh+1] = ki[kh:,kh:]
-    ka[0:kh+1,-kh:] = ki[kh:,0:kh]
-    ka[-kh:,0:kh+1] = ki[0:kh,kh:]
-    ka[-kh:,-kh:] = ki[0:kh,0:kh]
+    kh0 = min(kh, ka.shape[0] // 2)
+    kh1 = min(kh, ka.shape[1] // 2)
+    ka[0:kh0+1,0:kh1+1] = ki[kh:kh+kh0+1,kh:kh+kh1+1]
+    ka[0:kh0+1,-kh1:] = ki[kh:kh+kh0+1,0:kh1]
+    ka[-kh0:,0:kh1+1] = ki[0:kh0,kh:kh+kh1+1]
+    ka[-kh0:,-kh1:] = ki[0:kh0,0:kh1]
+    ka /= numpy.sum(ka)
 
     # then perform 2D FFT
     if len(image.shape) < 3:
