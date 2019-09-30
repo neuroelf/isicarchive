@@ -475,6 +475,85 @@ def image_corr(
         cc = numpy.corrcoef(im1[immask], im2[immask])
     return cc[0,1]
 
+# crop image
+def image_crop(
+    image:numpy.ndarray,
+    cropping:Any,
+    padding:int = 0,
+    masking:Any = None,
+    spmap:numpy.ndarray = None,
+    spnei:List = None,
+    spnei_degree:int = 1,
+    ) -> numpy.ndarray:
+    """
+    Crops an image to a rectangular region of interest.
+
+    Parameters
+    ----------
+    image : ndarray
+        Image (2D or 2D-3) array
+    cropping : Any
+        Cropping selection, either of
+        - [y0, x0, y1, x1] rectangle (y1/x1 non inclusive)
+        - int(S), superpixel index, requires spmap!
+    padding : int
+        Additional padding around cropping in pixels
+    masking : Any
+        Masking operation, too be implemented
+    spmap : ndarray
+        Superpixel mapping array
+    spnei : list
+        Superpixel (list of) list(s) of neighbors
+    spnei_degree : int
+        How many degrees of neighbors to include (default: 1)
+    """
+
+    im_shape = image.shape
+    if not isinstance(padding, int) or padding < 0:
+        padding = 0
+    if isinstance(cropping, list) and len(cropping) == 4:
+        y0 = max(0, cropping[0]-padding)
+        x0 = max(0, cropping[1]-padding)
+        y1 = min(im_shape[0], cropping[2]+padding)
+        x1 = min(im_shape[1], cropping[2]+padding)
+    elif isinstance(cropping, int) and cropping >= 0:
+        if not isinstance(spmap, numpy.ndarray):
+            raise('Missing spmap parameter.')
+        spidx = cropping
+        sppix = spmap[spidx,:spmap[spidx,-1]]
+        sppiy = sppix // im_shape[1]
+        sppix = sppix % im_shape[1]
+        y0 = max(0, numpy.amin(sppiy)-padding)
+        x0 = max(0, numpy.amin(sppix)-padding)
+        y1 = min(im_shape[0], numpy.amax(sppiy)+padding)
+        x1 = min(im_shape[1], numpy.amax(sppix)+padding)
+        if isinstance(spnei, list):
+            if len(spnei) > 8:
+                spnei = [spnei]
+            if not isinstance(spnei_degree, int) or spnei_degree < 1:
+                spnei_degree = 0
+            elif spnei_degree > len(spnei):
+                spnei_degree = len(spnei) - 1
+            else:
+                spnei_degree -= 1
+            spnei = spnei[spnei_degree]
+            try:
+                nei = spnei[spidx]
+                for n in nei:
+                    sppix = spmap[n,:spmap[n,-1]]
+                    sppiy = sppix // im_shape[1]
+                    sppix = sppix % im_shape[1]
+                    y0 = min(y0, max(0, numpy.amin(sppiy)-padding))
+                    x0 = min(x0, max(0, numpy.amin(sppix)-padding))
+                    y1 = max(y1, min(im_shape[0], numpy.amax(sppiy)+padding))
+                    x1 = max(x1, min(im_shape[1], numpy.amax(sppix)+padding))
+            except:
+                raise
+    if len(im_shape) > 2:
+        return image[y0:y1,x0:y1,:]
+    else:
+        return image[y0:y1,x0:y1]
+
 # Dice coeffient
 def image_dice(
     im1:numpy.ndarray,
