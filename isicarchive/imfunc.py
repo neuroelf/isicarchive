@@ -7,15 +7,43 @@ imported from outside the main package functionality (IsicApi).
 Functions
 ---------
 color_superpixel
-    Paint the pixels belong to a superpixel list in a specific color.
+    Paint the pixels belong to a superpixel list in a specific color
+column_period
+    Guess periodicity of data (image) column
 display_image
     Display an image (in a Jupyter notebook!)
+image_compose
+    Compose an image from parts
+image_corr
+    Correlate pixel values across two images
+image_crop
+    Crop an image according to coordinates (or superpixel index)
+image_dice
+    Compute DICE coefficient of two images
+image_gray
+    Generate gray-scale version of image
+image_mark_border
+    Mark border pixels of image with encoded content (string, bytes)
+image_mark_pixel
+    Mark pixel in image border
+image_mark_work
+    Mark set of pixels (word) in image border
 image_mix
     Mix two (RGB or gray) image, with either max or blending
+image_read_border
+    Read encoded image border
+image_resample
+    Cheap (!) resampling of an image
+image_rotate
+    Rotate an image (ndarray)
 lut_lookup
     Color lookup from a table (LUT)
 segmentation_outline
     Extract outline from a segmentation mask image
+superpixel_dice
+    Compute DICE coefficient for superpixel lists
+superpixel_neighbors
+    Generate neighbors lists for each superpixel in an image
 superpixel_outlines
     Extract superpixel (outline) shapes from superpixel map
 write_image
@@ -207,7 +235,22 @@ def color_superpixels(
     return image
 
 # column period
-def column_period(c,thresh:int=0):
+def column_period(c:numpy.ndarray, thresh:int=0):
+    """
+    Guess the periodicity of a column of (image) data
+
+    Parameters
+    ----------
+    c : ndarray
+        Column of data (e.g. pixel values)
+    thresh : int
+        Optional threshold (default: 0)
+
+    Returns
+    -------
+    p : int (or float)
+        Guessed periodicity
+    """
     cc = numpy.zeros(c.size//2)
     for ck in range(1, cc.size):
         cc[ck] = numpy.corrcoef(c[:-ck],c[ck:])[0,1]
@@ -361,6 +404,24 @@ def image_compose(
     outsize:Tuple,
     bgcolor:list = [255,255,255],
     ) -> numpy.ndarray:
+    """
+    Compose image from parts
+
+    Parameters
+    ----------
+    imlist : list
+        List of image parts, each element a 3-element list with
+        image (ndarray), x- and y-position in the output image
+    outsize : Tuple
+        Size of output image
+    bgcolor : list
+        3-element list, default: [255, 255, 255] (white)
+    
+    Returns
+    -------
+    out_image : ndarray
+        Output image composed of input images
+    """
     if not isinstance(outsize, tuple) and not isinstance(outsize, list):
         raise ValueError('Invalid outsize parameter.')
     if (len(outsize) != 2 or not isinstance(outsize[0], int) or
@@ -462,6 +523,21 @@ def image_corr(
     im2:numpy.ndarray,
     immask:numpy.ndarray = None,
     ) -> float:
+    """
+    Correlate pixel values for two images
+
+    Parameters
+    ----------
+    im1, im2 : ndarray
+        Image arrays (of same size!)
+    immask : ndarray
+        Optional masking array (in which case only over those pixels)
+    
+    Returns
+    -------
+    ic : float
+        Correlation coefficient
+    """
     if im1.size != im2.size:
         raise ValueError('Images must match in size.')
     if immask is None:
@@ -868,6 +944,28 @@ def image_mark_border(
 
 # mark pixel in image (color darker or brighter)
 def image_mark_pixel(image, side, pix_width, pcrd, value, brighter):
+    """
+    Mark one pixel within an image (with bit value)
+
+    Parameters
+    ----------
+    image : ndarray
+        Image to be marked
+    side : int
+        Side of the image on which to mark a pixel (0 through 3)
+    pix_width : int
+        Width of a pixel
+    pcrd : int
+        Pixel coordinate
+    value : int
+        Value to add (or subtract) from the original pixel value
+    brighter : bool
+        Boolean, add (True) or subtract (False) from original value
+    
+    Returns
+    -------
+    None
+    """
     shape = image.shape
     it = 255 - value
     darker = not brighter
@@ -928,6 +1026,30 @@ def image_mark_pixel(image, side, pix_width, pcrd, value, brighter):
 
 # mark word (of size 10 "pixels") in image
 def image_mark_word(image, side, pix_width, num_wrd, wcrd, value, word):
+    """
+    Mark 10-bit (8-bit encoded) "word" in image border pixels
+
+    Parameters
+    ----------
+    image : ndarray
+        Image to be marked
+    side : int
+        Side of the image on which to mark a pixel (0 through 3)
+    pix_width : int
+        Width of a pixel
+    num_wrd : int
+        Number of words on this side
+    wcrd : int
+        Which word among those to be marked
+    value : int
+        Value that is passed to image_mark_pixel
+    word : list
+        List of bits, passed as "brighter" parameter to image_mark_pixel
+    
+    Returns
+    -------
+    None
+    """
     shape = image.shape
     if side == 0 or side == 2:
         slen = shape[0]
@@ -1513,6 +1635,21 @@ def image_read_border(
 
 # image resampling (cheap!)
 def image_resample(image:numpy.ndarray, new_shape:tuple) -> numpy.ndarray:
+    """
+    Cheap (!) image resampling
+
+    Parameters
+    ----------
+    image : ndarray
+        Image to be resampled
+    new_shape : tuple
+        Shape of resampled image
+    
+    Returns
+    -------
+    out_image : ndarray
+        Resampled image
+    """
     im_shape = image.shape
     if len(im_shape) < 2:
         raise ValueError('Invalid image array.')
@@ -1550,6 +1687,21 @@ def image_resample(image:numpy.ndarray, new_shape:tuple) -> numpy.ndarray:
 
 # rotate image (90 degrees left, right; or 180 degrees)
 def image_rotate(image:numpy.ndarray, how:str = None) -> numpy.ndarray:
+    """
+    Rotate an image
+
+    Parameters
+    ----------
+    image : ndarray
+        Image to be rotated
+    how : str
+        Rotation flag, either of 'flip' (180 degree), 'left', or 'right'
+    
+    Returns
+    -------
+    rotated : ndarray
+        Rotated image
+    """
     if not how or not isinstance(how, str) or not how[0].lower() in 'flr':
         return image
     im_shape = image.shape
@@ -1573,6 +1725,21 @@ def image_rotate(image:numpy.ndarray, how:str = None) -> numpy.ndarray:
 
 # smooth image using fft
 def image_smooth_fft(image:numpy.ndarray, fwhm:float) -> numpy.ndarray:
+    """
+    Smooth an image using FFT/inverse-FFT
+
+    Parameters
+    ----------
+    image : ndarray
+        Image array
+    fwhm : float
+        FWHM parameter (kernel value)
+    
+    Returns
+    -------
+    smoothed : ndarray
+        Smoothed image
+    """
 
     # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
     from .jitfunc import conv_kernel

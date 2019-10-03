@@ -1889,6 +1889,23 @@ class IsicApi(object):
             else:
                 yield seg
 
+    # pass-through select_from
+    def select_from(self,
+        basis:Union[list, dict] = None,
+        criteria:list = None,
+        dict_as_keys:bool=False,
+        dict_as_values:bool=False,
+        ) -> Union[list, dict]:
+        if basis is None:
+            return basis
+        if criteria is None or not isinstance(criteria, list):
+            criteria = []
+        try:
+            return func.select_from(basis, criteria,
+                dict_as_keys=dict_as_keys, dict_as_values=dict_as_values)
+        except:
+            raise
+
     # Select images from the archive (regardless of study/dataset)
     def select_images(self,
         criteria:list,

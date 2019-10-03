@@ -6,37 +6,36 @@ provides a publicly available [API](https://isic-archive.com/api/v1), which
 offers several functions (called endpoints) for interacting with the data
 programmatically.
 
-The present python package is an attempt at bundling the more frequently used
-functionality into a set of modules, thus reducing the need to re-write certain
-code for a diverse set of projects.
+The present python package is an attempt at bundling some of the more
+frequently used functionality into a set of modules, thus reducing the need to
+re-write certain code for a diverse set of projects.
 
 ## First steps
-To start with, import the ```IsicApi``` class from the ```isicarchive.api```
-module and create an instance of the class:
+To start interacting with the archive through its API, import the ```IsicApi```
+class from the ```isicarchive.api``` module, and then create an instance of the
+class:
 
 ~~~~
 from isicarchive.api import IsicApi
 api = IsicApi()
 ~~~~
 
-The return object variable, ```api```, then allows you to interact with the
-web-based API through method calls, which will typically create further object
-variables (such as study or image objects).
+The return object variable, ```api```, then allows you to query the web-based
+API through method calls, which will typically create further object variables
+(such as study or image objects).
 
 ### Data availability
 All general features are available without logging into the API. However, since
-many datasets (and with them their images) as well as studies are not marked as
+many images (as well as studies using those images) have not been marked as
 being "publicly available", the number of items returned by many functions
-(endpoints) differ based on whether you have successfully authenticated with
+(endpoints) differs based on whether you have (successfully) authenticated with
 the API. If you do not plan to register a username, you can skip the next
 section, and either set the ```username``` parameter to ```None``` or skip it
-altogether in the call to ```IsicApi```.
+altogether in the constructor call to ```IsicApi```.
 
 ### Logging into the ISIC Archive
-For instance, some annotations created by study participants, or retrieving
-certain images that are not marked for public access requires that you are
-logged into the archive/API. This can be achieved by instantiating the
-```IsicApi``` object with a valid username (and password):
+You can provide your username as the first parameter when creating the
+```IsicApi``` object, as well as an optional password parameter:
 
 ~~~~
 # set username
@@ -58,7 +57,7 @@ on the .netrc file format) in your user's home folder.
 
 ### Local cache folder
 Since a lot of the data that can be retrieved from the archive (API) is
-relatively static--that is, it will not change between uses of the API--you
+static--that is, for instance images won't change between uses of the API--you
 can keep a locally cached copy, which will speed up processing of data on
 the next call you use the same image or annotation, for instance. To do so,
 please add the ```cache_folder``` parameter to the call, like so:
@@ -67,26 +66,26 @@ please add the ```cache_folder``` parameter to the call, like so:
 # For Linux/Mac
 cache_folder = '/some/local/folder'
 # For Windows
-cache_folder = 'C:\\Users\\username\\some\\local\\folder' # use double \\ !
+cache_folder = 'C:\\Users\\username\\some\\local\\folder'
 
-# Create object
+# Create object (without username)
 api = IsicApi(cache_folder=cache_folder)
-# or
+# (or with username)
 api = IsicApi(username, cache_folder=cache_folder)
-# or
+# (or with username and password)
 api = IsicApi(username, password, cache_folder=cache_folder)
 ~~~~
 
-Relatively large and complex data (annotations, images, etc.) will have a
-stored local copy, which means that they can be retrieved later from the
-cache, instead of having to request them again from the web-based API.
+Relatively large and complex data (annotations, images, etc.) will then have a
+stored local copy, which means that they can be retrieved later from the cache,
+instead of having to request them again via the web-based API.
 
-Within the cache folder the ```IsicApi``` object will, on first use,
-create 16 subfolders, named ```0``` through ```9```, and ```a``` through
-```f``` (the 16 hexadecimal digits), to avoid downloading too many files
-into a single folder, which would slow down the operation later on. For each
-file, the sub-folder is determined by the last hexadecimal digit of the
-unique object ID (explained below).
+Within the cache folder the ```IsicApi``` object will, on first use, create a
+two-level hierarchy of 16 subfolders each, named ```0``` through ```9```, and
+```a``` through ```f``` (the 16 hexadecimal digits), to avoid downloading too
+many files into a single folder, which would slow down the operation later on.
+For each file, the sub-folder is determined by the last hexadecimal digits of
+the unique object ID (explained below).
 
 Images are stored with a filename pattern of ```image_[objectId]_[name].ext```
 whereas ```objectId``` is the unique ID for this image within the archive,
@@ -94,15 +93,13 @@ whereas ```objectId``` is the unique ID for this image within the archive,
 the extension as provided by the Content-Type header of the downloaded image.
 
 Superpixel images (also explained below) are stored with the filename pattern
-of ```spimg_[objectId].png``` using the associated image's object ID! In
-addition, a derived superpixel index array is stored with a filename pattern
-of ```spidx_[objectID].npz``` (using ```numpy.savez```).
+of ```spimg_[objectId].png``` using the associated image's object ID!
 
 ### Caching information about all images
 Since the archive contains several thousand images, it can often be helpful
 to be able to search for specific images. To do so locally, you can download
-the details about all images available in the archive (if you're) calling
-the ```IsicApi``` object with the cache_folder parameter) like so:
+the details about all images available in the archive (works only if you've
+created the ```IsicApi``` object with the cache_folder parameter) like so:
 
 ~~~~
 # Populate image cache
@@ -119,7 +116,7 @@ the web-based API to confirm that, indeed, no new images are available. **For
 this to work, however, it is important that you do not use the same
 cache folder for sessions where you are either logged in (authenticated)
 versus not!** The cache file itself will be stored in the file named
-```[cache_folder]/0/imcache_000000000000000000000000.json.gz```.
+```[cache_folder]/0/0/imcache_000000000000000000000000.json.gz```.
 
 Finally, feature annotations associated with a specific study can be
 downloaded in bulk and cached using this syntax:
@@ -134,11 +131,12 @@ for each annotation object separately, so that loading will be much faster.
 
 ### Debugging of API calls
 Since it is sometimes helpful to understand which calls to the web-based API
-are made, you can provide another argument to the ```IsicApi(...)``` call:
+are made, you can provide a ```debug``` parameter (set to ```True```) to the
+```IsicApi(...)``` call:
 
 ~~~~
 api = IsicApi(debug=True)
-# or
+# or, for instance
 api = IsicApi(username, password, cache_folder=cache_folder, debug=True)
 ~~~~
 
@@ -154,7 +152,7 @@ Requesting (auth) https://isic-archive.com/api/v1/study with params: {'limit': 0
 
 ## Some more details on the web-based API
 Any interaction with the web-based API is performed by the ```IsicApi```
-object through the HTTPS protocol, using the
+object through the HTTPS protocol, using the appropriate
 [requests](https://2.python-requests.org/en/master/) package methods. As part
 of the requests made, the endpoint (function and type of element being
 interacted with) is specified, and one or several parameters can be set,
@@ -215,16 +213,17 @@ text. Lists of elements are returned as arrays. The exception are binary blobs
 Within the ISIC archive (and thus for the API), the following elements are
 recognized:
 
+- **datasets** (a series of images that were uploaded, typically at the same time, as a somewhat fixed set)
+- **studies** (selection of images, possibly from multiple datasets, together with questions and features to be annotated by users)
 - **images** (having both a JSON and several associated binary blob elements)
 - **segmentations** (also having a JSON and a binary mask image component)
-- **datasets** (collection of images)
-- **studies** (selection of images from multiple datasets, together with questions and features to be annotated by users)
 - **annotations** (responses to questions and image-based per-feature annotation as a selection of "superpixels")
 - **users** (information about each registered user)
 - **tasks** (information about tasks assigned to the logged in user)
 
-Of these, currently accessible via the ```IsicApi``` object are **image, study,
-dataset, and annotation**.
+Of these, currently accessible via the ```IsicApi``` object are
+**dataset, study, image, segmentation, and annotation**, whereas users and
+tasks are not meaningfully implemented as separate objects at this time.
 
 ### Image superpixels
 As part of the image processing capabilities of the ISIC Archive itself, each
@@ -281,10 +280,10 @@ plt.show()
 
 ### Retrieving information about a study
 The syntax below will make a call to the web-based API, and retrieve the
-information about the study named in ```study_name```. If the study is not
-found, an exception is raised! Other than the web-based API (which does
-not support names), you do not have to look up the object ID manually first.
-The returned value, ```study``` is an object of type
+information about the study named in the first parameter. If the study is not
+found, an exception is raised! Other than the web-based API (which does not
+support study names), you do not have to look up the object ID manually first.
+The returned value, ```study```, is an object of type
 ```isicarchive.study.Study```, which provides some additional methods.
 
 ~~~~
@@ -293,15 +292,17 @@ study = api.study('ISBI 2016: 100 Lesion Classification')
 
 # Download all accessible images and superpixel images for this study
 study.cache_image_data()
+~~~~
 
+In addition to the information regularly provided by the ISIC Archive API,
+the IsicApi object's implementation can also used to mass-download
+information about all annotations.
+
+~~~~
 # Print study features
 study.load_annotations()
 print(study.features)
 ~~~~
-
-In addition to the information regularly provided by the ISIC Archive API,
-the IsicApi object's implementation can also attempt to mass-download
-information about all annotations.
 
 ### Retrieving information about a dataset
 ~~~~
@@ -318,7 +319,7 @@ information about the access list, metadata, and images up for review.
 
 ### Retrieving images
 ~~~~
-# Load the first image of the loaded study
+# Load the first image of a loaded study
 image = api.image(study.images[0])
 ~~~~
 
@@ -334,14 +335,19 @@ image.load_superpixels()
 
 # Parse superpixels into a mapping-to-pixel-indices array
 image.map_superpixels()
+
+# Load the associated (highest-quality) segmentation
+segmentation = image.load_segmentation()
 ~~~~
 
-The mapping of an image takes a second or so, but storing the map in a
-different format would be relatively wasteful, and so this seems preferable.
+The mapping of an image's superpixel RGB image takes a few hundred
+milliseconds, but storing the map in a different format would be relatively
+wasteful, and so this seems preferable.
 
 ### Selecting images
-The ```IsicApi``` object allows to select images based on the contents of
-any subfield in the image details (JSON) representation:
+Once all image information has been cached, the ```IsicApi``` object allows to
+select images based on the contents of any subfield in the image details (JSON)
+representation:
 
 ~~~~
 # Make initial selection
@@ -357,6 +363,7 @@ selection = api.select_images(['notes.tags', 'ni', 'ISBI 2017: Training'], sub_s
 selection = api.select_images(['meta.unstructured.biopsy done', '==', 'Y'], sub_select=True)
 selection = api.select_images(['meta.clinical.melanocytic', 'is', True], sub_select=True)
 ~~~~
+
 The selection will both be returned, and also stored in the
 ```api.image_selection``` field. So, in a Jupyter notebook, please assign the
 result to a variable if it is the last statement in a cell and you wish not
@@ -367,13 +374,13 @@ At this time, by default all objects that are being created are **also** stored
 in the ```api``` object's internal attributes, such that an image or study that
 has been made into an object no longer requires a second API call later on.
 This also means that data that is loaded into an object (especially image
-data into an image or segmentation) will remain in memory, unless it is
-expressly removed (cleared). This can be done by calling the
+data into an image, segmentation, or annotation object) will remain in memory,
+unless it is expressly removed (cleared). This can be done by calling the
 ```object.clear_data()``` method. Depending on the object type, additional flags
 can be provided. The default is to clear all binary (large) data, but keep
-object references (e.g. between images and datasets) intact.
+object references (e.g. between images and datasets, etc.) intact.
 
-Most data will be clear by calling this method without any further parameters
+Most data will be cleared by calling this method without any further parameters
 on the ```api``` object itself:
 
 ~~~~
@@ -393,6 +400,16 @@ support and code is being provided by
 [Prof. David Gutman, MD, PhD](https://winshipcancer.emory.edu/bios/faculty/gutman-david.html).
 
 ### History
+- 10/3/2019
+  - fixed Jupyter notebook progress bar widget
+- 9/30/2019
+  - added image cropping function
+- 9/26/2019
+  - added code to extract information from border pixels
+- 9/23/2019
+  - added reedsolo module for encoding data into border pixels
+- 9/16/2019
+  - created method to generate heatmaps across all study images (homogeneous options)
 - 9/12/2019
   - study.image_heatmaps(...) now adds legends and exemplar feature to montage
   - all features now carry a valid synonyms list (with self as sole entry, if necessary)

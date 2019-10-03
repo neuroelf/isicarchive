@@ -24,6 +24,8 @@ gzip_load_var
     Loads a .json.gz file into a variable
 gzip_save_var
     Saves a variable into a .json.gz file
+letters_only
+    Return only letters of string input parameter
 object_pretty
     Pretty-prints an objects representation from fields
 parse_expr
@@ -477,6 +479,21 @@ def gzip_save_var(gzip_file:str, save_var:Any) -> bool:
 
 # letters only
 def letters_only(word:str, lower_case:bool = True):
+    """
+    Return only letters of string input parameter
+
+    Parameters
+    ----------
+    word : str
+        String from which letters are being returned
+    lower_case : bool
+        If set to True (default) return lower-case letters
+    
+    Returns
+    -------
+    letters : str
+        (Lower-case) letter elements of input string
+    """
     lo = ''.join([l for l in word if l.lower() in 'abcdefghijklmnopqrstuvwxyz'])
     if lower_case:
         lo = lo.lower()
@@ -597,7 +614,7 @@ def parse_expr(expr:str, obj:dict) -> str:
     return _parse_expr.sub(_parse_repl, expr)
 
 # progress bar (text)
-_progress_bar_widget = None
+_progress_bar_widget = [None]
 def print_progress(
     count:int,
     total:int,
@@ -639,16 +656,23 @@ def print_progress(
         try:
             from ipywidgets import IntProgress
             from IPython.display import display
-            if _progress_bar_widget is None:
-                _progress_bar_widget = IntProgress(count, 0, total, length)
-                display(_progress_bar_widget)
+            if _progress_bar_widget[0] is None:
+                _progress_bar_widget[0] = IntProgress(count, 0, total,
+                    description=prefix)
+                display(_progress_bar_widget[0])
             else:
                 try:
-                    display(_progress_bar_widget)
+                    _progress_bar_widget[0].value = count
                 except:
-                    _progress_bar_widget = IntProgress(count, 0, total, length)
-                    display(_progress_bar_widget)
-            _progress_bar_widget.value = count
+                    _progress_bar_widget[0] = IntProgress(count, 0, total,
+                        description=prefix)
+                    display(_progress_bar_widget[0])
+            if count == total:
+                try:
+                    _progress_bar_widget[0].close()
+                except:
+                    pass
+                _progress_bar_widget[0] = None
             return
         except:
             pass
