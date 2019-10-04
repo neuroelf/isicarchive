@@ -657,6 +657,21 @@ def image_dice(
     im1:numpy.ndarray,
     im2:numpy.ndarray,
     immask:numpy.ndarray) -> float:
+    """
+    Compute DICE coefficient between two (binary mask) images
+
+    Parameters
+    ----------
+    im1, im2 : ndarray
+        Two ndarray images of the same size
+    immask : ndarray
+        Optional mask that is applied, DICE within mask only
+    
+    Returns
+    -------
+    dice : float
+        DICE coefficient
+    """
     if im1.shape != im2.shape:
         if len(im1.shape) > 2:
             if im1.shape[2] != 1:
@@ -682,7 +697,28 @@ def image_dice(
     return 2 * numpy.sum(numpy.logical_and(im1, im2)) / (s1 + s2)
 
 # image in gray
-def image_gray(image:numpy.ndarray, rgb_format:bool = True) -> numpy.ndarray:
+def image_gray(
+    image:numpy.ndarray,
+    rgb_format:bool = True,
+    conv_type:str = 'desaturate',
+    ) -> numpy.ndarray:
+    """
+    Convert RGB (color) image into gray-scale image
+
+    Parameters
+    ----------
+    image : ndarray
+        RGB (3-plane) image ndarray
+    rgb_format : bool
+        If True (default) return a 3-plane image of equal component values
+    conv_type : str
+        either 'average', 'desaturate' (default), or 'luma'
+    
+    Returns
+    -------
+    gray : ndarray
+        Gray-scale image ndarray
+    """
     im_shape = image.shape
     if len(im_shape) < 3:
         if rgb_format:
@@ -691,9 +727,22 @@ def image_gray(image:numpy.ndarray, rgb_format:bool = True) -> numpy.ndarray:
             return image.reshape((im_shape[0], im_shape[1], 1,)).repeat(3, axis=2)
         return image
     p = image[:, :, 0].astype(numpy.float)
-    for pc in range(1, min(3, im_shape[2])):
-        p += image[:, :, pc].astype(numpy.float)
-    p /= numpy.float(min(3, im_shape[2]))
+    if not conv_type or not isinstance(conv_type, str) or not conv_type[0].lower() in 'al':
+        pmin = p
+        pmax = p
+        for pc in range(1, min(3, im_shape[2])):
+            pmin = numpy.minimum(pmin, image[:, :, pc].astype(numpy.float))
+            pmax = numpy.maximum(pmin, image[:, :, pc].astype(numpy.float))
+        p = (pmin + pmax) / 2.0
+    elif conv_type[0] in 'aA':
+        for pc in range(1, min(3, im_shape[2])):
+            p += image[:, :, pc].astype(numpy.float)
+        p /= numpy.float(min(3, im_shape[2]))
+    else:
+        if im_shape[2] == 2:
+            p = (1.0/3.0) * p + (2.0/3.0) * image[:, :, 1]
+        elif im_shape[2] > 2:
+            p = 0.299 * p + 0.587 * image[:, :, 1] + 0.114 * image[:, :, 2]
     if rgb_format:
         if image.dtype != numpy.uint8:
             p = numpy.trunc(255.0 * p).astype(numpy.uint8)
@@ -1220,8 +1269,26 @@ def image_mix(
 def image_read_border(
     image:numpy.ndarray,
     output:str = 'str',
-    pix_width:Union[None,numpy.ndarray] = None,
+    pix_width:Union[None,int,float,numpy.ndarray] = None,
     ) -> Any:
+    """
+    Read the encoded data from an image border
+
+    Parameters
+    ----------
+    image : ndarray
+        Image containing data in its border pixels
+    output : str
+        Either 'str' (default) or 'bytes'
+    pix_width : int, float, ndarray
+        Single value or 4-element vector (for each reading direction),
+        default: auto-detect (None)
+    
+    Returns
+    -------
+    decoded : str, bytes
+        Decoded content (if able to decode)
+    """
 
     # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
     from isicarchive.reedsolo import RSCodec
@@ -1235,7 +1302,13 @@ def image_read_border(
         image = numpy.trunc(numpy.mean(image, axis=2)).astype(numpy.uint8)
     if pix_width is None:
         pix_width = numpy.zeros(4)
-    pwi = numpy.where(pix_width == 0)[0]
+    elif isinstance(pix_width, int):
+        pix_width = float(pix_width) * numpy.ones(4)
+    elif isinstance(pix_width, float):
+        pix_width = pix_width * numpy.ones(4)
+    elif pix_width.size != 4:
+        pix_width = numpy.zeros(4)
+    pwi = numpy.where(pix_width == 0.0)[0]
     if len(pwi) > 0:
         pwi = pwi[0]
         im_shapeh = (im_shape[0] // 2, im_shape[1] // 2)
@@ -1793,17 +1866,47 @@ def lut_lookup(
     pos_lut:numpy.ndarray,
     neg_lut:numpy.ndarray = None,
     default:List = None,
-    format:str='ndarray',
     trans_fac:float = 1.0,
     trans_off:float = 0.0,
     above_pos_col:List = None,
     below_neg_col:List = None,
     ):
+    """
+    Color lookup from a look-up table (LUT)
+
+    Parameters
+    ----------
+    values : ndarray
+        Numeric values for which to lookup a color from the LUT
+    pos_lut : ndarray
+        Cx3 color lookup table (for positive values)
+    neg_lut : ndarray
+        Cx3 color lookup table (for negative values, default None)
+    default : list
+        Default RGB color triplet (default: black/0,0,0)
+    trans_fac : float
+        Transformation factor (scaling of values, default = 1.0)
+    trans_off : float
+        Offset for transformation (lower threshold, default = 0.0)
+    above_pos_col : list
+        RGB color triplet for values above table length
+    below_neg_col : list
+        RGB color triplet for values below negative values table length
+    
+    Returns
+    -------
+    colors : ndarray
+        Vx3 RGB triplets
+    """
     if pos_lut.ndim != 2:
         raise ValueError('Invalid LUT')
     elif pos_lut.shape[1] != 3:
         raise ValueError('Invalid LUT')
-    num_vals = values.size
+    try:
+        num_vals = values.size
+        values = values.reshape((num_vals,))
+    except:
+        raise
     num_cols = pos_lut.shape[0]
     if not neg_lut is None:
         if neg_lut.ndim != 2:

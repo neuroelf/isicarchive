@@ -6,14 +6,28 @@ be imported from outside the main package functionality (isicapi).
 
 Functions
 ---------
+conv_kernel
+    Generate convolution smoothing kernel
 image_mix
     Mix two images (RGB and/or gray scale, alpha parameter supported)
+image_resample_u1
+    Cheap (!) image resampling for uint8 images
+image_resample_f4
+    Cheap (!) image resampling for float32 images
+superpixel_contour
+    Extract superpixel contour
 superpixel_decode
     Converts an RGB superpixel image to a 2D superpixel index array
 superpixel_map
     Decodes a superpixel (index) array into a 2D mapping array
 superpixel_outline_dir
     Extract SVG path directions from binary mask of outline
+superpixel_path
+    Extract superpixel path
+svg_coord_list
+    Generate SVG-path-suitable list of directions from coordinates list
+svg_path_from_list
+    Generate SVG-path-suitable list of directions from v/h list
 """
 
 __version__ = '0.4.8'
@@ -28,6 +42,19 @@ import numpy
 # convolution (smoothing) kernel
 @jit('f4[:](f4)', nopython=True)
 def conv_kernel(fwhm:numpy.float32 = 2.0) -> numpy.ndarray:
+    """
+    Generate convolution smoothing kernel
+
+    Parameters
+    ----------
+    fwhm : numpy scalar float32
+        Gaussian kernel size in FWHM (full-width at half-maximum)
+    
+    Returns
+    -------
+    kernel : ndarray
+        Gaussian smoothing kernel (numpy.float32)
+    """
     if fwhm <= 0.29:
         return numpy.asarray([0,1,0]).astype(numpy.float32)
     fwhm = fwhm / numpy.sqrt(8.0 * numpy.log(2.0))
@@ -45,6 +72,21 @@ def image_conv_float(
     data:numpy.ndarray,
     kernel:numpy.ndarray,
     ) -> numpy.ndarray:
+    """
+    Two-dimensional image convolution with kernel vector (staggered)
+
+    Parameters
+    ----------
+    data : ndarray
+        Image data (must be 2D numpy.float32!)
+    kernel : ndarray
+        Kernel vector (must be numpy.float32!)
+    
+    Returns
+    -------
+    conv_data : ndarray
+        Convolved data array
+    """
     if (kernel.size) == 1:
         kernel = conv_kernel(kernel[0])
     if (kernel.size % 2) != 1:
@@ -93,6 +135,21 @@ def image_mix(
     i2:numpy.ndarray,
     a2:numpy.ndarray = None,
     ) -> numpy.ndarray:
+    """
+    Mix two images with optional alpha channel
+
+    Parameters
+    ----------
+    i1, i2 : ndarray
+        Image vectors array (second dimension is RGB color!)
+    a2 : ndarray
+        Optional alpha (opacity) array for second image
+    
+    Returns
+    -------
+    mixed : ndarray
+        Mixed image vectors array
+    """
     ishape = i1.shape
     i2shape = i2.shape
     oi = numpy.zeros(i1.size, dtype=numpy.uint8).reshape(ishape) 
@@ -180,6 +237,21 @@ def image_mix(
 # image resampling (cheap!)
 @jit('u1[:,:,:](u1[:,:,:],i4,i4)', nopython=True)
 def image_resample_u1(image:numpy.ndarray, d0:numpy.int, d1:numpy.int) -> numpy.ndarray:
+    """
+    Cheap (!) image resampling for uint8 images
+
+    Parameters
+    ----------
+    image : ndarray
+        Image array
+    d0, d1 : int
+        Target image size in first and second dimension
+    
+    Returns
+    -------
+    res : ndarray
+        Resampled image array
+    """
     im_shape = image.shape
     f0 = numpy.float(im_shape[0]) / numpy.float(d0)
     f1 = numpy.float(im_shape[1]) / numpy.float(d1)
@@ -214,6 +286,21 @@ def image_resample_u1(image:numpy.ndarray, d0:numpy.int, d1:numpy.int) -> numpy.
     return out
 @jit('f4[:,:,:](f4[:,:,:],i4,i4)', nopython=True)
 def image_resample_f4(image:numpy.ndarray, d0:numpy.int, d1:numpy.int) -> numpy.ndarray:
+    """
+    Cheap (!) image resampling for float32 images
+
+    Parameters
+    ----------
+    image : ndarray
+        Image array
+    d0, d1 : int
+        Target image size in first and second dimension
+    
+    Returns
+    -------
+    res : ndarray
+        Resampled image array
+    """
     im_shape = image.shape
     f0 = numpy.float(im_shape[0]) / numpy.float(d0)
     f1 = numpy.float(im_shape[1]) / numpy.float(d1)
@@ -247,7 +334,7 @@ def image_resample_f4(image:numpy.ndarray, d0:numpy.int, d1:numpy.int) -> numpy.
             out[c, :, :] = tcol / numpy.float(1 + ito - ifrom)
     return out
 
-# superpixel contour (results match CV2.findContours coords)
+# superpixel contour (results match CV2.findContours coords format)
 @jit('i4[:,:](i4,i4,i4,b1[:,::1])', nopython=True)
 def superpixel_contour(
     num_pix:numba.int32,
@@ -255,6 +342,23 @@ def superpixel_contour(
     xpos:numba.int32,
     spx_map:numpy.ndarray,
     ) -> numpy.ndarray:
+    """
+    Extract superpixel contour
+
+    Parameters
+    ----------
+    num_pix : int32
+        Number of pixels in superpixel (as upper boundary)
+    ypos, xpos : int32
+        Position of one pixel that is within the superpixel
+    spx_map : ndarray (bool)
+        Superpixel (boolean) mask/array
+    
+    Returns
+    -------
+    coords : ndarray
+        Contour coordinates (Cx2 array)
+    """
     if not spx_map[ypos, xpos]:
         return numpy.zeros(0, dtype=numpy.int32).reshape((0,2,))
     num_pix = 4 * num_pix
@@ -417,6 +521,21 @@ def superpixel_outline_dir(
     num_pix:numba.int32,
     spx_map:numpy.ndarray,
     ) -> Tuple:
+    """
+    Extract superpixel outline directions
+
+    Parameters
+    ----------
+    num_pix : int32
+        Number of pixels in superpixel (as upper boundary)
+    spx_map : ndarray (bool)
+        Superpixel mask/array
+    
+    Returns
+    -------
+    odirs : tuple(int, int, ndarray)
+        (Y, X, directions), whereas Y/X are the first pixel's coordinates
+    """
     out = numpy.zeros(2 * num_pix, dtype=numpy.int32).reshape((2 * num_pix,))
     map_shape = spx_map.shape
     spsx = map_shape[1] - 2
@@ -770,6 +889,23 @@ def superpixel_path(
     xpos:numba.int32,
     spx_map:numpy.ndarray,
     ) -> numpy.ndarray:
+    """
+    Extract superpixel path
+
+    Parameters
+    ----------
+    num_pix : int32
+        Number of pixels in superpixel (as upper boundary)
+    ypos, xpos : int32
+        Border pixel that is part of the path
+    spx_map : ndarray
+        Superpixel mask/array
+    
+    Returns
+    -------
+    spath : ndarray
+        Px2 compact path (e.g. for SVG) description of superpixel outline
+    """
     if not spx_map[ypos, xpos]:
         return numpy.zeros(0, dtype=numpy.int32).reshape((0,2,))
     num_pix = 4 + 2 * num_pix
@@ -854,9 +990,22 @@ def superpixel_path(
         out = out[0:idx,:]
     return out
 
-# SVG path from v/h list
+# SVG path from coordinates list
 @jit('i1[:](i4[:,:])', nopython=True)
 def svg_coord_list(crd_list:numpy.ndarray) -> numpy.ndarray:
+    """
+    Generate SVG-path-suitable list of directions from coordinates list
+
+    Parameters
+    ----------
+    crd_list : ndarray
+        Cx2 coordinate list
+    
+    Returns
+    -------
+    path_str : bytes (ready for .decode() to str)
+        Path description from coordinates
+    """
     llen = crd_list.shape[0]
     omax = 9 * llen
     olen = omax + 12
@@ -902,6 +1051,19 @@ def svg_coord_list(crd_list:numpy.ndarray) -> numpy.ndarray:
 # SVG path from v/h list
 @jit('i1[:](i4[:,:])', nopython=True)
 def svg_path_from_list(vh_list:numpy.ndarray) -> numpy.ndarray:
+    """
+    Generate SVG-path-suitable list of directions from v/h list
+
+    Parameters
+    ----------
+    vh_list : ndarray
+        Two-column list with v/h +/- relative movements
+    
+    Returns
+    -------
+    path_str : bytes (ready for .decode() to str)
+        Path description from coordinates
+    """
     llen = vh_list.shape[0]
     omax = 4 * llen
     olen = omax + 6

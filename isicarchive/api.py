@@ -310,6 +310,14 @@ class IsicApi(object):
     datasets : dict
         Resolving dataset names to unique mongodb ObjectIds (cache)
         This will be pre-loaded with all datasets, regardless of login
+    features : dict
+        Available features (for studies, by feature name/id)
+    image_cache : dict
+        All available images (if loaded, by image_id)
+    image_segmentations : dict
+        All available segmentations (if loaded, by segmentation_id)
+    image_selection : dict
+        Current sub-selection of images (from the cached set)
     images : dict
         Resolving image names to unique mongodb ObjectIds (cache)
     meta_hist : dict
@@ -323,6 +331,12 @@ class IsicApi(object):
     -------
     annotation(object_id=None, params=None)
         Retrieve one annotation (object) or annotations (list)
+    annotation_list(params)
+        Retrieve one annotation at a time (generator)
+    cache_filename(object_id, object_type, ext, extra)
+        Construct the local filename for an object (in cache folder)
+    cache_images()
+        Retrieve full list of available images from the archive
     dataset(object_id=None, name=None, params=None)
         Retrieve one dataset (object) or datasets (list)
     image(object_id=None, name=None, params=None)
