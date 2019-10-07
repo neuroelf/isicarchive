@@ -1796,6 +1796,42 @@ def image_rotate(image:numpy.ndarray, how:str = None) -> numpy.ndarray:
         else:
             return numpy.transpose(image, (1, 0,))[::-1, :]
 
+# sample grid
+def image_sample_grid(
+    image:numpy.ndarray,
+    sampling:Union[numpy.ndarray,list,tuple,int,float],
+    kernel:Union[str,tuple] = 'resample',
+    ) -> numpy.ndarray:
+    """
+    Sample grid of image (flexible resampling)
+
+    Parameters
+    ----------
+    image : ndarray
+        Image array
+    sampling : ndarray, list, tuple, int, float
+        Sampling specification (see Sampler.sample_grid)
+    kernel : str, tuple
+        Kernel specification (see Sampler.sample_grid)
+    
+    Returns
+    -------
+    sampled : ndarray
+        Sampled image
+    """
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    from .sampler import Sampler
+    s = Sampler()
+    if image.dtype == numpy.uint8:
+        out_type = 'uint8'
+    else:
+        out_type = 'float64'
+    try:
+        return s.sample_grid(image, sampling, kernel, out_type)
+    except:
+        raise
+
 # smooth image using fft
 def image_smooth_fft(image:numpy.ndarray, fwhm:float) -> numpy.ndarray:
     """

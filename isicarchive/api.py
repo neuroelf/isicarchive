@@ -1217,6 +1217,7 @@ class IsicApi(object):
         columns:int = 1,
         frame_color:tuple = (0,0,0),
         frame_width:int = 2,
+        single_colors:bool = False,
         ):
 
         # IMPORTS DONE HERE TO SAVE TIME AT MODULE INIT
@@ -1229,14 +1230,33 @@ class IsicApi(object):
             else:
                 raise ValueError('Invalid features parameter.')
         features = features[:]
-        for (idx, f) in enumerate(features):
-            if not '+' in f:
-                continue
-            f = f.split('+')
-            for (fidx, sf) in enumerate(f):
-                if sf in self.features:
-                    f[fidx] = self.features[sf]['abbreviation']
-            features[idx] = '(' + ' + '.join(f) + ')'
+        if single_colors:
+            fcolors = dict()
+            for (idx, f) in enumerate(features):
+                if '+' in f:
+                    continue
+                if not f in fcolors:
+                    fcolors[f] = feature_colors[idx]
+            for (idx, f) in enumerate(features):
+                if not '+' in f:
+                    continue
+                f = f.split('+')
+                for (sidx, sf) in enumerate(f):
+                    sf = sf.strip()
+                    if not sf in fcolors:
+                        fcolors[sf] = [feature_colors[idx][sidx]]
+            feature_alphas = [[1.0]] * len(fcolors)
+            feature_colors = list(fcolors.values())
+            features = list(fcolors.keys())
+        else:
+            for (idx, f) in enumerate(features):
+                if not '+' in f:
+                    continue
+                f = f.split('+')
+                for (fidx, sf) in enumerate(f):
+                    if sf in self.features:
+                        f[fidx] = self.features[sf]['abbreviation']
+                features[idx] = '(' + ' + '.join(f) + ')'
         if not isinstance(feature_colors, list):
             raise ValueError('Invalid feature_colors parameter.')
         if not isinstance(feature_alphas, list):

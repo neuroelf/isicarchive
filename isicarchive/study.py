@@ -763,6 +763,7 @@ class Study(object):
         font_size:float = 40.0,
         resize_output:Union[int,Tuple] = 1024,
         legend_position:str = 'northwest',
+        single_colors:bool = False,
         ):
 
         # IMPORTS DONE HERE TO SAVE TIME ON MODULE INIT
@@ -858,8 +859,9 @@ class Study(object):
                 flabels = list(stat_cols.keys())
                 fcolors = [stat_cols[label][0] for label in flabels]
                 falphas = [stat_cols[label][1] for label in flabels]
-                image_leg_text = self._api.feature_legend(flabels, fcolors, falphas,
-                    fsize=font_size, patch_size=leg_patch_size)
+                image_leg_text = self._api.feature_legend(flabels, fcolors,
+                    falphas, fsize=font_size, patch_size=leg_patch_size,
+                    single_colors=single_colors)
                 leg_shape = image_leg_text.shape
                 if leg_shape[0] > q_shape[0] or leg_shape[1] > q_shape[1]:
                     rs_factor = min(float(q_shape[0]) / float(leg_shape[0]),
