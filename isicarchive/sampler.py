@@ -99,6 +99,60 @@ def _sample_grid_2d(
             out[i0,i1] = val / vw
     return out
 
+# sample grid coordinates
+@jit([
+    'f8[:](f8[:,:],f8[:,:],f8[:],i8)', #output(array, crd, kernel, ksize)
+    'f8[:](f4[:,:],f8[:,:],f8[:],i8)',
+    'f8[:](u1[:,:],f8[:,:],f8[:],i8)',
+    ], nopython=True)
+def _sample_grid_coords(
+    a:numpy.ndarray,
+    c:numpy.ndarray,
+    k:numpy.ndarray,
+    ks:int64) -> numpy.ndarray:
+    nk = k.size - 1
+    kl = float(nk) / float(2 * ks)
+    if kl != numpy.trunc(kl):
+        raise ValueError('Invalid kernel.')
+    ikl = int(kl)
+    mks = ikl * ks
+    fks = float(ks)
+    as0 = a.shape[0]
+    as1 = a.shape[1]
+    nc = c.shape[0]
+    if c.shape[1] != 2:
+        raise ValueError('Invalid coordinate list.')
+    out = numpy.zeros(nc, dtype=numpy.float64).reshape((nc,))
+    for i in prange(nc): #pylint: disable=not-an-iterable
+        c0c = c[i,0]
+        c0b = int(c0c + 0.5)
+        c0o = c0c - float(c0b)
+        c1c = c[i,1]
+        c1b = int(c1c + 0.5)
+        c1o = c1c - float(c1b)
+        val = 0.0
+        vw = 0.0
+        for ri in range(c0b-ikl, c0b+ikl+1):
+            if ri < 0 or ri >= as0:
+                continue
+            wi = mks + (ri-c0b) * ks - int(c0o * fks)
+            if wi < 0 or wi >= nk:
+                continue
+            kwi0 = k[wi]
+            for ci in range(c1b-ikl, c1b+ikl+1):
+                if ci < 0 or ci >= as1:
+                    continue
+                cwi = mks + (ci-c1b) * ks - int(c1o * fks)
+                if cwi < 0 or cwi >= nk:
+                    continue
+                kwi = kwi0 * k[cwi]
+                val += kwi * a[ri,ci]
+                vw += kwi
+        if vw == 0.0:
+            vw = 1.0
+        out[i] = val / vw
+    return out
+
 # sample values
 @jit([
     'f8[:](f8[:],f8[:],f8[:],i8)', #output(vector, crd0, kernel, ksize)
