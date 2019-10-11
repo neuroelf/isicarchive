@@ -7,21 +7,22 @@ Created on Fri Aug 30 11:01:59 2019
 """
 
 import os
-#from matplotlib import pyplot
+from matplotlib import pyplot
 #%matplotlib inline
 #import imageio
 import numpy
 from isicarchive import imfunc
 from isicarchive.api import IsicApi
+from isicarchive import sampler
 
 # function for mean and sample STD
-def mean_std(a:list, is_sample:bool=True):
-    ddof = 1 if is_sample else 0
-    return (numpy.mean(a), numpy.std(a, ddof=ddof))
+#def mean_std(a:list, is_sample:bool=True):
+#    ddof = 1 if is_sample else 0
+#    return (numpy.mean(a), numpy.std(a, ddof=ddof))
 
 # set to True if you would like (more) details in the print-out
-print_details = False
-print_fine_details = False
+#print_details = False
+#print_fine_details = False
 
 # please change the username accordingly!
 username = 'weberj3@mskcc.org'
@@ -41,10 +42,29 @@ api = IsicApi(username, cache_folder=cache_folder, debug=debug)
 # load image
 image = api.image('ISIC_0016094')
 image.load_image_data()
-image.load_superpixels()
-image.map_superpixels()
-nei = imfunc.superpixel_neighbors(image.superpixels['idx'], image.superpixels['map'], 3)
-print(nei)
+gray = imfunc.image_gray(image.data)
+gray_0 = gray[:,:,0]
+
+s = sampler.Sampler()
+m = {
+    'origin': 0.5 * numpy.asarray(list(gray_0.shape), numpy.float64),
+    'rotate': numpy.asarray([0.3], numpy.float64),
+    'scale': numpy.asarray([0.025]),
+}
+t = sampler._trans_matrix(m)
+print(t)
+
+r_image = s.sample_grid(gray_0, 1.0, 'cubic', out_type='uint8', m=m)
+
+fig = pyplot.figure(figsize=(8,12))
+pyplot.imshow(r_image)
+pyplot.show()
+
+#image.load_image_data()
+#image.load_superpixels()
+#image.map_superpixels()
+#nei = imfunc.superpixel_neighbors(image.superpixels['idx'], image.superpixels['map'], 3)
+#print(nei)
 
 # study folder
 #study_folder = doc_folder + 'EASY' + os.sep + 'PILOT' + os.sep

@@ -193,6 +193,164 @@ def _sample_values(
             v[i0] = val / vw
     return v
 
+def _trans_matrix(m:Union[list, dict]) -> numpy.ndarray:
+    if isinstance(m, dict):
+        m = [m]
+    elif not isinstance(m, list):
+        raise ValueError('Invalid input parameter.')
+    elif len(m) < 1:
+        raise ValueError('Invalid input parameter.')
+    nd = 0
+    try:
+        for m_in in m:
+            if not isinstance(m_in, dict):
+                raise ValueError('Invalid input parameter.')
+            origin = m_in.get('origin', None)
+            if not origin is None:
+                lt = len(origin)
+                if nd > 0 and nd != lt:
+                    raise ValueError('Invalid origin field in input parameter.')
+                elif nd == 0:
+                    nd = lt
+            else:
+                if nd == 0:
+                    m_in['origin'] = None
+                else:
+                    m_in['origin'] = numpy.zeros(nd, numpy.float64)
+            trans = m_in.get('trans', None)
+            if not trans is None:
+                lt = len(trans)
+                if nd > 0 and nd != lt:
+                    raise ValueError('Invalid origin field in input parameter.')
+                elif nd == 0:
+                    nd = lt
+            else:
+                if nd == 0:
+                    m_in['trans'] = None
+                else:
+                    m_in['trans'] = numpy.zeros(nd, numpy.float64)
+            rotate = m_in.get('rotate', None)
+            if not rotate is None:
+                lt = len(rotate)
+                if not lt in [1, 3]:
+                    raise ValueError('Invalid rotate field in input parameter.')
+                elif lt == 1:
+                    lt = 2
+                if nd > 0 and nd != lt:
+                    raise ValueError('Invalid rotate field in input parameter.')
+                elif nd == 0:
+                    nd = lt
+            else:
+                if nd == 2:
+                    m_in['rotate'] = numpy.zeros(1, numpy.float64)
+                elif nd == 3:
+                    m_in['rotate'] = numpy.zeros(3, numpy.float64)
+                else:
+                    m_in['rotate'] = None
+            scale = m_in.get('scale', None)
+            if not scale is None:
+                lt = len(scale)
+                if lt > 1:
+                    if nd > 0 and nd != lt:
+                        raise ValueError('Invalid scale field in input parameter.')
+                    elif nd == 0:
+                        nd = lt
+                elif nd > 0:
+                        m_in['scale'] = scale * numpy.ones(nd, numpy.float64)
+            else:
+                if nd == 0:
+                    m_in['scale'] = None
+                else:
+                    m_in['scale'] = numpy.ones(nd, numpy.float64)
+            shear = m_in.get('shear', None)
+            if not shear is None:
+                lt = len(shear)
+                if not lt in [1, 3]:
+                    raise ValueError('Invalid shear field in input parameter.')
+                elif lt == 1:
+                    lt = 2
+                if nd > 0 and nd != lt:
+                    raise ValueError('Invalid rotate field in input parameter.')
+                elif nd == 0:
+                    nd = lt
+            else:
+                if nd == 2:
+                    m_in['shear'] = numpy.zeros(1, numpy.float64)
+                elif nd == 3:
+                    m_in['shear'] = numpy.zeros(3, numpy.float64)
+                else:
+                    m_in['shear'] = None
+        if not nd in [2,3]:
+            raise ValueError('Invalid input parameter (dimensions not inferred).')
+        m_out = numpy.zeros((nd+1, nd+1,), numpy.float64)
+        for n in range(nd+1):
+            m_out[n,n] = 1.0
+        m_p = m_out.copy()
+        for m_in in reversed(m):
+            origin = m_in['origin']
+            if origin is None:
+                origin = numpy.zeros(nd, numpy.float64)
+            trans = m_in['trans']
+            if trans is None:
+                trans = numpy.zeros(nd, numpy.float64)
+            rotate = m_in['rotate']
+            if rotate is None:
+                if nd == 2:
+                    rotate = numpy.zeros(1, numpy.float64)
+                else:
+                    rotate = numpy.zeros(3, numpy.float64)
+            rs = numpy.sin(rotate)
+            rc = numpy.cos(rotate)
+            scale = m_in['scale']
+            if scale is None:
+                scale = numpy.ones(nd, numpy.float64)
+            shear = m_in['shear']
+            if shear is None:
+                if nd == 2:
+                    shear = numpy.zeros(1, numpy.float64)
+                else:
+                    shear = numpy.zeros(3, numpy.float64)
+            m_o = m_p.copy()
+            m_o[:nd,-1] = origin
+            m_ob = m_p.copy()
+            m_ob[:nd,-1] = -origin
+            m_t = m_p.copy()
+            m_t[:nd,-1] = trans
+            if nd == 2:
+                m_r = m_p.copy()
+                m_r[0:2,0:2] = numpy.asarray([[rc[0], rs[0]], [-rs[0], rc[0]]])
+            else:
+                m_r1 = m_p.copy()
+                m_r1[1:3,1:3] = numpy.asarray([[rc[0], rs[0]], [-rs[0], rc[0]]])
+                m_r2 = m_p.copy()
+                m_r2[0,0] = rc[1]
+                m_r2[0,2] = rs[1]
+                m_r2[2,0] = -rs[1]
+                m_r2[2,2] = rc[1]
+                m_r3 = m_p.copy()
+                m_r3[0:2,0:2] = numpy.asarray([[rc[2], rs[2]], [-rs[2], rc[2]]])
+                m_r = numpy.matmul(numpy.matmul(m_r1, m_r2), m_r3)
+            m_s = m_p.copy()
+            for n in range(nd):
+                m_s[n,n] = scale[n]
+            m_h = m_p.copy()
+            m_h[0,1] = shear[0]
+            if nd == 3:
+                m_h[0,2] = shear[1]
+                m_h[1,2] = shear[2]
+            m_c = numpy.matmul(
+                m_t, numpy.matmul(
+                m_o, numpy.matmul(
+                m_r, numpy.matmul(
+                m_s, numpy.matmul(
+                m_ob,
+                m_h)))))
+            m_out = numpy.matmul(m_c, m_out)
+    except:
+        raise
+    return m_out
+
+
 class Sampler(object):
 
 
@@ -349,6 +507,7 @@ class Sampler(object):
         s:Union[numpy.ndarray,list,tuple,int,float],
         k:Union[str,tuple] = 'resample',
         out_type:str = 'float64',
+        m:Union[list,dict,numpy.ndarray] = None,
         ) -> numpy.ndarray:
         if not isinstance(a, numpy.ndarray):
             raise ValueError('Invalid array a to sample.')
@@ -437,19 +596,44 @@ class Sampler(object):
             raise ValueError('Invalid kernel k.')
         ls = len(s)
         if ls == 2:
-            if ad == 2:
-                out = _sample_grid_2d(a, s[0], s[1], k[0], k[1])
-            elif ad == 3:
-                out = _sample_grid_2d(a[:,:,0].reshape((ash[0], ash[1],)),
-                    s[0], s[1], k[0], k[1])
-                outsh = out.shape
-                out = numpy.repeat(out.reshape((outsh[0], outsh[1], 1)),
-                    ash[2], axis=2)
-                for p in range(1, ash[2]):
-                    out[:,:,p] = _sample_grid_2d(a[:,:,p].reshape((ash[0], ash[1])),
-                        s[0], s[1], k[0], k[1]).reshape((outsh[0], outsh[1],))
+            if isinstance(m, list) or isinstance(m, dict):
+                try:
+                    m = _trans_matrix(m)
+                except:
+                    raise
+            if m is None or not isinstance(m, numpy.ndarray):
+                if ad == 2:
+                    out = _sample_grid_2d(a, s[0], s[1], k[0], k[1])
+                elif ad == 3:
+                    out = _sample_grid_2d(a[:,:,0].reshape((ash[0], ash[1],)),
+                        s[0], s[1], k[0], k[1])
+                    outsh = out.shape
+                    out = numpy.repeat(out.reshape((outsh[0], outsh[1], 1)),
+                        ash[2], axis=2)
+                    for p in range(1, ash[2]):
+                        out[:,:,p] = _sample_grid_2d(a[:,:,p].reshape((ash[0], ash[1])),
+                            s[0], s[1], k[0], k[1]).reshape((outsh[0], outsh[1],))
+                else:
+                    raise ValueError('Sampling 2D grid of 4D data not supported.')
             else:
-                raise ValueError('Sampling 2D grid of 4D data not supported.')
+                if m.dtype != numpy.float64 or m.shape[1] != 3 or m.shape[0] < 2:
+                    raise ValueError('Invalid transformation matrix m.')
+                s0 = s[0].size
+                s1 = s[1].size
+                (c1, c0) = numpy.meshgrid(s[1], s[0])
+                c0.shape = (c0.size,1,)
+                c1.shape = (c1.size,1,)
+                c01 = numpy.concatenate(
+                    (m[0,0]*c0+m[0,1]*c1+m[0,2], m[1,0]*c0+m[1,1]*c1+m[1,2]), axis=1)
+                if ad == 2:
+                    out = _sample_grid_coords(a, c01, k[0], k[1]).reshape((s0,s1,))
+                elif ad == 3:
+                    outsh = (s0,s1,1,)
+                    out = _sample_grid_coords(a[:,:,0].reshape((ash[0], ash[1],)),
+                        c01, k[0], k[1]).reshape(outsh)
+                    out = numpy.repeat(out, ash[2], axis=2)
+                    for p in range(1, ash[2]):
+                        out[:,]
         elif ls == 1:
             out = _sample_values(a, s[0], k[0], k[1])
         elif ls == 3:

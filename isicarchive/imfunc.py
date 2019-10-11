@@ -1706,6 +1706,90 @@ def image_read_border(
         out = out.decode('utf-8')
     return out
 
+# image registration (experimental!)
+def image_register(
+    i1:numpy.ndarray,
+    i2:numpy.ndarray,
+    mode:str = 'luma',
+    trans:bool = True,
+    rotate:bool = True,
+    scale:bool = False,
+    scale_diff:bool = False,
+    shear:bool = False,
+    method:str = 'cubic',
+    maxpts:int = 250000,
+    smooth:float = 0.0,
+    ) -> numpy.ndarray:
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    from . import sampler
+    s = sampler.Sampler()
+    
+    if not method in s._kernels:
+        raise ValueError('Invalid method (kernel function).')
+    sk = s._kernels[method]
+    if not isinstance(i1, numpy.ndarray) or not isinstance(i2, numpy.ndarray):
+        raise ValueError('Invalid types.')
+    if i1.ndim < 2 or i1.ndim > 3 or i2.ndim < 2 or i2.ndim > 3:
+        raise ValueError('Invalid dimensions.')
+    ishape = i1.shape
+    if ishape[0] != i2.shape[0] or ishape[1] != i2.shape[1]:
+        raise ValueError('Dimension mismatch.')
+    if smooth > 0.0:
+        i1 = image_smooth_fft(i1, smooth)
+        i2 = image_smooth_fft(i2, smooth)
+    origin = 0.5 * numpy.asarray(ishape, numpy.float64)
+    transp = numpy.zeros(2, numpy.float64)
+    rotatep = numpy.zeros(1, numpy.float64)
+    scalep = numpy.zeros(2, numpy.float64)
+    shearp = numpy.zeros(1, numpy.float64)
+    m = {
+        'origin': origin,
+        'trans': transp,
+        'rotate': rotatep,
+        'scale': scalep,
+        'shear': shearp,
+    }
+    t = sampler._trans_matrix(m)
+    if (ishape[0] * ishape[1] <= maxpts):
+        sf = 1.0
+    else:
+        sf = numpy.sqrt(float(ishape[0] * ishape[1]) / float(maxpts))
+    s0 = numpy.arange(0.0, float(ishape[0]), sf).astype(numpy.float64)
+    s1 = numpy.arange(0.0, float(ishape[1]), sf).astype(numpy.float64)
+    (c1, c0) = numpy.meshgrid(s1, s0)
+    c0.shape = (c0.size,1,)
+    c1.shape = (c1.size,1,)
+    c01 = numpy.concatenate((c0,c1), axis=1)
+    step = (1.0 / 512.0)
+    d = sampler._sample_grid_coords(i1, c01, sk[0], sk[1])
+    dg0 = sampler._sample_grid_coords(i1, c01 + step * numpy.asarray([1.0,1.0]), sk[0], sk[1])
+    dg1 = dg0.copy()
+    cxy = sampler._sample_grid_coords(i1, c01 + step * numpy.asarray([1.0,-1.0]), sk[0], sk[1])
+    dg0 += cxy
+    dg1 -= cxy
+    cxy = sampler._sample_grid_coords(i1, c01 + step * numpy.asarray([-1.0,1.0]), sk[0], sk[1])
+    dg0 -= cxy
+    dg1 += cxy
+    cxy = sampler._sample_grid_coords(i1, c01 + step * numpy.asarray([-1.0,-1.0]), sk[0], sk[1])
+    dg0 -= cxy
+    dg1 -= cxy
+    dg0 *= 128.0
+    dg1 *= 128.0
+    nc = 0
+    if trans:
+        nc += 2
+    if rotate:
+        nc += 1
+    if scale:
+        if scale_diff:
+            nc += 2
+        else:
+            nc += 1
+    if shear:
+        nc += 1
+    return t
+
 # image resampling (cheap!)
 def image_resample(image:numpy.ndarray, new_shape:tuple) -> numpy.ndarray:
     """
