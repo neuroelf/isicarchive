@@ -398,6 +398,14 @@ def display_image(
             warnings.warn('Problem producing image for display: ' + str(e))
             return None
 
+# image center ([y,x coord] * 0.5)
+def image_center(image:numpy.ndarray) -> numpy.ndarray:
+    try:
+        imsh = image.shape
+        return 0.5 * numpy.asarray([imsh[0], imsh[1]]).astype(numpy.float64)
+    except:
+        raise
+
 # image composition (from other images)
 def image_compose(
     imlist:list,
@@ -2126,6 +2134,17 @@ def lut_lookup(
             colors[above, 1] = below_neg_col[1]
             colors[above, 2] = below_neg_col[2]
     return colors
+
+# read image
+def read_image(image_file:str) -> numpy.ndarray:
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    import imageio
+
+    try:
+        return imageio.imread(image_file)
+    except:
+        raise
 
 # segmentation outline (coordinates, image, or SVG/path)
 def segmentation_outline(

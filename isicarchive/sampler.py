@@ -153,6 +153,66 @@ def _sample_grid_coords(
         out[i] = val / vw
     return out
 
+# sample grid coordinates
+@jit([
+    'f8[:](f8[:,:],f8[:,:],f8[:],i8)', #output(array, crd, kernel, ksize)
+    'f8[:](f4[:,:],f8[:,:],f8[:],i8)',
+    'f8[:](u1[:,:],f8[:,:],f8[:],i8)',
+    ], nopython=True)
+def _sample_grid_coords_fine(
+    a:numpy.ndarray,
+    c:numpy.ndarray,
+    k:numpy.ndarray,
+    ks:int64) -> numpy.ndarray:
+    nk = k.size -1
+    kl = float(nk) / float(2 * ks)
+    if kl != numpy.trunc(kl):
+        raise ValueError('Invalid kernel.')
+    ikl = int(kl)
+    mks = ikl * ks
+    fks = float(ks)
+    as0 = a.shape[0]
+    as1 = a.shape[1]
+    nc = c.shape[0]
+    if c.shape[1] != 2:
+        raise ValueError('Invalid coordinate list.')
+    out = numpy.zeros(nc, dtype=numpy.float64).reshape((nc,))
+    for i in prange(nc): #pylint: disable=not-an-iterable
+        c0c = c[i,0]
+        c0b = int(c0c + 0.5)
+        c0o = c0c - float(c0b)
+        c1c = c[i,1]
+        c1b = int(c1c + 0.5)
+        c1o = c1c - float(c1b)
+        val = 0.0
+        vw = 0.0
+        for ri in range(c0b-ikl, c0b+ikl+1):
+            if ri < 0 or ri >= as0:
+                continue
+            wf = c0o * fks
+            wfi = int(wf)
+            wfp = wf - float(wfi)
+            wi = mks + (ri-c0b) * ks - wfi
+            if wi <= 0 or wi >= nk:
+                continue
+            kwi0 = (1.0 - wfp) * k[wi] + wfp * k[wi-1]
+            for ci in range(c1b-ikl, c1b+ikl+1):
+                if ci < 0 or ci >= as1:
+                    continue
+                wf = c1o * fks
+                wfi = int(wf)
+                wfp = wf - float(wfi)
+                cwi = mks + (ci-c1b) * ks - wfi
+                if cwi <= 0 or cwi >= nk:
+                    continue
+                kwi = kwi0 * ((1.0 - wfp) * k[cwi] + wfp * k[cwi-1])
+                val += kwi * a[ri,ci]
+                vw += kwi
+        if vw == 0.0:
+            vw = 1.0
+        out[i] = val / vw
+    return out
+
 # sample values
 @jit([
     'f8[:](f8[:],f8[:],f8[:],i8)', #output(vector, crd0, kernel, ksize)
@@ -366,12 +426,15 @@ class Sampler(object):
             kn[ks//2+1:ks+ks//2] = 1.0
             kn[ks//2] = 0.5
             kn[ks+ks//2] = 0.5
-            self._kernels['nearest'] = kn
-            self._kernels['linear'] = [numpy.asarray([0.0,1.0,0.0], dtype=numpy.float64), 1]
+            self._kernels['nearest'] = [kn, ks]
+            kn = numpy.zeros(2*ks+1, dtype=numpy.float64)
+            kn[0:ks] = numpy.arange(0.0, 1.0, 1.0 / float(ks))
+            kn[ks:2*ks] = numpy.arange(1.0, 0.0, -1.0 / float(ks))
+            self._kernels['linear'] = [kn, ks]
             k21 = [v for v in range(0,ks)]
             k22 = [v for v in range(ks+1,3*ks)]
             k23 = [v for v in range(3*ks+1,4*ks)]
-            k = numpy.abs(numpy.arange(-2.0, 2.0+0.5/float(ks), 1/float(ks)).astype(numpy.float64))
+            k = numpy.abs(numpy.arange(-2.0, 2.0+0.5/float(ks), 1.0/float(ks)).astype(numpy.float64))
             k[k21] = -0.5 * (k[k21] ** 3) + 2.5 * (k[k21] * k[k21]) - 4.0 * k[k21] + 2.0
             k[k22] = 1.5 * (k[k22] ** 3) - 2.5 * (k[k22] * k[k22]) + 1.0
             k[k23] = -0.5 * (k[k23] ** 3) + 2.5 * (k[k23] * k[k23]) - 4.0 * k[k23] + 2.0
@@ -508,6 +571,7 @@ class Sampler(object):
         k:Union[str,tuple] = 'resample',
         out_type:str = 'float64',
         m:Union[list,dict,numpy.ndarray] = None,
+        fine:bool = False,
         ) -> numpy.ndarray:
         if not isinstance(a, numpy.ndarray):
             raise ValueError('Invalid array a to sample.')
@@ -626,14 +690,32 @@ class Sampler(object):
                 c01 = numpy.concatenate(
                     (m[0,0]*c0+m[0,1]*c1+m[0,2], m[1,0]*c0+m[1,1]*c1+m[1,2]), axis=1)
                 if ad == 2:
-                    out = _sample_grid_coords(a, c01, k[0], k[1]).reshape((s0,s1,))
+                    if fine:
+                        out = _sample_grid_coords_fine(
+                            a, c01, k[0], k[1]).reshape((s0,s1,))
+                    else:
+                        out = _sample_grid_coords(
+                            a, c01, k[0], k[1]).reshape((s0,s1,))
                 elif ad == 3:
                     outsh = (s0,s1,1,)
-                    out = _sample_grid_coords(a[:,:,0].reshape((ash[0], ash[1],)),
-                        c01, k[0], k[1]).reshape(outsh)
-                    out = numpy.repeat(out, ash[2], axis=2)
-                    for p in range(1, ash[2]):
-                        out[:,]
+                    if fine:
+                        out = _sample_grid_coords_fine(
+                            a[:,:,0].reshape((ash[0], ash[1],)),
+                            c01, k[0], k[1]).reshape(outsh)
+                        out = numpy.repeat(out, ash[2], axis=2)
+                        for p in range(1, ash[2]):
+                            out[:,:,p] = _sample_grid_coords_fine(
+                                a[:,:,p].reshape((ash[0], ash[1],)),
+                                c01, k[0], k[1]).reshape((s0,s1,))
+                    else:
+                        out = _sample_grid_coords(
+                            a[:,:,0].reshape((ash[0], ash[1],)),
+                            c01, k[0], k[1]).reshape(outsh)
+                        out = numpy.repeat(out, ash[2], axis=2)
+                        for p in range(1, ash[2]):
+                            out[:,:,p] = _sample_grid_coords(
+                                a[:,:,p].reshape((ash[0], ash[1],)),
+                                c01, k[0], k[1]).reshape((s0,s1,))
         elif ls == 1:
             out = _sample_values(a, s[0], k[0], k[1])
         elif ls == 3:
