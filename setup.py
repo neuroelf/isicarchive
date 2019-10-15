@@ -15,6 +15,7 @@ requires = [
     'matplotlib>=3.1.0',
     'numba>=0.45.1',
     'numpy>=1.16.2',
+    'scipy>=1.3.1',
     'requests>=2.22.0',
 ]
 
