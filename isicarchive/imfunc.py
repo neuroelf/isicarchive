@@ -1125,6 +1125,114 @@ def image_mark_word(image, side, pix_width, num_wrd, wcrd, value, word):
     scrd += pix_add
     image_mark_pixel(image, side, pix_width, scrd, value*2, True)
 
+# match images in properties
+def image_match(
+    source_image:numpy.ndarray,
+    target_image:numpy.ndarray,
+    match_mask:numpy.ndarray = None,
+    match_contrast:bool = True,
+    match_hue:bool = True,
+    match_saturation:bool = True,
+    match_mean:bool = True,
+    match_std:bool = True,
+    gray_conv_type:str = 'desaturate',
+    ) -> numpy.ndarray:
+    """
+    Match two images on contrast, hue, and saturation
+
+    Parameters
+    ----------
+    source_image, target_image : ndarray (must match in size)
+        Source image (will be matched to) and target image
+    match_mask : ndarray
+        Mask (must match in size)
+    match_contrast, match_hue, match_saturation : bool
+        Flags, controlling which aspects are matched (default: all True)
+    match_mean, match_std : bool
+        Flags, controlling how aspects are matched (default: all True)
+    gray_conv_type : str
+        Passed into image_gray as conv_type (see help there)
+
+    Returns
+    -------
+    matched_image : ndarray
+        Source image transformed to match target image
+    """
+    try:
+        sshape = source_image.shape
+        tshape = target_image.shape
+        if sshape != tshape:
+            raise ValueError('Image shape mismatch.')
+    except:
+        raise
+    if not match_mask is None:
+        if not isinstance(match_mask, numpy.ndarray):
+            match_mask = None
+        elif match_mask.ndim != 2:
+            raise ValueError('Invalid mask dims.')
+        elif match_mask.shape[0] != sshape[0] or match_mask.shape[1] != sshape[1]:
+            raise ValueError('Invalid mask shape.')
+    mask_size = 0
+    if not match_mask is None:
+        mask_size = numpy.sum(match_mask)
+        if mask_size < 16:
+            raise ValueError('Mask covers too little area.')
+    if not match_mean and not match_std:
+        return source_image.copy()
+    source_type = source_image.dtype
+    source_image = source_image.astype(numpy.float64)
+    source_is_gray = (source_image.ndim == 2)
+    target_is_gray = (target_image.ndim == 2)
+    if match_contrast:
+        if source_is_gray:
+            source_gray = source_image
+        else:
+            source_gray = image_gray(source_image, rgb_format=False,
+                conv_type=gray_conv_type)
+        if target_is_gray:
+            target_gray = target_image.astype(numpy.float64)
+        else:
+            target_gray = image_gray(target_image, rgb_format=False,
+                conv_type=gray_conv_type)
+        if mask_size > 0:
+            source_gray = source_gray[match_mask]
+            target_gray = target_gray[match_mask]
+        source_mean = numpy.mean(source_gray)
+        if match_mean:
+            target_mean = numpy.mean(target_gray)
+            mean_corr = (target_mean - source_mean)
+            source_image = source_image + mean_corr
+            if match_std:
+                source_std = numpy.std(source_gray)
+                target_std = numpy.std(target_gray)
+                std_corr = target_std / source_std
+                source_image = target_mean + std_corr * (source_image - target_mean)
+        elif match_std:
+            source_std = numpy.std(source_gray)
+            target_std = numpy.std(target_gray)
+            std_corr = target_std / source_std
+            source_image = source_mean + std_corr * (source_image - source_mean)
+    if not source_is_gray and not target_is_gray and (match_hue or match_saturation):
+        source_hslv = rgb2hslv(source_image[:,:,0],
+            source_image[:,:,1], source_image[:,:,2])
+        target_hslv = rgb2hslv(target_image[:,:,0],
+            target_image[:,:,1], target_image[:,:,2])
+        source_hue = source_hslv[0]
+        source_sat = source_hslv[1]
+        target_hue = target_hslv[0]
+        target_sat = target_hslv[1]
+        if mask_size > 0:
+            source_hue = source_hue[match_mask]
+            source_sat = source_sat[match_mask]
+            target_hue = target_hue[match_mask]
+            target_sat = target_sat[match_mask]
+        if match_hue:
+            pass
+    source_image[source_image < 0] = 0
+    if source_type == numpy.uint8:
+        source_image[source_image > 255] = 255
+    return source_image.astype(source_type)
+
 # image mixing (python portion)
 def image_mix(
     image_1:numpy.ndarray,
@@ -1726,7 +1834,8 @@ def image_register(
     shear:bool = False,
     method:str = 'cubic',
     maxpts:int = 250000,
-    smooth:float = 0.0,
+    smooth:list = [0.005],
+    init_m:dict = None,
     ) -> numpy.ndarray:
 
     # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
@@ -1743,21 +1852,36 @@ def image_register(
     ishape = i1.shape
     if ishape[0] != i2.shape[0] or ishape[1] != i2.shape[1]:
         raise ValueError('Dimension mismatch.')
-    if smooth > 0.0:
-        i1 = image_smooth_fft(i1, smooth)
-        i2 = image_smooth_fft(i2, smooth)
-    origin = 0.5 * numpy.asarray(ishape, numpy.float64)
-    transp = numpy.zeros(2, numpy.float64)
-    rotatep = numpy.zeros(1, numpy.float64)
-    scalep = numpy.zeros(2, numpy.float64)
-    shearp = numpy.zeros(1, numpy.float64)
-    m = {
-        'origin': origin,
-        'trans': transp,
-        'rotate': rotatep,
-        'scale': scalep,
-        'shear': shearp,
-    }
+    i1o = i1
+    i2o = i2
+    if isinstance(smooth, list) and len(smooth) > 0:
+        try:
+            i1 = image_smooth_fft(i1o, smooth[0])
+            i2 = image_smooth_fft(i2o, smooth[0])
+        except:
+            raise
+    if isinstance(init_m, dict):
+        try:
+            origin = init_m['origin']
+            transp = init_m['trans']
+            rotatep = init_m['rotate']
+            scalep = init_m['scale']
+            shearp = init_m['shear']
+        except:
+            raise ValueError('Invalid init_m parameter.')
+    else:
+        origin = 0.5 * numpy.asarray(ishape, numpy.float64)
+        transp = numpy.zeros(2, numpy.float64)
+        rotatep = numpy.zeros(1, numpy.float64)
+        scalep = numpy.zeros(2, numpy.float64)
+        shearp = numpy.zeros(1, numpy.float64)
+        m = {
+            'origin': origin,
+            'trans': transp,
+            'rotate': rotatep,
+            'scale': scalep,
+            'shear': shearp,
+        }
     t = sampler._trans_matrix(m)
     if (ishape[0] * ishape[1] <= maxpts):
         sf = 1.0
@@ -1923,6 +2047,41 @@ def image_sample_grid(
         return s.sample_grid(image, sampling, kernel, out_type)
     except:
         raise
+
+# segment lesion
+def image_segment_lesion(
+    image:numpy.ndarray,
+    fwhm:float = 0.02,
+    ) -> numpy.ndarray:
+    try:
+        gimage = image_gray(image, rgb_format=False)
+        sgimage = image_smooth_fft(gimage, fwhm)
+        simage = image_smooth_fft(image, fwhm)
+    except:
+        raise
+    ic = image_center(image)
+    icd = numpy.sqrt(0.325 * (ic[0] * ic[0] + ic[1] * ic[1]))
+    s0 = numpy.arange(0.0, float(image.shape[0]), 1.0)
+    s1 = numpy.arange(0.0, float(image.shape[1]), 1.0)
+    (c1,c0) = numpy.meshgrid(s1 - ic[1], s0 - ic[0])
+    bmask = numpy.sqrt(c0 * c0 + c1 * c1) >= icd
+    fmask = numpy.sqrt(c0 * c0 + c1 * c1) <= (0.5 * icd)
+    back_mean = numpy.mean(sgimage[bmask])
+    back_std = numpy.std(sgimage[bmask])
+    fore_mean = numpy.mean(sgimage[fmask])
+    if fore_mean < (back_mean - 1.5 * back_std) or fore_mean > (back_mean + 1.5 * back_std):
+        lower_mean = (fore_mean < back_mean)
+        ftest = numpy.arange(0.1, 1.5, 0.1)
+        fmean_res = ftest.copy()
+        fstd_res = ftest.copy()
+        for (idx, ft) in enumerate(ftest):
+            fmask = numpy.sqrt(c0 * c0 + c1 * c1) <= (ft * icd)
+            fmean_res[idx] = numpy.mean(sgimage[fmask])
+            fstd_res[idx] = numpy.std(sgimage[fmask])
+        print(fmean_res)
+        print(fstd_res)
+    else:
+        pass
 
 # smooth image using fft
 def image_smooth_fft(image:numpy.ndarray, fwhm:float) -> numpy.ndarray:
@@ -2135,6 +2294,72 @@ def lut_lookup(
             colors[above, 2] = below_neg_col[2]
     return colors
 
+# rgb -> hue, saturation, lightness, value
+def rgb2hslv(r:numpy.ndarray, g:numpy.ndarray, b:numpy.ndarray):
+    """
+    Convert RGB to HSLV values
+
+    Parameters
+    ----------
+    r, g, b : ndarray
+        Arrays with red, green, blue channel values (any dims, must match!)
+    
+    Returns
+    -------
+    (h, sl, l, sv, v) : tuple
+        Hue, saturation, lightness, and value arrays
+    """
+    if isinstance(r, list):
+        r = numpy.asarray(r)
+    if isinstance(g, list):
+        g = numpy.asarray(g)
+    if isinstance(b, list):
+        b = numpy.asarray(b)
+    if r.shape != g.shape or r.shape != b.shape:
+        raise ValueError('Invalid shape/dims.')
+    if r.dtype != g.dtype or r.dtype != b.dtype:
+        raise ValueError('Invalid datatype combination.')
+    rm = numpy.logical_and(r >= g, r >= b)
+    gm = numpy.logical_and(g > r, g >= b)
+    bm = numpy.logical_and(b > r, b > g)
+    if r.dtype != numpy.float32 and r.dtype != numpy.float64:
+        f = (1.0 / 255.0)
+        r = f * r.astype(numpy.float64)
+        g = f * g.astype(numpy.float64)
+        b = f * b.astype(numpy.float64)
+    rr = r[rm]
+    rg = r[gm]
+    rb = r[bm]
+    gr = g[rm]
+    gg = g[gm]
+    gb = g[bm]
+    br = b[rm]
+    bg = b[gm]
+    bb = b[bm]
+    h = numpy.zeros(r.size).reshape(r.shape)
+    mx = h.copy()
+    mn = h.copy()
+    mx[rm] = rr
+    mx[gm] = gg
+    mx[bm] = bb
+    mn[rm] = numpy.minimum(gr, br)
+    mn[gm] = numpy.minimum(rg, bg)
+    mn[bm] = numpy.minimum(rb, gb)
+    mxmn = (mx == mn)
+    h[rm] = numpy.divide(gr - br, numpy.maximum(0.0001, rr - mn[rm]))
+    h[gm] = 2.0 + numpy.divide(bg - rg, numpy.maximum(0.0001, gg - mn[gm]))
+    h[bm] = 4.0 + numpy.divide(rb - gb, numpy.maximum(0.0001, bb - mn[bm]))
+    h[mxmn] = 0.0
+    h[h<0.0] = h[h<0.0] + 6.0
+    h /= 6.0
+    l = 0.5 * (mx + mn)
+    sl = numpy.divide(mx - l, numpy.maximum(0.0001, numpy.minimum(l, 1.0 - l)))
+    sl[mx==0] = 0.0
+    sl[mn==1] = 0.0
+    sv = numpy.divide(mx - mn, numpy.maximum(0.0001, mx))
+    sv[mx==0] = 0.0
+    return (h, sl, l, sv, mx)
+    
 # read image
 def read_image(image_file:str) -> numpy.ndarray:
 
