@@ -6,14 +6,14 @@ Created on Fri Aug 30 11:01:59 2019
 @author: weberj3
 """
 
-import os
+#import os
 from matplotlib import pyplot
 #%matplotlib inline
 #import imageio
 import numpy
 from isicarchive import imfunc
-from isicarchive.api import IsicApi
-from isicarchive import sampler
+#from isicarchive.api import IsicApi
+#from isicarchive import sampler
 
 # function for mean and sample STD
 #def mean_std(a:list, is_sample:bool=True):
@@ -25,40 +25,49 @@ from isicarchive import sampler
 #print_fine_details = False
 
 # please change the username accordingly!
-username = 'weberj3@mskcc.org'
+#username = 'weberj3@mskcc.org'
 
 # root folder for all ISIC related data
-doc_folder = 'Z:\\10.Imaging Informatics\\'
+#doc_folder = 'Z:\\10.Imaging Informatics\\'
 
 # cache folder
-cache_folder = doc_folder + 'ISIC' + os.sep + 'cache'
+#cache_folder = doc_folder + 'ISIC' + os.sep + 'cache'
 
 # show URL requests (for debugging purposes only!)
-debug = False
+#debug = False
 
 # instantiate API object
-api = IsicApi(username, cache_folder=cache_folder, debug=debug)
+#api = IsicApi(username, cache_folder=cache_folder, debug=debug)
 
 # load image
-image = api.image('ISIC_0016094')
-image.load_image_data()
-gray = imfunc.image_gray(image.data)
-gray_0 = gray[:,:,0]
+#image = api.image('ISIC_0016094')
+#image.load_image_data()
+#gray = imfunc.image_gray(image.data)
+#gray_0 = gray[:,:,0]
+im_t = imfunc.read_image('C:\\Users\weberj3\\Documents\\testx.png').astype(numpy.float64)
+im_s = imfunc.read_image('C:\\Users\weberj3\\Documents\\testxr.png').astype(numpy.float64)
+im_t = (im_t - 32.0) / 192.0
+im_s = (im_s - 32.0) / 192.0
 
-s = sampler.Sampler()
-m = {
-    'origin': 0.5 * numpy.asarray(list(gray_0.shape), numpy.float64),
-    'rotate': numpy.asarray([0.3], numpy.float64),
-    'scale': numpy.asarray([0.025]),
-}
-t = sampler._trans_matrix(m)
-print(t)
+#s = sampler.Sampler()
+#m = {
+#    'origin': 0.5 * numpy.asarray(list(im_t.shape), numpy.float64),
+#    'rotate': numpy.asarray([0.05], numpy.float64),
+#    'scale': numpy.asarray([1.0]),
+#}
+#t = sampler._trans_matrix(m)
+#print(t)
 
-r_image = s.sample_grid(gray_0, 1.0, 'cubic', out_type='uint8', m=m)
+#r_image = s.sample_grid(gray_0, 1.0, 'cubic', out_type='uint8', m=m)
 
-fig = pyplot.figure(figsize=(8,12))
-pyplot.imshow(r_image)
-pyplot.show()
+#import scipy.ndimage as ndi
+#mask = ndi.binary_dilation(r_image >= 1)
+
+#fig = pyplot.figure(figsize=(8,12))
+#pyplot.imshow(r_image[120:-120,120:-120])
+#pyplot.show()
+
+m = imfunc.image_register(im_t, im_s, smooth=None)
 
 #image.load_image_data()
 #image.load_superpixels()
