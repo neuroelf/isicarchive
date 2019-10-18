@@ -952,6 +952,73 @@ class IsicApi(object):
         if deref_studies:
             self._study_objs = dict()
 
+    # combine studies
+    def combine_studies(self, studies:list):
+        if not isinstance(studies, list):
+            raise ValueError('Invalid studies parameter.')
+        combined = Study()
+        combined.description = 'Combined study:\n'
+        combined_features = dict()
+        combined_images = dict()
+        combined_questions = dict()
+        combined_users = dict()
+        for study in studies:
+            try:
+                study.load_annotations()
+                study.load_images()
+            except:
+                raise
+            combined._api = study._api
+            combined._detail = True
+            combined._in_archive = True
+            for (k, v) in study._obj_annotations.items():
+                combined._obj_annotations[k] = v
+            for (k, v) in study._obj_images.items():
+                combined._obj_images[k] = v
+            combined.annotations.extend(study.annotations)
+            combined.description += study.description + '\n'
+            for f in study.features:
+                if not f['id'] in combined_features:
+                    combined.features.extend([f])
+                    combined_features[f['id']] = True
+            for i in study.images:
+                if not i['_id'] in combined_images:
+                    combined.images.extend([i])
+                    combined_images[i['_id']] = True
+            for (k, v) in study.loaded_features.items():
+                if not k in combined.loaded_features:
+                    combined.loaded_features[k] = v
+                else:
+                    combined.loaded_features[k] += v
+            for (k, v) in study.loaded_features_in.items():
+                if not k in combined.loaded_features_in:
+                    combined.loaded_features_in[k] = v
+                else:
+                    combined.loaded_features_in[k].extend(v)
+            for (k, v) in study.meta_data.items():
+                if not k in combined.meta_data:
+                    combined.meta_data[k] = v
+                else:
+                    if isinstance(v, list):
+                        combined.meta_data[k].extend(v)
+                    elif isinstance(v, dict):
+                        for (sk, sv) in v.items():
+                            combined.meta_data[k][sk] = sv
+            for q in study.questions:
+                if not q['id'] in combined_questions:
+                    combined.questions.extend([q])
+                    combined_questions[q['id']] = True
+            for u in study.users:
+                if not u['_id'] in combined_users:
+                    combined.users.extend([u])
+                    combined_users[u['_id']] = True
+                    combined.user_completion[u['_id']] = 0
+            for (k, v) in study.user_completion.items():
+                combined.user_completion[k] += v
+        for count in range(len(combined.annotations)):
+            combined._annotations[combined.annotations[count]['_id']] = count
+        return combined
+
     # dataset endpoint
     def dataset(self,
         object_id:str = None,
