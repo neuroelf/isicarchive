@@ -17,6 +17,10 @@ from numba import float64, int64, jit, prange
 import numpy
 
 
+# fix value to -1.0 ... 1.0
+def _frone(v):
+    return min(1.0, max(-1.0, v))
+
 # Gaussian (smoothing) kernel
 @jit('f8[:](f8)', nopython=True)
 def _gauss_kernel(fwhm:numpy.float64 = 2.0) -> numpy.ndarray:
@@ -92,8 +96,10 @@ def _sample_grid_2d(
                 cwi = mks + (ci-c1b) * ks - int(c1o * fks)
                 if cwi > 0 and cwi < nk:
                     kwi = k[cwi]
-                    val += kwi * ascol[ci]
-                    vw += kwi
+                    valp = ascol[ci]
+                    if not numpy.isnan(valp):
+                        val += kwi * valp
+                        vw += kwi
             if vw == 0.0:
                 vw = 1.0
             out[i0,i1] = val / vw
@@ -146,8 +152,10 @@ def _sample_grid_coords(
                 if cwi < 0 or cwi >= nk:
                     continue
                 kwi = kwi0 * k[cwi]
-                val += kwi * a[ri,ci]
-                vw += kwi
+                valp = a[ri,ci]
+                if not numpy.isnan(valp):
+                    val += kwi * valp
+                    vw += kwi
         if vw == 0.0:
             vw = 1.0
         out[i] = val / vw
@@ -206,8 +214,10 @@ def _sample_grid_coords_fine(
                 if cwi <= 0 or cwi >= nk:
                     continue
                 kwi = kwi0 * ((1.0 - wfp) * k[cwi] + wfp * k[cwi-1])
-                val += kwi * a[ri,ci]
-                vw += kwi
+                valp = a[ri,ci]
+                if not numpy.isnan(valp):
+                    val += kwi * valp
+                    vw += kwi
         if vw == 0.0:
             vw = 1.0
         out[i] = val / vw
@@ -246,14 +256,29 @@ def _sample_values(
                 cwi = mks + (ci-c0b) * ks - int(c0o * fks)
                 if cwi > 0 and cwi < nk:
                     kwi = k[cwi]
-                    val += kwi * a[ci]
-                    vw += kwi
+                    valp = a[ci]
+                    if not numpy.isnan(valp):
+                        val += kwi * valp
+                        vw += kwi
             if vw == 0.0:
                 vw = 1.0
             v[i0] = val / vw
     return v
 
-def _trans_matrix(m:Union[list, dict]) -> numpy.ndarray:
+def trans_matrix(m:Union[list, dict, tuple]) -> numpy.ndarray:
+    if isinstance(m, tuple):
+        mt = m
+        m = dict()
+        if len(mt) > 0:
+            m['trans'] = mt[0]
+        if len(mt) > 1:
+            m['rotate'] = mt[1]
+        if len(mt) > 2:
+            m['scale'] = mt[2]
+        if len(mt) > 3:
+            m['shear'] = mt[3]
+        if len(mt) > 4:
+            m['origin'] = mt[4]
     if isinstance(m, dict):
         m = [m]
     elif not isinstance(m, list):
@@ -409,6 +434,58 @@ def _trans_matrix(m:Union[list, dict]) -> numpy.ndarray:
     except:
         raise
     return m_out
+
+def trans_matrix_inv(m:numpy.ndarray):
+    """
+    Decompose transformation matrix into parts
+
+    Parameters
+    ----------
+    m : ndarray
+        Transformation matrix
+    
+    Returns
+    -------
+    trans : ndarray
+        2- or 3-element translation
+    rotate : ndarray
+        1- or 3-element rotation angles
+
+    """
+    was2d = False
+    if m.shape[1] == 3:
+        was2d = True
+        m = numpy.asarray([
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, m[0,0], m[0,1], m[0,2]],
+            [0.0, m[1,0], m[1,1], m[1,2]],
+            [0.0, 0.0, 0.0, 1.0]], numpy.float64)
+    trans = m[0:3,3]
+    rotate = numpy.zeros(3, numpy.float64)
+    r = m[0:3,0:3]
+    rc = numpy.linalg.cholesky(numpy.matmul(r.T, r)).T
+    scale = numpy.diagonal(rc)
+    if numpy.linalg.det(r) < 0.0:
+        scale[0] *= -1.0
+    rcd = rc * numpy.eye(3, dtype=numpy.float64)
+    rc = numpy.linalg.solve(rcd, rc)
+    shear = numpy.asarray([rc[0,1], rc[0,2], rc[1,2]], numpy.float64)
+    r0 = trans_matrix({'rotate': rotate, 'scale': scale, 'shear': shear})[0:3,0:3]
+    r0 = numpy.linalg.solve(numpy.linalg.inv(r), numpy.linalg.inv(r0))
+    rotate[1] = numpy.arcsin(_frone(r0[0,2]))
+    if numpy.abs((numpy.abs(rotate[1]) - (numpy.pi / 2.0))) < 1.0e-6:
+        rotate[0] = 0.0
+        rotate[2] = numpy.arctan2(-_frone(r0[1,0]), _frone(-r0[2,0] / r0[0,2]))
+    else:
+        rc = numpy.cos(rotate[1])
+        rotate[0] = numpy.arctan2(_frone(r0[1,2] / rc), _frone(r0[2,2] / rc))
+        rotate[2] = numpy.arctan2(_frone(r0[0,1] / rc), _frone(r0[0,0] / rc))
+    if was2d:
+        trans = trans[1:]
+        rotate = rotate[0:1]
+        scale = scale[1:]
+        shear = shear[2:3]
+    return (trans, rotate, scale, shear)
 
 
 class Sampler(object):
@@ -662,7 +739,7 @@ class Sampler(object):
         if ls == 2:
             if isinstance(m, list) or isinstance(m, dict):
                 try:
-                    m = _trans_matrix(m)
+                    m = trans_matrix(m)
                 except:
                     raise
             if m is None or not isinstance(m, numpy.ndarray):

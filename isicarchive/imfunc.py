@@ -1828,11 +1828,12 @@ def image_register(
     i2:numpy.ndarray,
     imask:numpy.ndarray = None,
     mode:str = 'luma',
+    origin:numpy.ndarray = None,
     trans:bool = True,
     rotate:bool = True,
     scale:bool = False,
     shear:bool = False,
-    method:str = 'cubic',
+    imethod:str = 'linear',
     maxpts:int = 250000,
     maxiter:int = 100,
     smooth:list = [0.005],
@@ -1843,10 +1844,10 @@ def image_register(
     from . import sampler
     s = sampler.Sampler()
     
-    if not method in s._kernels:
-        raise ValueError('Invalid method (kernel function).')
-    sk = s._kernels[method]
-    lsk = s._kernels['lanczos3']
+    if not imethod in s._kernels:
+        raise ValueError('Invalid interpolation method (kernel function).')
+    sk = s._kernels[imethod]
+    zsk = s._kernels['lanczos3']
     if not isinstance(i1, numpy.ndarray) or not isinstance(i2, numpy.ndarray):
         raise ValueError('Invalid types.')
     if i1.ndim < 2 or i1.ndim > 3 or i2.ndim < 2 or i2.ndim > 3:
@@ -1874,27 +1875,46 @@ def image_register(
         except:
             raise
     if isinstance(init_m, dict):
-        try:
-            origin = init_m['origin']
+        if origin is None:
+            if 'origin' in init_m:
+                origin = init_m['origin']
+            else:
+                origin = 0.5 * numpy.asarray(ishape, numpy.float64)
+        if 'trans' in init_m:
             transp = init_m['trans']
+        else:
+            transp = numpy.zeros(2, numpy.float64)
+        if 'rotate' in init_m:
             rotatep = init_m['rotate']
+        else:
+            rotatep = numpy.zeros(1, numpy.float64)
+        if 'scale' in init_m:
             scalep = init_m['scale']
+        else:
+            scalep = numpy.ones(1, numpy.float64)
+        if 'shear' in init_m:
             shearp = init_m['shear']
-        except:
-            raise ValueError('Invalid init_m parameter.')
+        else:
+            shearp = numpy.zeros(1, numpy.float64)
     else:
-        origin = 0.5 * numpy.asarray(ishape, numpy.float64)
+        if origin is None:
+            origin = 0.5 * numpy.asarray(ishape, numpy.float64)
         transp = numpy.zeros(2, numpy.float64)
         rotatep = numpy.zeros(1, numpy.float64)
         scalep = numpy.ones(1, numpy.float64)
         shearp = numpy.zeros(1, numpy.float64)
-        m = {
-            'origin': origin,
-            'trans': transp,
-            'rotate': rotatep,
-            'scale': scalep,
-            'shear': shearp,
-        }
+    m = {
+        'trans': transp,
+        'rotate': rotatep,
+        'scale': scalep,
+        'shear': shearp,
+    }
+    try:
+        moi = sampler.trans_matrix({'trans': origin})
+        mo = sampler.trans_matrix({'trans': -origin})
+        t = numpy.linalg.inv(sampler.trans_matrix(m))
+    except:
+        raise
     s0 = numpy.arange(0.0, float(ishape[0]), 1.0).astype(numpy.float64)
     s1 = numpy.arange(0.0, float(ishape[1]), 1.0).astype(numpy.float64)
     (c1, c0) = numpy.meshgrid(s1, s0)
@@ -1902,37 +1922,47 @@ def image_register(
     c1.shape = (c1.size,1,)
     c01 = numpy.concatenate((c0,c1), axis=1)
     step = (1.0 / 512.0)
-    dg0 = sampler._sample_grid_coords(i1, c01 + step * numpy.asarray([1.0,1.0]), lsk[0], lsk[1])
+    dg0 = sampler._sample_grid_coords(
+        i1, c01 + step * numpy.asarray([1.0,1.0]), zsk[0], zsk[1])
     dg1 = dg0.copy()
-    cxy = sampler._sample_grid_coords(i1, c01 + step * numpy.asarray([1.0,-1.0]), lsk[0], lsk[1])
+    cxy = sampler._sample_grid_coords(
+        i1, c01 + step * numpy.asarray([1.0,-1.0]), zsk[0], zsk[1])
     dg0 += cxy
     dg1 -= cxy
-    cxy = sampler._sample_grid_coords(i1, c01 + step * numpy.asarray([-1.0,1.0]), lsk[0], lsk[1])
+    cxy = sampler._sample_grid_coords(
+        i1, c01 + step * numpy.asarray([-1.0,1.0]), zsk[0], zsk[1])
     dg0 -= cxy
     dg1 += cxy
-    cxy = sampler._sample_grid_coords(i1, c01 + step * numpy.asarray([-1.0,-1.0]), lsk[0], lsk[1])
+    cxy = sampler._sample_grid_coords(
+        i1, c01 + step * numpy.asarray([-1.0,-1.0]), zsk[0], zsk[1])
     dg0 -= cxy
     dg1 -= cxy
     dg0 *= 128.0
     dg1 *= 128.0
     sf = max([1.0, numpy.sqrt(float(ishape[0] * ishape[1]) / float(maxpts))])
-    s0 = numpy.arange(0.0, float(ishape[0]), sf).astype(numpy.float64)
-    s1 = numpy.arange(0.0, float(ishape[1]), sf).astype(numpy.float64)
+    s0 = numpy.arange(-0.25, float(ishape[0]), sf).astype(numpy.float64)
+    s1 = numpy.arange(-0.25, float(ishape[1]), sf).astype(numpy.float64)
     (c1, c0) = numpy.meshgrid(s1, s0)
     c0.shape = (c0.size,1,)
     c1.shape = (c1.size,1,)
     dg0.shape = ishape
     dg1.shape = ishape
+    lsk = s._kernels['linear']
+    c01 = numpy.concatenate((c0,c1), axis=1)
     if not imask is None:
-        lsk = s._kernels['linear']
-        c01 = numpy.concatenate((c0,c1), axis=1)
-        cmask = sampler._sample_grid_coords(imask, c01, lsk[0], lsk[1]) >= 0.5
+        cmask = sampler._sample_grid_coords(imask.astype(numpy.uint8),
+            c01, lsk[0], lsk[1]) >= 0.5
+        c0 = c0[cmask]
+        c1 = c1[cmask]
+    else:
+        cmask = sampler._sample_grid_coords((i1 >= 0.5).astype(numpy.uint8),
+            c01, lsk[0], lsk[1]) >= 0.5
         c0 = c0[cmask]
         c1 = c1[cmask]
     c01 = numpy.concatenate((c0,c1), axis=1)
     d = sampler._sample_grid_coords(i1, c01, sk[0], sk[1])
-    dg0 = sampler._sample_grid_coords(dg0, c01, lsk[0], lsk[1])
-    dg1 = sampler._sample_grid_coords(dg1, c01, lsk[0], lsk[1])
+    dg0 = sampler._sample_grid_coords(dg0, c01, sk[0], sk[1])
+    dg1 = sampler._sample_grid_coords(dg1, c01, sk[0], sk[1])
     dg0.shape = (dg0.size,1,)
     dg1.shape = (dg1.size,1,)
     dg01 = numpy.concatenate((dg0, dg1), axis=1)
@@ -1949,14 +1979,16 @@ def image_register(
     nc = 0
     if trans:
         transp[0] = 1.0e-6
-        t = numpy.linalg.inv(sampler._trans_matrix(m))
+        t = numpy.matmul(moi, numpy.matmul(
+            numpy.linalg.inv(sampler.trans_matrix(m)), mo))
         tc01 = numpy.concatenate(
             (t[0,0]*c0+t[0,1]*c1+t[0,2], t[1,0]*c0+t[1,1]*c1+t[1,2]), axis=1)
         i1r[:,nc] = -1.0e6 * numpy.sum((tc01 - c01) * dg01, axis=1)
         nc += 1
         transp[0] = 0.0
         transp[1] = 1.0e-6
-        t = numpy.linalg.inv(sampler._trans_matrix(m))
+        t = numpy.matmul(moi, numpy.matmul(
+            numpy.linalg.inv(sampler.trans_matrix(m)), mo))
         tc01 = numpy.concatenate(
             (t[0,0]*c0+t[0,1]*c1+t[0,2], t[1,0]*c0+t[1,1]*c1+t[1,2]), axis=1)
         i1r[:,nc] = -1.0e6 * numpy.sum((tc01 - c01) * dg01, axis=1)
@@ -1964,7 +1996,8 @@ def image_register(
         transp[1] = 0.0
     if rotate:
         rotatep[0] = 1.0e-6
-        t = numpy.linalg.inv(sampler._trans_matrix(m))
+        t = numpy.matmul(moi, numpy.matmul(
+            numpy.linalg.inv(sampler.trans_matrix(m)), mo))
         tc01 = numpy.concatenate(
             (t[0,0]*c0+t[0,1]*c1+t[0,2], t[1,0]*c0+t[1,1]*c1+t[1,2]), axis=1)
         i1r[:,nc] = -1.0e6 * numpy.sum((tc01 - c01) * dg01, axis=1)
@@ -1972,7 +2005,8 @@ def image_register(
         rotatep[0] = 0.0
     if scale:
         scalep[0] = 1.000001
-        t = numpy.linalg.inv(sampler._trans_matrix(m))
+        t = numpy.matmul(moi, numpy.matmul(
+            numpy.linalg.inv(sampler.trans_matrix(m)), mo))
         tc01 = numpy.concatenate(
             (t[0,0]*c0+t[0,1]*c1+t[0,2], t[1,0]*c0+t[1,1]*c1+t[1,2]), axis=1)
         i1r[:,nc] = -1.0e6 * numpy.sum((tc01 - c01) * dg01, axis=1)
@@ -1980,7 +2014,8 @@ def image_register(
         scalep[0] = 1.0
     if shear:
         shearp[0] = 1.0e-6
-        t = numpy.linalg.inv(sampler._trans_matrix(m))
+        t = numpy.matmul(moi, numpy.matmul(
+            numpy.linalg.inv(sampler.trans_matrix(m)), mo))
         tc01 = numpy.concatenate(
             (t[0,0]*c0+t[0,1]*c1+t[0,2], t[1,0]*c0+t[1,1]*c1+t[1,2]), axis=1)
         i1r[:,nc] = -1.0e6 * numpy.sum((tc01 - c01) * dg01, axis=1)
@@ -1989,16 +2024,19 @@ def image_register(
     ss = numpy.inf * numpy.ones(maxiter+1, dtype=numpy.float64)
     pss = ss[0]
     stable = 0
-    t = numpy.linalg.inv(sampler._trans_matrix(m))
-    tm = numpy.repeat(t.reshape((t.shape[0], t.shape[1], 1,)), maxiter+1, axis=2)
+    if isinstance(init_m, dict):
+        t = numpy.matmul(numpy.linalg.inv(sampler.trans_matrix(m)), mo)
+        tm = numpy.repeat(t.reshape((t.shape[0], t.shape[1], 1,)),
+            maxiter+1, axis=2)
+    else:
+        tm = numpy.repeat(mo.reshape((mo.shape[0], mo.shape[1], 1,)),
+            maxiter+1, axis=2)
+    i2msk = (i2 >= 0.5).astype(numpy.uint8)
     while maxiter > 0:
-        t = numpy.linalg.inv(sampler._trans_matrix(m))
-        tm[:,:,maxiter] = t
+        t = numpy.matmul(numpy.linalg.inv(tm[:,:,maxiter]), mo)
         tc01 = numpy.concatenate(
             (t[0,0]*c0+t[0,1]*c1+t[0,2], t[1,0]*c0+t[1,1]*c1+t[1,2]), axis=1)
-        msk = numpy.logical_and(
-            numpy.all(tc01 >= 0.5, axis=1), numpy.logical_and(
-            tc01[:,0] < ishape[0], tc01[:,1] < ishape[1]))
+        msk = (sampler._sample_grid_coords(i2msk, tc01, lsk[0], lsk[1]) >= 0.5)
         if numpy.sum(msk) < 32:
             raise RuntimeError('Too little image overlap!')
         f = sampler._sample_grid_coords(i2, tc01[msk,:], sk[0], sk[1])
@@ -2006,7 +2044,8 @@ def image_register(
         dm = d[msk]
         sc = numpy.sum(dm) / numpy.sum(f)
         dm = dm - sc * f
-        sol = numpy.linalg.lstsq(numpy.matmul(cm.T, cm), numpy.matmul(cm.T, dm), rcond=None)[0]
+        sol = numpy.linalg.lstsq(
+            numpy.matmul(cm.T, cm), numpy.matmul(cm.T, dm), rcond=None)[0]
         nc = 0
         if trans:
             transp[0] = sol[nc]
@@ -2023,15 +2062,27 @@ def image_register(
             shearp[0] = sol[nc]
             nc += 1
         maxiter -= 1
+        tm[:,:,maxiter] = numpy.matmul(numpy.linalg.inv(sampler.trans_matrix(m)),
+            tm[:,:,maxiter+1])
         ss[maxiter] = numpy.sum(dm * dm) / float(dm.size)
-        if ((pss - ss[maxiter]) / pss) < 1.0e-6:
+        if not numpy.isinf(pss) and ((pss - ss[maxiter]) / pss) < 1.0e-6:
             stable += 1
             if stable > 2:
                 break
         else:
             stable = 0
         pss = ss[maxiter]
-    return tm[:,:,maxiter]
+    t = numpy.matmul(tm[:,:,numpy.argmin(ss)], moi)
+    ti = list(sampler.trans_matrix_inv(numpy.linalg.inv(t)))
+    if not trans:
+        ti[0] = numpy.zeros(2, numpy.float64)
+    if not rotate:
+        ti[1] = numpy.zeros(1, numpy.float64)
+    if not scale:
+        ti[2] = numpy.ones(2, numpy.float64)
+    if not shear:
+        ti[3] = numpy.zeros(1, numpy.float64)
+    return tuple(ti)
 
 # image resampling (cheap!)
 def image_resample(image:numpy.ndarray, new_shape:tuple) -> numpy.ndarray:
