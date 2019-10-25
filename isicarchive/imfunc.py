@@ -20,6 +20,8 @@ image_crop
     Crop an image according to coordinates (or superpixel index)
 image_dice
     Compute DICE coefficient of two images
+image_gradient
+    Compute image gradient (and components)
 image_gray
     Generate gray-scale version of image
 image_mark_border
@@ -32,6 +34,8 @@ image_mix
     Mix two (RGB or gray) image, with either max or blending
 image_read_border
     Read encoded image border
+image_register
+    Perform rigid-body alignment of images based on gradient
 image_resample
     Cheap (!) resampling of an image
 image_rotate
@@ -703,6 +707,57 @@ def image_dice(
     s1 = numpy.sum(im1)
     s2 = numpy.sum(im2)
     return 2 * numpy.sum(numpy.logical_and(im1, im2)) / (s1 + s2)
+
+# image gradient
+def image_gradient(image:numpy.ndarray):
+    """
+    Compute image gradient (and components)
+
+    Parameters
+    ----------
+    image : ndarray
+        Image from which the gradient is computed
+    
+    Returns
+    -------
+    gradient : tuple
+        Magnitude, and per-dimension components
+    """
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    from . import sampler
+    s = sampler.Sampler()
+    zsk = s._kernels['cubic']
+    ishape = image.shape
+    if len(ishape) > 2:
+        image = image_gray(image)[:,:,0]
+    s0 = numpy.arange(0.0, float(ishape[0]), 1.0).astype(numpy.float64)
+    s1 = numpy.arange(0.0, float(ishape[1]), 1.0).astype(numpy.float64)
+    (c1, c0) = numpy.meshgrid(s1, s0)
+    c0.shape = (c0.size,1,)
+    c1.shape = (c1.size,1,)
+    c01 = numpy.concatenate((c0,c1), axis=1)
+    step = (1.0 / 512.0)
+    dg0 = sampler._sample_grid_coords(
+        image, c01 + step * numpy.asarray([1.0,1.0]), zsk[0], zsk[1])
+    dg1 = dg0.copy()
+    cxy = sampler._sample_grid_coords(
+        image, c01 + step * numpy.asarray([1.0,-1.0]), zsk[0], zsk[1])
+    dg0 += cxy
+    dg1 -= cxy
+    cxy = sampler._sample_grid_coords(
+        image, c01 + step * numpy.asarray([-1.0,1.0]), zsk[0], zsk[1])
+    dg0 -= cxy
+    dg1 += cxy
+    cxy = sampler._sample_grid_coords(
+        image, c01 + step * numpy.asarray([-1.0,-1.0]), zsk[0], zsk[1])
+    dg0 -= cxy
+    dg1 -= cxy
+    dg0 *= 128.0
+    dg1 *= 128.0
+    dg0.shape = ((ishape[0], ishape[1],))
+    dg1.shape = ((ishape[0], ishape[1],))
+    return (numpy.sqrt(dg0 * dg0 + dg1 * dg1), dg0, dg1)
 
 # image in gray
 def image_gray(
@@ -1911,7 +1966,7 @@ def image_register(
     }
     try:
         moi = sampler.trans_matrix({'trans': origin})
-        mo = sampler.trans_matrix({'trans': -origin})
+        mo = sampler.trans_matrix({'trans': -origin}) #pylint: disable=invalid-unary-operand-type
         t = numpy.linalg.inv(sampler.trans_matrix(m))
     except:
         raise
