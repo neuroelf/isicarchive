@@ -668,7 +668,7 @@ def image_crop(
 def image_dice(
     im1:numpy.ndarray,
     im2:numpy.ndarray,
-    immask:numpy.ndarray) -> float:
+    immask:numpy.ndarray = None) -> float:
     """
     Compute DICE coefficient between two (binary mask) images
 
@@ -707,6 +707,75 @@ def image_dice(
     s1 = numpy.sum(im1)
     s2 = numpy.sum(im2)
     return 2 * numpy.sum(numpy.logical_and(im1, im2)) / (s1 + s2)
+
+# Extended Dice coeffient
+def image_dice_ext(
+    im1:numpy.ndarray,
+    val1:numpy.ndarray,
+    im2:numpy.ndarray,
+    val2:numpy.ndarray) -> float:
+    """
+    Compute extended DICE coefficient between two (binary+value) images
+
+    Parameters
+    ----------
+    im1 : ndarray
+        First image (ndarray, must be boolean)
+    val1 : ndarray
+        Values for first image
+    im2 : ndarray
+        Second image (ndarray, must be boolean)
+    val2 : ndarray
+        Values for second image
+    
+    Returns
+    -------
+    xdice : float
+        Extended DICE coefficient
+    """
+    if not (im1.shape == im2.shape == val1.shape == val2.shape):
+        raise ValueError('Images mismatch in shape.')
+    if len(im1.shape) > 2:
+        raise ValueError('Images must be single-plane.')
+    if im1.dtype != numpy.bool:
+        im1 = im1 > 0
+    if im2.dtype != numpy.bool:
+        im2 = im2 > 0
+    s1 = numpy.sum(im1)
+    s2 = numpy.sum(im2)
+    return (numpy.sum(val1[im2]) + numpy.sum(val2[im1])) / (s1 + s2)
+
+# Smoothed Dice coeffient
+def image_dice_fwhm(
+    im1:numpy.ndarray,
+    im2:numpy.ndarray,
+    fwhm:float) -> float:
+    """
+    Compute smoothed-DICE coefficient between two (binary mask) images
+
+    Parameters
+    ----------
+    im1, im2 : ndarray
+        Two ndarray images of the same size
+    fwhm : float
+        Smoothing kernel size
+    
+    Returns
+    -------
+    xdice : float
+        Extended DICE coefficient
+    """
+    if im1.shape != im2.shape:
+        raise ValueError('Images mismatch in shape.')
+    if len(im1.shape) > 2:
+        raise ValueError('Images must be single-plane.')
+    if im1.dtype != numpy.bool:
+        im1 = im1 > 0
+    if im2.dtype != numpy.bool:
+        im2 = im2 > 0
+    sim1 = image_smooth_scale(im1, fwhm)
+    sim2 = image_smooth_scale(im2, fwhm)
+    return image_dice_ext(im1, sim1, im2, sim2)
 
 # image gradient
 def image_gradient(image:numpy.ndarray):
@@ -2363,6 +2432,20 @@ def image_smooth_fft(image:numpy.ndarray, fwhm:float) -> numpy.ndarray:
     if from_uint8:
         out = numpy.trunc(out).astype(numpy.uint8)
     return out
+
+# scale-smoothing
+def image_smooth_scale(im:numpy.ndarray, fwhm:float) -> numpy.ndarray:
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    import scipy.ndimage as ndimage
+
+    if len(im.shape) > 2:
+        raise ValueError('Image must be single-plane.')
+    if im.dtype != numpy.bool:
+        im = im > 0
+    imb = numpy.logical_not(im, ndimage.binary_erosion(im))
+    sim = image_smooth_fft(im.astype(numpy.float32), fwhm)
+    return numpy.minimum(sim / numpy.mean(sim[imb]), 1.0)
 
 # color LUT operation
 def lut_lookup(

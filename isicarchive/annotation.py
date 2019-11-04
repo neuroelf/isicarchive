@@ -465,6 +465,38 @@ class Annotation(object):
             return imfunc.image_corr(imfunc.image_smooth_fft(sdata, smcc_fwhm),
                 imfunc.image_smooth_fft(odata, smcc_fwhm), simage_mask)
 
+    # set data
+    def set_data(self):
+
+        # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+        import numpy
+
+        if not self._api:
+            raise RuntimeError('Only valid with API object set.')
+        if self._image_obj is None:
+            try:
+                self._image_obj = self._api.image(self.image_id)
+            except:
+                raise
+        try:
+            spmap = self._image_obj.superpixels['map']
+            if spmap is None:
+                self._image_obj.map_superpixels()
+                spmap = self._image_obj.superpixels['map']
+            spshape = self._image_obj.superpixels['idx'].shape
+        except:
+            raise
+        self.masks = dict()
+        for (key, val) in self.features.items():
+            maskimg = numpy.zeros((spshape[0] * spshape[1]), numpy.uint8)
+            for (idx, weight) in zip(val['idx'], val['lst']):
+                if float(weight) == 1.0:
+                    maskimg[spmap[idx,0:spmap[idx,-1]]] = 255
+                else:
+                    w = min(255, int(weight * 255.0))
+                    maskimg[spmap[idx,0:spmap[idx,-1]]] = w
+            self.masks[key] = maskimg.reshape(spshape)
+
     # show image in notebook
     def show_in_notebook(self,
         features:Any = None,
