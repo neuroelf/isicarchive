@@ -22,7 +22,6 @@ def _frone(v):
     return min(1.0, max(-1.0, v))
 
 # Gaussian (smoothing) kernel
-@jit('f8[:](f8)', nopython=True)
 def _gauss_kernel(fwhm:numpy.float64 = 2.0) -> numpy.ndarray:
     if fwhm <= 0.29:
         return numpy.asarray([0,1,0]).astype(numpy.float64)

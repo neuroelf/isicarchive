@@ -777,6 +777,36 @@ def image_dice_fwhm(
     sim2 = image_smooth_scale(im2, fwhm)
     return image_dice_ext(im1, sim1, im2, sim2)
 
+# image distance average
+def image_dist_average(source:numpy.ndarray, target:numpy.ndarray) -> float:
+    """
+    Compute average distance between each foreground in source to target
+
+    Parameters
+    ----------
+    source, target : numpy.ndarray
+        Boolean images (will be made boolean if necessary)
+    
+    Returns
+    -------
+    dist : float
+        Average distance of source to target
+    """
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    import scipy.ndimage as ndimage
+
+    if len(source.shape) > 2 or len(target.shape) > 2:
+        raise ValueError('Images must be 2D.')
+    if source.shape != target.shape:
+        raise ValueError('Images must match in shape.')
+    if source.dtype != numpy.bool:
+        source = source > 0
+    if target.dtype != numpy.bool:
+        target = target > 0
+    dist_to_target = ndimage.morphology.distance_transform_edt(numpy.logical_not(target))
+    return numpy.mean(dist_to_target[source])
+
 # image gradient
 def image_gradient(image:numpy.ndarray):
     """
@@ -2433,6 +2463,36 @@ def image_smooth_fft(image:numpy.ndarray, fwhm:float) -> numpy.ndarray:
         out = numpy.trunc(out).astype(numpy.uint8)
     return out
 
+# outer-boundary smoothing
+def image_smooth_outer(im:numpy.ndarray, boundary:int) -> numpy.ndarray:
+
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    import scipy.ndimage as ndimage
+    from .sampler import _gauss_kernel
+
+    if len(im.shape) > 2:
+        raise ValueError('Image must be single-plane.')
+    if im.dtype != numpy.bool:
+        im = im > 0
+    vim = im.astype(numpy.float64)
+    if not isinstance(boundary, int) or boundary <= 0:
+        return vim
+    if boundary == 1:
+        vim[numpy.logical_and(ndimage.binary_dilation(im), numpy.logical_not(im))] = 0.5
+        return vim
+    imb = numpy.logical_and(im, numpy.logical_not(ndimage.binary_erosion(im)))
+    imd = ndimage.morphology.distance_transform_edt(numpy.logical_not(imb)).astype(numpy.int32)
+    maxd = int(numpy.amax(imd))
+    k = _gauss_kernel(float(boundary))
+    kh = k.size // 2
+    k = k[kh+boundary:]
+    k = k / k[0]
+    if k.size <= maxd:
+        k = numpy.concatenate((k, numpy.zeros(1+maxd-k.size)), axis=0)
+    im = numpy.logical_not(im)
+    vim[im] = k[imd[im]]
+    return vim
+
 # scale-smoothing
 def image_smooth_scale(im:numpy.ndarray, fwhm:float) -> numpy.ndarray:
 
@@ -2443,7 +2503,7 @@ def image_smooth_scale(im:numpy.ndarray, fwhm:float) -> numpy.ndarray:
         raise ValueError('Image must be single-plane.')
     if im.dtype != numpy.bool:
         im = im > 0
-    imb = numpy.logical_not(im, ndimage.binary_erosion(im))
+    imb = numpy.logical_and(ndimage.binary_dilation(im), numpy.logical_not(im))
     sim = image_smooth_fft(im.astype(numpy.float32), fwhm)
     return numpy.minimum(sim / numpy.mean(sim[imb]), 1.0)
 
