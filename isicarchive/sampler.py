@@ -810,3 +810,187 @@ class Sampler(object):
             else:
                 warnings.warn('Output of type ' + out_type + ' not supported; returning float64.')
         return out
+
+    # sample 2D grid
+    def sample_radial(self,
+        a:numpy.ndarray,
+        cx:float,
+        cy:float,
+        step:float,
+        steps:int,
+        astep:float,
+        k:Union[str,tuple] = 'cubic',
+        out_type:str = 'float64',
+        fine:bool = False,
+        ) -> numpy.ndarray:
+        if not isinstance(a, numpy.ndarray):
+            raise ValueError('Invalid array a to sample.')
+        ad = a.ndim
+        ash = a.shape
+        if not isinstance(cx, float) or not isinstance(cy, float):
+            raise ValueError('Invalid center coordinate.')
+        if not isinstance(step, float) or step <= 0.0:
+            raise ValueError('Invalid step size.')
+        if not isinstance(steps, int) or steps <= 0:
+            raise ValueError('Invalid number of steps.')
+        steps
+        if not isinstance(astep, float) or astep <= 0.0:
+            raise ValueError('Invalid angular step size.')
+        astep = numpy.arange(0.0, numpy.pi/2.0, astep)
+        if isinstance(s, int):
+            s = float(s) / float(max(ash[0], ash[1]))
+        if isinstance(s, float):
+            sf = s
+            s = []
+            for d in range(min(2,ad)):
+                s.append(int(sf * (float(ash[d]) + 0.5)))
+        if isinstance(s, numpy.ndarray):
+            if s.ndim != 2 or s.shape[0] != 3 or s.shape[1] > ad:
+                raise ValueError('Invalid sampling specification.')
+            sl = []
+            for d in s.shape[1]:
+                sl.append(numpy.arange(s[0,d], s[1,d], s[2,d]).astype(numpy.float64))
+            s = sl
+        elif (not isinstance(s, list) and not isinstance(s, tuple)) or len(s) > ad:
+            raise ValueError('Invalid sampling specification.')
+        else:
+            s = s[:]
+            try:
+                for d in range(len(s)):
+                    if isinstance(s[d], int):
+                        sf = float(ash[d]) / float(s[d])
+                        s[d] = numpy.arange(sf/2.0-0.5, float(ash[d])-0.5, sf)
+                    elif isinstance(s[d], float):
+                        sf = 1.0 / s[d]
+                        s[d] = numpy.arange(sf/2.0-0.5, float(ash[d])-0.5, sf)
+                    elif not isinstance(s[d], numpy.ndarray):
+                        s[d] = numpy.asarray(s[d]).astype(numpy.float64)
+            except:
+                raise
+        if isinstance(k, str):
+            if k == 'resample':
+                fs = []
+                for d in range(len(s)):
+                    fs.append(numpy.mean(numpy.diff(s[d])))
+                fm = 0.1 * numpy.trunc(10.0 * numpy.mean(fs))
+                if fm <= 1.0:
+                    k = self._kernels['cubic']
+                else:
+                    fms = 'rs_{0:.1f}'.format(fm)
+                    if fms in self._kernels:
+                        k = self._kernels[fms]
+                    else:
+                        kc = self._kernels['cubic']
+                        sk = _gauss_kernel(fm * float(kc[1])).astype(numpy.float64)
+                        skl = sk.size
+                        skr = (skl - 1) // (2 * kc[1])
+                        skr = 2 * kc[1] * skr + 1
+                        skd = (skl - skr) // 2
+                        sk = sk[skd:skr+skd]
+                        sk = sk / numpy.sum(sk)
+                        ksk = numpy.convolve(kc[0], sk)
+                        while numpy.sum(ksk[0:kc[1]]) < 0.01:
+                            ksk = ksk[kc[1]:-kc[1]]
+                        k = [ksk, kc[1]]
+                        self._kernels[fms] = k
+            elif len(k) > 5 and k[0:5] == 'gauss':
+                try:
+                    fwhm = 0.1 * float(int(0.5 + 10 * float(k[5:])))
+                    fms = 'g_{0:.1f}'.format(fwhm)
+                    if fms in self._kernels:
+                        k = self._kernels[fms]
+                    else:
+                        sk = _gauss_kernel(fwhm * float(1024))
+                        skr = (sk.size - 1) // 2048
+                        skr = 2048 * skr + 1
+                        skd = (sk.size - skr) // 2
+                        sk = sk[skd:skr+skd]
+                        sk = sk / numpy.sum(sk)
+                        k = [sk, 1024]
+                        self._kernels[fms] = k
+                except:
+                    raise ValueError('Invalid gaussian kernel requested.')
+            elif not k in self._kernels:
+                raise ValueError('Kernel ' + k + ' not available.')
+            else:
+                k = self._kernels[k]
+        elif not isinstance(k, tuple) or len(k) != 2 or (
+            not isinstance(k[0], numpy.ndarray) or len(k[1]) != 1 or
+            (float(k[0].size - 1) % float(k[1])) != 0.0):
+            raise ValueError('Invalid kernel k.')
+        ls = len(s)
+        if ls == 2:
+            if isinstance(m, list) or isinstance(m, dict):
+                try:
+                    m = trans_matrix(m)
+                except:
+                    raise
+            if m is None or not isinstance(m, numpy.ndarray):
+                if ad == 2:
+                    out = _sample_grid_2d(a, s[0], s[1], k[0], k[1])
+                elif ad == 3:
+                    out = _sample_grid_2d(a[:,:,0].reshape((ash[0], ash[1],)),
+                        s[0], s[1], k[0], k[1])
+                    outsh = out.shape
+                    out = numpy.repeat(out.reshape((outsh[0], outsh[1], 1)),
+                        ash[2], axis=2)
+                    for p in range(1, ash[2]):
+                        out[:,:,p] = _sample_grid_2d(a[:,:,p].reshape((ash[0], ash[1])),
+                            s[0], s[1], k[0], k[1]).reshape((outsh[0], outsh[1],))
+                else:
+                    raise ValueError('Sampling 2D grid of 4D data not supported.')
+            else:
+                if m.dtype != numpy.float64 or m.shape[1] != 3 or m.shape[0] < 2:
+                    raise ValueError('Invalid transformation matrix m.')
+                s0 = s[0].size
+                s1 = s[1].size
+                (c1, c0) = numpy.meshgrid(s[1], s[0])
+                c0.shape = (c0.size,1,)
+                c1.shape = (c1.size,1,)
+                c01 = numpy.concatenate(
+                    (m[0,0]*c0+m[0,1]*c1+m[0,2], m[1,0]*c0+m[1,1]*c1+m[1,2]), axis=1)
+                if ad == 2:
+                    if fine:
+                        out = _sample_grid_coords_fine(
+                            a, c01, k[0], k[1]).reshape((s0,s1,))
+                    else:
+                        out = _sample_grid_coords(
+                            a, c01, k[0], k[1]).reshape((s0,s1,))
+                elif ad == 3:
+                    outsh = (s0,s1,1,)
+                    if fine:
+                        out = _sample_grid_coords_fine(
+                            a[:,:,0].reshape((ash[0], ash[1],)),
+                            c01, k[0], k[1]).reshape(outsh)
+                        out = numpy.repeat(out, ash[2], axis=2)
+                        for p in range(1, ash[2]):
+                            out[:,:,p] = _sample_grid_coords_fine(
+                                a[:,:,p].reshape((ash[0], ash[1],)),
+                                c01, k[0], k[1]).reshape((s0,s1,))
+                    else:
+                        out = _sample_grid_coords(
+                            a[:,:,0].reshape((ash[0], ash[1],)),
+                            c01, k[0], k[1]).reshape(outsh)
+                        out = numpy.repeat(out, ash[2], axis=2)
+                        for p in range(1, ash[2]):
+                            out[:,:,p] = _sample_grid_coords(
+                                a[:,:,p].reshape((ash[0], ash[1],)),
+                                c01, k[0], k[1]).reshape((s0,s1,))
+        elif ls == 1:
+            out = _sample_values(a, s[0], k[0], k[1])
+        elif ls == 3:
+            raise NotImplementedError('3D interpolation not yet implemented.')
+        else:
+            raise NotImplementedError('Higher dim interpolation not yet implemented.')
+        if out_type != 'float64':
+            if out_type == 'uint8':
+                out = numpy.minimum(numpy.maximum(out, 0.0), 255.0).astype(numpy.uint8)
+            elif out_type == 'float32':
+                out = out.astype(numpy.float32)
+            elif out_type == 'int16':
+                out = numpy.minimum(numpy.maximum(out, -32768.0), 32767.0).astype(numpy.int16)
+            elif out_type == 'int32':
+                out = out.astype(numpy.int32)
+            else:
+                warnings.warn('Output of type ' + out_type + ' not supported; returning float64.')
+        return out
