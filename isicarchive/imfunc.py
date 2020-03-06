@@ -912,6 +912,60 @@ def image_gray(
             (im_shape[0], im_shape[1], 1,)).repeat(3, axis=2)
     return p.astype(image.dtype)
 
+# HSL based histograms
+def image_hslhist(
+    image:numpy.ndarray,
+    resize:int = 512,
+    bins:int = 64,
+    binsamples:int = 8,
+    hmin:float = 0.0,
+    hmax:float = 1.0,
+    smin:float = 0.0,
+    smax:float = 1.0,
+    lmin:float = 0.0,
+    lmax:float = 1.0,
+    mask:numpy.ndarray = None,
+    mask_cradius:float = 0.875,
+    ) -> tuple:
+
+    # IMPORT DONE HERE TO SAVE TIME DURING IMPORT
+    from isicarchive.sampler import Sampler
+    s = Sampler()
+
+    if len(image.shape) != 3 or image.shape[2] != 3:
+        raise ValueError('Invalid image. Must be RGB.')
+    if binsamples > bins or binsamples < 2:
+        raise ValueError('Invalid bin sampling.')
+    if image.dtype == numpy.uint8:
+        image = (1.0 / 255.0) * image.astype(numpy.float64)
+    if not resize is None and resize > 0:
+        image = s.sample_grid(image, [resize, resize])
+    hslimage = rgb2hslv(image[:,:,0], image[:,:,1], image[:,:,2])
+    if mask is None or len(mask.shape) != 2 or mask.shape != image.shape[:2]:
+        cx = 0.5 * float(image.shape[0] - 1)
+        cy = 0.5 * float(image.shape[1] - 1)
+        maskx, masky = numpy.meshgrid(numpy.arange(-1.0, 1.0+0.5/cx, 1.0/cx),
+            numpy.arange(-1.0, 1.0+0.5/cy, 1.0/cy))
+        mask = (maskx * maskx + masky * masky) <= 1.0
+    hs = numpy.histogram2d(hslimage[0][mask], hslimage[1][mask], bins=bins,
+        range=[[hmin, hmax], [smin, smax]])
+    hl = numpy.histogram2d(hslimage[0][mask], hslimage[2][mask], bins=bins,
+        range=[[hmin, hmax], [lmin, lmax]])
+    sl = numpy.histogram2d(hslimage[1][mask], hslimage[2][mask], bins=bins,
+        range=[[smin, smax], [lmin, lmax]])
+    if binsamples < bins:
+        hs = image_smooth_fft(hs[0], 1.0 / float(binsamples))
+        hl = image_smooth_fft(hl[0], 1.0 / float(binsamples))
+        sl = image_smooth_fft(sl[0], 1.0 / float(binsamples))
+        hs = s.sample_grid(hs, [binsamples, binsamples])
+        hl = s.sample_grid(hl, [binsamples, binsamples])
+        sl = s.sample_grid(sl, [binsamples, binsamples])
+    else:
+        hs = hs[0]
+        hl = hl[0]
+        sl = sl[0]
+    return (hs, hl, sl)
+
 # mark border of an image with "content"
 def image_mark_border(
     image:numpy.ndarray,
@@ -2724,7 +2778,7 @@ def rgb2hslv(r:numpy.ndarray, g:numpy.ndarray, b:numpy.ndarray):
     h[h<0.0] = h[h<0.0] + 6.0
     h /= 6.0
     l = 0.5 * (mx + mn)
-    sl = numpy.divide(mx - l, numpy.maximum(0.0001, numpy.minimum(l, 1.0 - l)))
+    sl = numpy.divide(mx - mn, numpy.maximum(0.0001, 1.0 - numpy.abs(2.0 * l - 1.0)))
     sl[mx==0] = 0.0
     sl[mn==1] = 0.0
     sv = numpy.divide(mx - mn, numpy.maximum(0.0001, mx))
