@@ -954,12 +954,11 @@ def image_hslhist(
     sl = numpy.histogram2d(hslimage[1][mask], hslimage[2][mask], bins=bins,
         range=[[smin, smax], [lmin, lmax]])
     if binsamples < bins:
-        hs = image_smooth_fft(hs[0], 1.0 / float(binsamples))
-        hl = image_smooth_fft(hl[0], 1.0 / float(binsamples))
-        sl = image_smooth_fft(sl[0], 1.0 / float(binsamples))
-        hs = s.sample_grid(hs, [binsamples, binsamples])
-        hl = s.sample_grid(hl, [binsamples, binsamples])
-        sl = s.sample_grid(sl, [binsamples, binsamples])
+        ssize = float(bins) / float(binsamples)
+        sc = numpy.round(numpy.arange(0.5 * ssize, float(bins), ssize)).astype(numpy.int32)
+        hs = image_smooth_fft(hs[0], 1.0 / float(binsamples))[:,sc][sc,:]
+        hl = image_smooth_fft(hl[0], 1.0 / float(binsamples))[:,sc][sc,:]
+        sl = image_smooth_fft(sl[0], 1.0 / float(binsamples))[:,sc][sc,:]
     else:
         hs = hs[0]
         hl = hl[0]
