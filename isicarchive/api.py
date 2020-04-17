@@ -748,6 +748,8 @@ class IsicApi(object):
 
     # cache image information
     def _cache_images(self, from_list:dict):
+        if not from_list:
+            return
         for item in from_list:
             if not item['_id'] in self.image_cache:
                 self.image_cache[item['_id']] = item
@@ -794,6 +796,8 @@ class IsicApi(object):
             offset = max(0, offset - limit)
             params['offset'] = str(offset)
             partial_list = self.image(params=params)
+            if partial_list is None:
+                break
             self._cache_images(partial_list)
             partial_list_ids = sorted(map(lambda item: item['_id'], partial_list))
         offset = initial_offset
@@ -801,6 +805,8 @@ class IsicApi(object):
             offset += limit
             params['offset'] = str(offset)
             partial_list = self.image(params=params)
+            if partial_list is None:
+                break
             self._cache_images(partial_list)
         try:
             if num_loaded < len(self.image_cache):
