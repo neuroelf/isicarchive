@@ -14,7 +14,7 @@ from .version import __version__
 
 # IsicApi: default URL/URI
 ISIC_API_URI = '/api/v1'
-ISIC_API_TIMEOUT = 15.0
+ISIC_API_TIMEOUT = 30.0
 ISIC_BASE_URL = 'https://isic-archive.com'
 
 # IsicApi: dataset cache settings
