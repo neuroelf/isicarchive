@@ -22,7 +22,7 @@ ISIC_DATASET_GRACE_PERIOD = 7 * 86400
 
 # IsicApi: image cache settings
 ISIC_IMAGE_CACHE_UPDATE_LASTS = 3600.0 # minimum time between updates in seconds
-ISIC_IMAGES_PER_CACHING = 500 # number of image detail items per get(...) call
+ISIC_IMAGES_PER_CACHING = 3000 # number of image detail items per get(...) call
 
 # IsicApi: segmentation cache settings
 ISIC_SEG_SAVE_EVERY = 50
