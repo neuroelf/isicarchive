@@ -50,6 +50,8 @@ superpixel_neighbors
     Generate neighbors lists for each superpixel in an image
 superpixel_outlines
     Extract superpixel (outline) shapes from superpixel map
+superpixel_values
+    Return the values of a superpixel
 write_image
     Write an image to file or buffer (bytes)
 """
@@ -135,12 +137,12 @@ def color_superpixels(
         image = numpy.copy(image)
     if len(im_shape) == 3 or im_shape[1] > 3:
         planes = im_shape[2] if len(im_shape) == 3 else 1
-        image.shape = (im_shape[0] * im_shape[1], planes)
     else:
         if len(im_shape) > 1:
             planes = im_shape[1]
         else:
             planes = 1
+    image.shape = (im_shape[0] * im_shape[1], planes)
     has_alpha = False
     if planes > 3:
         planes = 3
@@ -2882,6 +2884,53 @@ def superpixel_dice(list1:numpy.ndarray, list2:numpy.ndarray) -> float:
     intersect = numpy.intersect1d(list1, list2)
     return 2.0 * float(intersect.size) / float(len(list1) + len(list2))
 
+# superpixel mask
+def superpixel_mask(
+    imshape:tuple,
+    spidx:Union[list,numpy.ndarray],
+    spmap:numpy.ndarray,
+    outline:bool = False,
+    outline_width:int = 2,
+    ) -> numpy.ndarray:
+    """
+    Create super-pixel based mask (or outline)
+
+    Parameters
+    ----------
+    imshape : tuple
+        (height, width) of mask to be created (must match the map!)
+    spidx : list (or ndarray)
+        list of superpixel indices to include in mask (or outline)
+    spmap : ndarray
+        result of jitfunc.superpixel_map
+    outline : optional bool
+        create outline rather than filled mask (default: false)
+    outline_width : int
+        number of pixels to dilate (positive) or erode (negative)
+    
+    Returns
+    -------
+    smask : ndarray
+        2D mask (or outline) image
+    """
+    try:
+        smask = (color_superpixels(imshape, spidx, spmap, [[255]] * len(spidx)) > 0)
+    except:
+        raise
+    if not outline or outline_width == 0:
+        return smask
+    
+    # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
+    import scipy.ndimage as ndimage
+
+    if outline_width > 0:
+        omask = ndimage.binary_dilation(smask, iterations = outline_width)
+        smask = numpy.logical_and(omask, numpy.logical_not(smask))
+    else:
+        omask = ndimage.binary_erosion(smask, iterations = -outline_width)
+        smask = numpy.logical_and(smask, numpy.logical_not(omask))
+    return smask
+
 # superpixel neighbors
 def superpixel_neighbors(
     pixel_idx:numpy.ndarray,
@@ -3124,6 +3173,43 @@ def superpixel_outlines(
             'xmlns="http://www.w3.org/2000/svg">\n    {2:s}\n</svg>').format(
             rowlen, image_shape[0], '\n    '.join(pix_shapes.values()))
     return pix_shapes
+
+# superpixel value extraction
+def superpixel_values(
+    im:numpy.ndarray,
+    spmap:numpy.ndarray,
+    sp:Union[int,list,numpy.ndarray],
+    ) -> Union[numpy.ndarray,list]:
+    try:
+        imdim = numpy.ndim(im)
+        if imdim < 2 or imdim > 3:
+            raise ValueError('Invalid im argument.')
+        if numpy.ndim(spmap) != 2:
+            raise ValueError('Invalid spmap argument.')
+        if isinstance(sp, int):
+            sp = [sp]
+        sp = numpy.asarray(sp, dtype=numpy.int64)
+    except:
+        raise
+    spval = [None] * sp.size
+    if imdim == 2:
+        imp = [im.flatten()]
+    else:
+        pnum = im.shape[2]
+        imp = [None] * pnum
+        for pidx in range(pnum):
+            imp[pidx] = im[:,:,pidx].flatten()
+    for idx, spidx in enumerate(sp):
+        spcrd = spmap[spidx,:spmap[spidx,-1]]
+        if imdim == 2:
+            spval[idx] = imp[0][spcrd]
+        else:
+            spval[idx] = numpy.zeros((spcrd.size, pnum), dtype=im.dtype)
+            for pidx in range(pnum):
+                spval[idx][:,pidx] = imp[pidx][spcrd]
+    if len(spval) == 1:
+        spval = spval[0]
+    return spval
 
 # write image
 _write_imformats = {
