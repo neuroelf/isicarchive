@@ -7,3 +7,5 @@
 # folders not to include anywhere
 __pycache__/
 .ipynb_checkpoints/
+.vscode/
+
