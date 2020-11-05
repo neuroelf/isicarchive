@@ -32,6 +32,8 @@ image_mark_work
     Mark set of pixels (word) in image border
 image_mix
     Mix two (RGB or gray) image, with either max or blending
+image_overlay
+    Mix an RGB image with a heatmap overlay (resampled)
 image_read_border
     Read encoded image border
 image_register
@@ -57,7 +59,7 @@ write_image
 """
 
 # specific version for file
-__version__ = '0.4.8'
+__version__ = '0.4.11'
 
 
 # imports (needed for majority of functions)
@@ -442,8 +444,13 @@ def image_compose(
         not isinstance(outsize[1], int) or outsize[0] < 1 or
         outsize[1] < 1 or (outsize[0] * outsize[2] > 16777216)):
         raise ValueError('Invalid image dimensions in outsize parameter.')
+    
+    # generate output
     out = numpy.zeros(3 * outsize[0] * outsize[1], dtype=numpy.uint8).reshape(
         (outsize[1], outsize[0], 3,))
+    im_shape = out.shape
+    
+    # set background color
     if (isinstance(bgcolor, tuple) or isinstance(bgcolor, list)) and len(bgcolor) == 3:
         try:
             out[:,:,0] = bgcolor[0]
@@ -457,28 +464,63 @@ def image_compose(
             out[:,:,2] = bgcolor[2]
         except:
             pass
-    im_shape = out.shape
+    
+    # iterare over particles
     for ii in imlist:
+
+        # if not a minimally formatted list
         if not isinstance(ii, list) or len(ii) < 3:
             continue
+
+        # get image and inupt shape, check dims
         ii_image = ii[0]
         ii_shape = ii_image.shape
         if len(ii_shape) < 2 or len(ii_shape) > 3:
             continue
         elif len(ii_shape) == 3 and not ii_shape[2] in [1, 3]:
             continue
+
+        # get target position (top left)
         ii_x = ii[1]
         ii_y = ii[2]
         if ii_x >= im_shape[1] or ii_y >= im_shape[0]:
             continue
+        
+        # and process alpha
         if len(ii) == 3:
             ii_alpha = 1.0
         else:
             ii_alpha = ii[3]
-        if ii_alpha <= 0.0:
+        if not (isinstance(ii_alpha, float) or isinstance(ii_alpha, numpy.ndarray)):
             continue
-        if ii_alpha > 1.0:
-            ii_alpha = 1.0
+        if isinstance(ii_alpha, float):
+            if ii_alpha <= 0.0:
+                continue
+            if ii_alpha > 1.0:
+                ii_alpha = 1.0
+        else:
+            if ii_alpha.ndim != 2:
+                continue
+            if ii_alpha.shape[0] != im_shape[0] or ii_alpha.shape[1] != im_shape[1]:
+                continue
+            ii_alpha[ii_alpha < 0.0] = 0.0
+            ii_alpha[ii_alpha > 1.0] = 1.0
+
+        # resizing of image
+        if len(ii) > 5 and ((isinstance(ii[4], int) and isinstance(ii[5], int)) or
+            (isinstance(ii[4], float) and isinstance(ii[5], float))):
+            from .sampler import Sampler
+            s = Sampler()
+            if isinstance(ii_alpha, numpy.ndarray):
+                ii_alpha = s.sample_grid(ii_alpha, ii[4:6], 'linear')
+            if len(ii) > 6 and isinstance(ii[6], str):
+                ikern = ii[6]
+            else:
+                ikern = 'cubic'
+            ii_image = s.sample_grid(ii_image, ii[4:6], ikern)
+            im_shape = ii_image.shape
+
+        # check arguments for compatibility
         if not (isinstance(ii_image, numpy.ndarray) and
             isinstance(ii_x, int) and isinstance(ii_y, int) and
             (isinstance(ii_alpha, float) or (
@@ -644,7 +686,7 @@ def image_crop(
             except:
                 raise
             if isinstance(masking, str) and masking == 'smoothnei':
-                from isicarchive.sampler import Sampler
+                from .sampler import Sampler
                 s = Sampler()
                 yd = y1 - y0
                 xd = x1 - x0
@@ -931,7 +973,7 @@ def image_hslhist(
     ) -> tuple:
 
     # IMPORT DONE HERE TO SAVE TIME DURING IMPORT
-    from isicarchive.sampler import Sampler
+    from .sampler import Sampler
     s = Sampler()
 
     if len(image.shape) != 3 or image.shape[2] != 3:
@@ -1590,6 +1632,94 @@ def image_mix(
             immix.shape = (im1shape[0], im1shape[1], immix.shape[-1])
     return immix
 
+# overlay image
+def image_overlay(
+    im:numpy.ndarray,
+    heatmap:numpy.ndarray,
+    heatposlut:Union[list,numpy.ndarray]=[[255,0,0],[255,255,0]],
+    heatneglut:Union[list,numpy.ndarray]=None,
+    min_thresh:float=0.0,
+    max_thresh:float=1.0,
+    alpha:Union[float,numpy.ndarray]=-1.0,
+    alpha_max:float=1.0,
+    ) -> numpy.ndarray:
+    
+    # late imports
+    from .sampler import Sampler
+    s = Sampler()
+
+    # lookup colors
+    imsh = im.shape
+    if im.ndim != 3 or imsh[2] != 3:
+        raise ValueError('Invalid image, must be RGB x*y*3.')
+    if heatmap.ndim != 2:
+        raise ValueError('Invalid heatmap, must be x*y.')
+    hmsh = heatmap.shape
+    if isinstance(heatposlut, list):
+        heatposlut = numpy.asarray(heatposlut).astype(numpy.uint8)
+    if isinstance(heatneglut, list):
+        heatneglut = numpy.asarray(heatneglut).astype(numpy.uint8)
+    hplsh = heatposlut.shape
+    if len(hplsh) != 2 or hplsh[1] != 3:
+        raise ValueError('Invalid heatposlut shape.')
+    if not heatneglut is None:
+        hnlsh = heatneglut.shape
+        if len(hnlsh) != 2 or hnlsh[1] != 3:
+            raise ValueError('Invalid heatneglut shape.')
+    else:
+        hnlsh = [256,3]
+    if (max_thresh - min_thresh) != 1.0:
+        trans_fac = 1.0 / (max_thresh - min_thresh)
+        min_thresh /= trans_fac
+    if min_thresh < 0.0:
+        min_thresh = 0.0
+    if isinstance(alpha, numpy.ndarray):
+        if alpha.ndim != 2 or alpha.shape[0] != hmsh[0] or alpha.shape[1] != hmsh[1]:
+            alpha = -1.0
+        else:
+            if alpha.shape[0] != imsh[0] or alpha.shape[1] != imsh[1]:
+                alpha = s.sample_grid(alpha,list(imsh[0:2]), 'linear')
+    if not (isinstance(alpha, numpy.ndarray) or isinstance(alpha, float)):
+        raise ValueError('Invalid alpha parameter.')
+    if alpha_max <= 0.0:
+        return im.copy()
+    if isinstance(alpha, float):
+        if alpha > 1.0:
+            alpha = 1.0
+        elif alpha == 0:
+            return im.copy()
+        if alpha < 0.0:
+            alpha_map = heatmap.copy()
+            alpha_map[alpha_map < min_thresh] = min_thresh
+            alpha_map -= min_thresh
+            alpha_map /= (max_thresh - min_thresh)
+            alpha_map[alpha_map > 1.0] = 1.0
+            alpha = -alpha * alpha_map
+            alpha[alpha > 1.0] = 1.0
+        else:
+            alpha_map = heatmap >= min_thresh
+            alpha_map = alpha_map.astype(numpy.float32)
+            alpha = alpha * alpha_map
+        if alpha.shape[0] != imsh[0] or alpha.shape[1] != imsh[1]:
+            alpha = s.sample_grid(alpha,list(imsh[0:2]), 'linear')
+    if alpha_max < 1.0 and isinstance(alpha, numpy.ndarray):
+        alpha[alpha > alpha_max] = alpha_max
+    heatmap = heatmap - min_thresh
+    heatmap /= (max_thresh - min_thresh)
+    if hplsh[0] < 40:
+        lsfac = (hplsh[0] - 1) / 255.0
+        heatposlut = s.sample_grid(heatposlut,
+            [numpy.arange(0.0,float(hplsh[0])-1.0+0.5*lsfac,lsfac),3], 'linear')
+    if hnlsh[0] < 40:
+        lsfac = (hnlsh[0] - 1) / 255.0
+        heatneglut = s.sample_grid(heatneglut,
+            [numpy.arange(0.0,float(hplsh[0])-1.0+0.5*lsfac,lsfac),3], 'linear')
+    heatrgb = lut_lookup(heatmap.flatten(), heatposlut, heatneglut).reshape(
+        (hmsh[0],hmsh[1],3))
+    if hmsh[0] != imsh[0] or hmsh[1] != imsh[1]:
+        heatrgb = s.sample_grid(heatrgb, list(imsh[0:2]), 'linear').astype(numpy.uint8)
+    return image_mix(im, heatrgb, alpha)
+
 # read image border
 def image_read_border(
     image:numpy.ndarray,
@@ -1616,8 +1746,8 @@ def image_read_border(
     """
 
     # IMPORT DONE HERE TO SAVE TIME AT MODULE INIT
-    from isicarchive.reedsolo import RSCodec
-    from isicarchive.sampler import Sampler
+    from .reedsolo import RSCodec
+    from .sampler import Sampler
     r = RSCodec(64) # needed for bit decoding
     s = Sampler()
 
@@ -2672,7 +2802,7 @@ def lut_lookup(
     ispos = (values > 0.0)
     if not neg_lut is None:
         isneg = (values < 0.0)
-    values = numpy.trunc(values, dtype=numpy.int32)
+    values = numpy.trunc(values).astype(numpy.int32)
     colors = numpy.zeros((num_vals, 3), dtype=numpy.uint8, order='C')
     colors[:,0] = default[0]
     colors[:,1] = default[1]
@@ -2691,7 +2821,7 @@ def lut_lookup(
         colors[above, 0] = above_pos_col[0]
         colors[above, 1] = above_pos_col[1]
         colors[above, 2] = above_pos_col[2]
-    if neg_lut is None:
+    if neg_lut is not None:
         values = -values
         if below_neg_col is None:
             values[values >= num_cols] = num_cols - 1
@@ -2708,6 +2838,8 @@ def lut_lookup(
             colors[above, 1] = below_neg_col[1]
             colors[above, 2] = below_neg_col[2]
     return colors
+
+# radial sampling (TODO!)
 
 # read image
 def read_image(image_file:str) -> numpy.ndarray:
